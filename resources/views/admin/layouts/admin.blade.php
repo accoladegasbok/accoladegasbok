@@ -1,0 +1,184 @@
+{{-- FILE: resources/views/admin/layouts/admin.blade.php --}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>@yield('title', 'Admin') — Auto Zenith Parts</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy:  '#0A1F5C',
+            gold:  '#C8960C',
+            'navy-light': '#132474',
+          },
+          fontFamily: {
+            display: ['"Barlow Condensed"','sans-serif'],
+            body:    ['"DM Sans"','sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    body { font-family:'DM Sans',sans-serif; }
+    .sidebar-link { display:flex; align-items:center; gap:10px; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:500; color:#94a3b8; transition:all .15s; }
+    .sidebar-link:hover { background:rgba(255,255,255,.06); color:#fff; }
+    .sidebar-link.active { background:rgba(200,150,12,.15); color:#C8960C; }
+    .sidebar-link svg { width:18px; height:18px; flex-shrink:0; }
+    .stat-card { background:#fff; border:0.5px solid #e2e8f0; border-radius:12px; padding:1.25rem; }
+    .badge { display:inline-flex; align-items:center; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:500; }
+    .badge-green  { background:#EAF3DE; color:#27500A; }
+    .badge-blue   { background:#E6F1FB; color:#0C447C; }
+    .badge-amber  { background:#FAEEDA; color:#633806; }
+    .badge-red    { background:#FCEBEB; color:#A32D2D; }
+    .badge-gray   { background:#F1EFE8; color:#5F5E5A; }
+    ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-thumb { background:#C8960C; border-radius:2px; }
+  </style>
+  @stack('head')
+</head>
+<body class="bg-gray-50">
+
+<div class="flex h-screen overflow-hidden">
+
+  {{-- ── Sidebar ────────────────────────────────────────────────────────── --}}
+  <aside class="w-56 bg-navy flex-shrink-0 flex flex-col overflow-y-auto">
+    {{-- Logo --}}
+    <div class="px-4 py-5 border-b border-white border-opacity-10">
+      <div class="font-display font-700 text-white text-lg tracking-wide leading-none">AUTO ZENITH</div>
+      <div class="text-gold text-xs font-body font-500 tracking-widest mt-0.5">Admin Panel</div>
+    </div>
+
+    {{-- Nav --}}
+    <nav class="flex-1 px-2 py-4 space-y-0.5">
+      <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body">Main</div>
+
+      <a href="{{ route('admin.dashboard') }}" class="sidebar-link {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </a>
+
+      <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Inventory</div>
+
+      <a href="{{ route('admin.harvest.create') }}" class="sidebar-link {{ request()->routeIs('admin.harvest.create') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        New Harvest
+      </a>
+
+      <a href="{{ route('admin.harvest.index') }}" class="sidebar-link {{ request()->routeIs('admin.harvest.index') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Harvest History
+      </a>
+
+      <a href="{{ route('admin.inventory.index') }}" class="sidebar-link {{ request()->routeIs('admin.inventory*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        All Inventory
+      </a>
+      <a href="{{ route('admin.inventory.consumable.create') }}" class="sidebar-link {{ request()->routeIs('admin.inventory.consumable*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3.75H6.912a2.25 2.25 0 00-2.25 2.25v13.5a2.25 2.25 0 002.25 2.25h10.176a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H15M9 3.75c0 .621.504 1.125 1.125 1.125h3.75c.621 0 1.125-.504 1.125-1.125M9 3.75c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125m-5 9 1.5 1.5 3-3.5"/></svg>
+        Consumables
+      </a>
+      <a href="{{ route('parts.compatibility') }}" target="_blank" class="sidebar-link {{ request()->routeIs('parts.compatibility') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Compatibility Checker
+      </a>
+      <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Orders</div>
+      <a href="{{ route('admin.invoices.index') }}" class="sidebar-link {{ request()->routeIs('admin.invoices*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Invoices
+      </a>
+      <a href="{{ route('admin.customers.index') }}" class="sidebar-link {{ request()->routeIs('admin.customers*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+        Customers
+      </a>
+      <a href="{{ route('admin.audit.index') }}" class="sidebar-link {{ request()->routeIs('admin.audit*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185zM9.75 9h.008v.008H9.75V9zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM14.25 12h.008v.008h-.008V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
+        Inventory Audit
+      </a>
+      <a href="{{ route('admin.reports.financial') }}" class="sidebar-link {{ request()->routeIs('admin.reports.financial') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+        Financial Reports
+      </a>
+      <a href="{{ route('admin.orders.index') }}" class="sidebar-link {{ request()->routeIs('admin.orders*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+        Orders
+        @php $pending = \Illuminate\Support\Facades\DB::table('orders')->whereIn('payment_status',['pending','transfer_sent'])->count(); @endphp
+        @if($pending > 0)
+          <span class="ml-auto bg-red-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pending }}</span>
+        @endif
+      </a>
+
+      @if(in_array(session('staff_role'), ['admin','manager']))
+      <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Admin</div>
+      <a href="{{ route('admin.staff.index') }}" class="sidebar-link {{ request()->routeIs('admin.staff*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Staff
+      </a>
+      @endif
+    </nav>
+
+    {{-- Staff info --}}
+    <div class="px-4 py-4 border-t border-white border-opacity-10">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 bg-gold rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="font-display font-700 text-navy text-sm">{{ substr(session('staff_name','?'),0,1) }}</span>
+        </div>
+        <div class="min-w-0">
+          <div class="text-white text-xs font-body font-500 truncate">{{ session('staff_name') }}</div>
+          <div class="text-gold text-xs font-body uppercase tracking-wider">{{ session('staff_role') }}</div>
+        </div>
+      </div>
+      <a href="{{ route('admin.logout') }}" class="mt-3 flex items-center gap-2 text-xs text-gray-500 hover:text-white font-body transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        Log out
+      </a>
+    </div>
+  </aside>
+
+  {{-- ── Main content ───────────────────────────────────────────────────── --}}
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    {{-- Top bar --}}
+    <header class="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between flex-shrink-0">
+      <div>
+        <h1 class="font-display font-700 text-navy text-xl tracking-wide">@yield('page-title','Dashboard')</h1>
+        @hasSection('page-sub')
+          <p class="text-xs text-gray-400 font-body mt-0.5">@yield('page-sub')</p>
+        @endif
+      </div>
+      <div class="flex items-center gap-3">
+        @yield('header-actions')
+        <a href="{{ route('admin.harvest.create') }}"
+           class="bg-navy text-white font-display font-700 text-xs px-4 py-2 rounded-xl tracking-wide hover:bg-navy-light transition-colors flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+          New Harvest
+        </a>
+      </div>
+    </header>
+
+    {{-- Flash messages --}}
+    @if(session('success'))
+    <div class="bg-green-50 border-b border-green-200 px-6 py-2.5 text-sm text-green-700 font-body flex items-center gap-2">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+      {{ session('success') }}
+    </div>
+    @endif
+    @if(session('error'))
+    <div class="bg-red-50 border-b border-red-200 px-6 py-2.5 text-sm text-red-700 font-body">{{ session('error') }}</div>
+    @endif
+
+    {{-- Page body --}}
+    <main class="flex-1 overflow-y-auto p-6">
+      @yield('content')
+    </main>
+  </div>
+</div>
+
+@stack('scripts')
+</body>
+</html>

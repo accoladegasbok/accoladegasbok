@@ -1,0 +1,262 @@
+{{-- FILE: resources/views/admin/inventory/edit.blade.php --}}
+@extends('admin.layouts.admin')
+@section('title','Edit Part')
+@section('page-title','Edit Part')
+@section('page-sub', $part->part_code . ' — ' . $part->part_name)
+
+@section('content')
+<div class="max-w-3xl">
+  <form method="POST" action="{{ route('admin.inventory.update', $part->id) }}">
+    @csrf @method('PUT')
+
+    @if($errors->any())
+    <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700 font-body">
+      @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
+    </div>
+    @endif
+
+    {{-- ── Basic Details ──────────────────────────────────────────── --}}
+    <div class="stat-card mb-4">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-4">Part Details</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
+          <input type="text" name="part_name" value="{{ old('part_name', $part->part_name) }}" required
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Price (USD) *</label>
+          <input type="number" name="price_usd" value="{{ old('price_usd', $part->price_usd) }}" step="0.01" min="0" required
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Condition Grade *</label>
+          <select name="condition_grade" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+            @foreach(['A','B','C','New'] as $g)
+              <option value="{{ $g }}" {{ old('condition_grade',$part->condition_grade)===$g?'selected':'' }}>Grade {{ $g }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Status *</label>
+          <select name="status" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+            @foreach(['Available','Reserved','Sold'] as $s)
+              <option value="{{ $s }}" {{ old('status',$part->status)===$s?'selected':'' }}>{{ $s }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Location *</label>
+          <select name="location" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+            @foreach($locations as $l)
+              <option value="{{ $l }}" {{ old('location',$part->location)===$l?'selected':'' }}>{{ $l }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number</label>
+          <input type="text" name="oem_part_number" value="{{ old('oem_part_number', $part->oem_part_number) }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Mileage (miles)</label>
+          <input type="number" name="mileage" value="{{ old('mileage', $part->mileage) }}" min="0"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Colour</label>
+          <input type="text" name="colour" value="{{ old('colour', $part->colour) }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Bin Location</label>
+          <input type="text" name="bin_location" value="{{ old('bin_location', $part->bin_location) }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. A-01-B1">
+        </div>
+
+      </div>
+    </div>
+
+    {{-- ── OEM Engine / Transmission Codes (items 6 & 7) ──────────── --}}
+    @if(in_array($part->part_category, ['Engine','Transmission']))
+    <div class="stat-card mb-4">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">
+        Engine / Transmission / Gear Details
+      </h2>
+      <p class="text-xs text-gray-400 font-body mb-4">OEM codes make parts searchable by engine/transmission code in the Nigerian market.</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            OEM Engine Code
+            <span class="text-gray-400 normal-case tracking-normal font-400">e.g. 2ZRFE, 2ARFE, 2GRFE</span>
+          </label>
+          <input type="text" name="engine_code_oem"
+            value="{{ old('engine_code_oem', $part->engine_code_oem ?? '') }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. 2ZRFE">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            OEM Transmission / Gear Code
+            <span class="text-gray-400 normal-case tracking-normal font-400">e.g. U341E, U760E, A750E</span>
+          </label>
+          <input type="text" name="transmission_code_oem"
+            value="{{ old('transmission_code_oem', $part->transmission_code_oem ?? '') }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. U341E">
+        </div>
+
+        {{-- Pin count — Nigerian market item 10 --}}
+        @if($part->part_category === 'Transmission')
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Pin Count (Nigerian market)
+            <span class="text-gray-400 normal-case tracking-normal font-400">e.g. 13, 22</span>
+          </label>
+          <input type="number" name="pin_count"
+            value="{{ old('pin_count', $part->pin_count ?? '') }}"
+            min="1" max="99"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. 13">
+          <p class="text-xs text-gray-400 font-body mt-1">
+            Physical pin count on transmission connector.<br>
+            2AZ-FE 4cyl = 13 pins · 2GR-FE V6 = 22 pins
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Gear Alias (Nigerian market label)
+          </label>
+          <input type="text" name="gear_alias"
+            value="{{ old('gear_alias', $part->gear_alias ?? '') }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. 13-pin gear, 22-pin gear">
+          <p class="text-xs text-gray-400 font-body mt-1">How this gear is known in the Nigerian market.</p>
+        </div>
+        @endif
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Origin Market</label>
+          <select name="origin_market" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+            @foreach(['N/A','JDM','USDM','EDM','Nigerian Used'] as $om)
+              <option value="{{ $om }}" {{ old('origin_market', $part->origin_market ?? 'N/A')===$om?'selected':'' }}>{{ $om }}</option>
+            @endforeach
+          </select>
+        </div>
+
+      </div>
+    </div>
+    @endif
+
+    {{-- ── Vehicle Fitment (items 4, 5, 9, 11) ──────────────────────── --}}
+    <div class="stat-card mb-4">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">
+        Vehicle Fitment &amp; Compatibility
+      </h2>
+      <p class="text-xs text-gray-400 font-body mb-4">
+        Set the year range this part is compatible with — wider than the donor year alone.
+        E.g. a 2009 Corolla door fits 2009–2013.
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Compatible From Year
+            <span class="text-gray-400 normal-case font-400">(1986–2027)</span>
+          </label>
+          <input type="number" name="compat_year_from"
+            value="{{ old('compat_year_from', $part->compat_year_from ?? $part->year_from) }}"
+            min="1986" max="2027"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Compatible To Year
+            <span class="text-gray-400 normal-case font-400">(1986–2027)</span>
+          </label>
+          <input type="number" name="compat_year_to"
+            value="{{ old('compat_year_to', $part->compat_year_to ?? $part->year_to) }}"
+            min="1986" max="2027"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Compatible Trims (comma-separated)
+          </label>
+          <input type="text" name="compatible_trims"
+            value="{{ old('compatible_trims', $part->compatible_trims ?? '') }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. L, LE, SE, XLE">
+          <p class="text-xs text-gray-400 font-body mt-1">Leave blank to indicate all trims are compatible.</p>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Not Compatible With
+          </label>
+          <input type="text" name="not_compatible_note"
+            value="{{ old('not_compatible_note', $part->not_compatible_note ?? '') }}"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
+            placeholder="e.g. Not compatible with 3.5L V6 or Hybrid (eCVT) models">
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Full Fitment Notes (shown on product page)
+          </label>
+          <textarea name="fitment_notes" rows="4"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 resize-none"
+            placeholder="e.g. This transmission is a direct replacement for the XV50 Generation Toyota Camry equipped with the 2.5L engine. Years: 2013–2017. Trims: L, LE, SE, XLE (Gasoline Models). Not compatible with 3.5L V6 or Hybrid models.">{{ old('fitment_notes', $part->fitment_notes ?? '') }}</textarea>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Description / Notes</label>
+          <textarea name="description" rows="2"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 resize-none">{{ old('description', $part->description) }}</textarea>
+        </div>
+
+      </div>
+    </div>
+
+    {{-- Read-only vehicle info --}}
+    <div class="stat-card mb-5 bg-gray-50">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-3">Donor Vehicle (read-only)</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-body">
+        <div><div class="text-gray-400 mb-0.5">Brand</div><div class="font-500 text-navy">{{ $part->brand }}</div></div>
+        <div><div class="text-gray-400 mb-0.5">Model</div><div class="font-500 text-navy">{{ $part->model }}</div></div>
+        <div><div class="text-gray-400 mb-0.5">Donor Year</div><div class="font-500 text-navy">{{ $part->year_from }}</div></div>
+        <div><div class="text-gray-400 mb-0.5">Part Code</div><div class="font-500 font-mono text-navy">{{ $part->part_code }}</div></div>
+        @if($part->donor_vin)
+        <div class="sm:col-span-4"><div class="text-gray-400 mb-0.5">Donor VIN</div><div class="font-mono text-navy">{{ $part->donor_vin }}</div></div>
+        @endif
+      </div>
+    </div>
+
+    <div class="flex gap-3">
+      <button type="submit" class="flex-1 bg-gold text-navy font-display font-700 text-sm py-3.5 rounded-xl tracking-wide hover:bg-yellow-500 transition-colors">
+        Save Changes
+      </button>
+      <a href="{{ route('admin.inventory.index') }}" class="border border-gray-200 text-gray-500 font-body font-500 text-sm px-5 py-3.5 rounded-xl hover:bg-gray-50 transition-colors">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+@endsection

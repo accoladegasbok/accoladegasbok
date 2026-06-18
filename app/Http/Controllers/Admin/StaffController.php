@@ -1,0 +1,146 @@
+<?php
+// FILE: app/Http/Controllers/Admin/StaffController.php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Session;
+
+class StaffController extends Controller
+{
+    const LOCATIONS = [
+        'All',
+        'Waxahachie TX','Elkhorn WI',
+        'Ile-Ife Nigeria','Ibadan Nigeria','Oshodi Lagos','Accra Ghana',
+    ];
+
+    const ROLES = ['admin','manager','staff','viewer'];
+
+    // ── List all staff ────────────────────────────────────────────
+    public function index()
+    {
+        $staff = DB::table('staff')
+            ->orderByRaw("FIELD(role,'admin','manager','staff','viewer')")
+            ->orderBy('name')
+            ->get();
+
+        $counts = [
+            'total'    => $staff->count(),
+            'active'   => $staff->where('is_active', true)->count(),
+            'inactive' => $staff->where('is_active', false)->count(),
+        ];
+
+        return view('admin.staff.index', compact('staff','counts'));
+    }
+
+    // ── Create form ───────────────────────────────────────────────
+    public function create()
+    {
+        return view('admin.staff.create', [
+            'locations' => self::LOCATIONS,
+            'roles'     => self::ROLES,
+        ]);
+    }
+
+    // ── Store new staff member ────────────────────────────────────
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name'     => 'required|string|max:100',
+            'email'    => 'required|email|max:150|unique:staff,email',
+            'password' => 'required|string|min:8|confirmed',
+            'role'     => 'required|in:admin,manager,staff,viewer',
+            'location' => 'required|string',
+            'phone'    => 'nullable|string|max:30',
+        ]);
+
+        DB::table('staff')->insert([
+            'name'       => trim($request->name),
+            'email'      => strtolower(trim($request->email)),
+            'password'   => Hash::make($request->password),
+            'role'       => $request->role,
+            'location'   => $request->location,
+            'phone'      => $request->phone,
+            'is_active'  => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return redirect()->route('admin.staff.index')
+            ->with('success', "{$request->name} added as {$request->role}.");
+    }
+
+   // ── Edit form ─────────────────────────────────────────────────
+    public function edit(int $id)
+    {
+        $member = DB::table('staff')->where('id', $id)->first();
+        abort_if(!$member, 404);
+
+        return view('admin.staff.edit', [
+            'member'    => $member,
+            'locations' => self::LOCATIONS,
+            'roles'     => self::ROLES,
+        ]);
+    }
+    // ── Update staff member ──────────────────────────────────────
+    public function update(Request $request, int $id)
+    {
+        $request->validate([
+            'name'     => 'required|string|max:100',
+            'email'    => 'required|email|max:150|unique:staff,email,'.$id,
+            'role'     => 'required|in:admin,manager,staff,viewer',
+            'location' => 'required|string',
+            'phone'    => 'nullable|string|max:30',
+            'password' => 'nullable|string|min:8|confirmed',
+            'discount_cap_fixed'   => 'nullable|numeric|min:0',
+            'discount_cap_percent' => 'nullable|numeric|min:0|max:100',
+        ]);
+        $data = [
+            'name'       => trim($request->name),
+            'email'      => strtolower(trim($request->email)),
+            'role'       => $request->role,
+            'location'   => $request->location,
+            'phone'      => $request->phone,
+            'updated_at' => now(),
+        ];
+        // Only update password if a new one was provided
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->password);
+        }
+        // Discount caps are admin-privilege only — only an admin can set them
+        if (Session::get('staff_role') === 'admin') {
+            $data['discount_cap_fixed']   = $request->discount_cap_fixed;
+            $data['discount_cap_percent'] = $request->discount_cap_percent;
+        }
+        DB::table('staff')->where('id', $id)->update($data);
+        return redirect()->route('admin.staff.index')
+            ->with('success', "{$request->name} updated successfully.");
+    }
+
+    // ── Toggle active/inactive (AJAX) ─────────────────────────────
+    public function toggle(int $id)
+    {
+        // Cannot deactivate yourself
+        if ($id == Session::get('staff_id')) {
+            return response()->json(['error' => 'You cannot deactivate your own account.'], 422);
+        }
+
+        $member = DB::table('staff')->where('id', $id)->first();
+        if (!$member) return response()->json(['error' => 'Not found.'], 404);
+
+        $newStatus = !$member->is_active;
+        DB::table('staff')->where('id', $id)->update([
+            'is_active'  => $newStatus,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'success'   => true,
+            'is_active' => $newStatus,
+            'message'   => $member->name . ($newStatus ? ' reactivated.' : ' deactivated.'),
+        ]);
+    }
+}
