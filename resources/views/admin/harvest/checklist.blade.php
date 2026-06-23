@@ -38,6 +38,28 @@
     <div class="bg-red-900/40 border border-red-500 text-red-300 rounded-lg px-4 py-3 mb-4 text-sm">{{ session('error') }}</div>
 @endif
 
+{{-- ── FLOATING SAVE BAR — fixed to viewport, stays visible while scrolling ── --}}
+<div class="fixed top-0 left-0 right-0 z-[999] bg-[#0f172a] border-b border-[#334155] px-4 sm:px-8 py-3 flex flex-wrap items-center gap-3 shadow-lg">
+    <button type="button" onclick="tickAll()"
+        class="px-4 py-2 text-xs rounded-lg bg-[#C8960C]/20 text-[#C8960C] border border-[#C8960C]/30 hover:bg-[#C8960C]/30 transition">
+        ✅ Tick All
+    </button>
+    <button type="button" onclick="untickAll()"
+        class="px-4 py-2 text-xs rounded-lg bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 transition">
+        ☐ Untick All
+    </button>
+    <span class="text-slate-400 text-sm">
+        <span id="partCountSticky">0 parts</span> selected —
+        Total: <strong class="text-white" id="grandTotalSticky">{{ $currency['symbol'] }}0</strong>
+    </span>
+    <button type="button" onclick="document.getElementById('harvestForm').requestSubmit()"
+        class="ml-auto px-6 py-2.5 rounded-xl bg-[#C8960C] text-black font-bold text-sm hover:bg-yellow-400 transition shadow-md">
+        💾 Save Parts to Inventory
+    </button>
+</div>
+{{-- Spacer so fixed bar doesn't overlap page content underneath it --}}
+<div class="h-[60px]"></div>
+
 {{-- ── TOOLBAR ─────────────────────────────────────────────────────── --}}
 <div class="flex flex-wrap items-center gap-3 mb-5">
     <button type="button" onclick="tickAll()"
@@ -189,10 +211,11 @@
     </div>
     @endforeach
 
-    {{-- ── CUSTOM PARTS ──────────────────────────────────────────── --}}
+    {{-- ── CUSTOM PARTS — admin only, to keep naming uniform ───────── --}}
+    @if(session('staff_role') === 'admin')
     <div class="mb-4 border border-[#334155] rounded-xl overflow-hidden">
         <div class="bg-[#1e293b] px-4 py-3 flex items-center justify-between">
-            <span class="text-white font-semibold text-sm">➕ Additional / Custom Parts</span>
+            <span class="text-white font-semibold text-sm">➕ Additional / Custom Parts <span class="text-xs text-[#C8960C] font-normal">(admin only)</span></span>
             <button type="button" onclick="addCustomRow()"
                 class="text-xs px-3 py-1.5 rounded-lg bg-[#C8960C]/20 text-[#C8960C] border border-[#C8960C]/30 hover:bg-[#C8960C]/30 transition">
                 + Add Row
@@ -202,6 +225,13 @@
             {{-- rows injected by JS --}}
         </div>
     </div>
+    @else
+    <div class="mb-4 border border-[#334155] rounded-xl overflow-hidden">
+        <div class="bg-[#1e293b] px-4 py-3">
+            <span class="text-slate-400 text-sm">Don't see a part on the list? Ask an admin to add it — only admin can add custom part names, to keep naming uniform across the system.</span>
+        </div>
+    </div>
+    @endif
 
     {{-- ── SESSION NOTES ──────────────────────────────────────────── --}}
     <div class="mb-6">
@@ -263,11 +293,15 @@ function updateTotal() {
     const fmt = formatAmount(total);
     document.getElementById('grandTotal').textContent  = fmt;
     document.getElementById('grandTotal2').textContent = fmt;
+    const grandTotalSticky = document.getElementById('grandTotalSticky');
+    if (grandTotalSticky) grandTotalSticky.textContent = fmt;
 
     // Part count
     const count = document.querySelectorAll('.part-checkbox:checked').length
                 + document.querySelectorAll('.custom-name').length;
     document.getElementById('partCount').textContent = count + ' part' + (count !== 1 ? 's' : '') + ' selected';
+    const partCountSticky = document.getElementById('partCountSticky');
+    if (partCountSticky) partCountSticky.textContent = count + ' part' + (count !== 1 ? 's' : '') + ' selected';
 }
 
 // ── Part checkbox toggle ──────────────────────────────────────────
@@ -328,15 +362,21 @@ function untickAll() {
 }
 
 // ── Custom parts ──────────────────────────────────────────────────
+const PART_NAMES = {!! json_encode(\App\Data\PartNames::flat()) !!};
+
 let customIdx = 0;
 function addCustomRow() {
     const i = customIdx++;
     const row = document.createElement('div');
     row.className = 'flex flex-wrap items-center gap-2 px-4 py-3';
     row.innerHTML = `
-        <input type="text" name="custom_parts[${i}][name]" placeholder="Part name" required
+        <input type="text" name="custom_parts[${i}][name]" placeholder="Select a standard name, or type a new one" required
+               list="customPartNames-${i}"
                class="custom-name flex-1 min-w-[160px] bg-[#1e293b] border border-[#334155] rounded-lg
                       px-2 py-1.5 text-sm text-white focus:outline-none focus:border-[#C8960C]">
+        <datalist id="customPartNames-${i}">
+            ${PART_NAMES.map(n => `<option value="${n}"></option>`).join('')}
+        </datalist>
         <div class="flex items-center gap-1">
             <span class="text-slate-400 text-sm">${CURRENCY.symbol}</span>
             <input type="number" name="custom_parts[${i}][price]" placeholder="Price" step="${CURRENCY.decimals === 0 ? '1000' : '0.01'}" min="0"

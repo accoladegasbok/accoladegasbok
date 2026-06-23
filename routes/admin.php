@@ -30,6 +30,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::prefix('harvest')->name('harvest.')->group(function () {
             Route::get('/',                     [HarvestController::class, 'index'])->name('index');
             Route::get('/create',               [HarvestController::class, 'create'])->name('create');
+            Route::get('/search-donors',        [HarvestController::class, 'searchDonors'])->name('search-donors');
+            Route::get('/engine-options',       [HarvestController::class, 'engineOptions'])->name('engine-options');
             Route::post('/vin-decode',          [HarvestController::class, 'vinDecode'])->name('vin-decode');
             Route::post('/',                    [HarvestController::class, 'store'])->name('store');
             Route::get('/{session}/checklist',  [HarvestController::class, 'checklist'])->name('checklist');
@@ -42,6 +44,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/',             [InventoryController::class, 'index'])->name('index');
             Route::get('/create',       [InventoryController::class, 'create'])->name('create');
             Route::get('/manual-add', [InventoryController::class, 'manualAdd'])->name('manual-add');
+            Route::get('/oem-lookup', [InventoryController::class, 'oemLookup'])->name('oem-lookup');
             Route::get('/consumable/create', [InventoryController::class, 'consumableCreate'])->name('consumable.create');
             Route::post('/consumable',       [InventoryController::class, 'consumableStore'])->name('consumable.store');
             Route::post('/',            [InventoryController::class, 'store'])->name('store');

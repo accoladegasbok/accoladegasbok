@@ -48,8 +48,24 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div class="sm:col-span-2">
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
-          <input type="text" name="part_name" value="{{ old('part_name') }}" required placeholder="Tail Lamp Assembly, Engine, Hood..."
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+          @if(session('staff_role') === 'admin')
+            <input type="text" name="part_name" value="{{ old('part_name') }}" required list="partNameDatalist" placeholder="Select a standard name, or type a new one"
+              class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+            <datalist id="partNameDatalist">
+              @foreach(\App\Data\PartNames::flat() as $pn)
+                <option value="{{ $pn }}"></option>
+              @endforeach
+            </datalist>
+            <p class="text-xs text-gray-400 font-body mt-1">As admin, you can type a new name if it's not listed — this keeps naming consistent for everyone else.</p>
+          @else
+            <select name="part_name" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+              <option value="">Select a standard part name</option>
+              @foreach(\App\Data\PartNames::flat() as $pn)
+                <option value="{{ $pn }}" {{ old('part_name')===$pn?'selected':'' }}>{{ $pn }}</option>
+              @endforeach
+            </select>
+            <p class="text-xs text-gray-400 font-body mt-1">Only admin can add a name not on this list, to keep naming uniform.</p>
+          @endif
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Category *</label>

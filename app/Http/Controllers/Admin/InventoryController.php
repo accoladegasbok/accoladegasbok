@@ -2,6 +2,8 @@
 // FILE: app/Http/Controllers/Admin/InventoryController.php
 // Updated: pin_count, gear_alias, engine_code_oem, transmission_code_oem,
 //          origin_market, fitment_notes, compat years, compatible_trims
+// Updated: part_name now restricted to App\Data\PartNames::flat() for
+//          non-admin staff, to keep naming uniform across the system.
 
 namespace App\Http\Controllers\Admin;
 
@@ -9,6 +11,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use App\Data\PartNames;
 
 class InventoryController extends Controller
 {
@@ -35,6 +38,23 @@ class InventoryController extends Controller
     private function yearRange(): array
     {
         return range(1986, 2027);
+    }
+
+    // ── Part name guard — only admin may submit a name not on the
+    // ── standard list, to keep nomenclature uniform across staff.
+    private function assertAllowedPartName(?string $partName): ?string
+    {
+        if (!$partName) return 'Part name is required.';
+
+        if (Session::get('staff_role') === 'admin') {
+            return null; // admins may use any name
+        }
+
+        if (!in_array($partName, PartNames::flat(), true)) {
+            return 'Only admin can add a part name that is not on the standard list. Please select a name from the list, or ask an admin to add it.';
+        }
+
+        return null;
     }
 
     // ── List ──────────────────────────────────────────────────────
@@ -114,6 +134,12 @@ class InventoryController extends Controller
             'not_compatible_note' => 'nullable|string|max:200',
         ]);
 
+        // ── Part name guard (admin-only for unlisted names) ──────────
+        if ($err = $this->assertAllowedPartName($request->part_name)) {
+            return back()->withErrors(['part_name' => $err])->withInput();
+        }
+        // ──────────────────────────────────────────────────────────────
+
         DB::table('parts_inventory')->where('id', $id)->update([
             'part_name'              => $request->part_name,
             'price_usd'              => $request->price_usd,
@@ -162,6 +188,87 @@ class InventoryController extends Controller
         return redirect()->route('admin.inventory.index')->with('success', 'Part deleted.');
     }
 
+    // =========================================================
+    // GET /admin/inventory/oem-lookup?make=...&model=...&year=...
+    // Auto-populate OEM/Technical Details based on Make/Model/Year
+    // for manual entry (no VIN). Checks existing inventory records
+    // for this vehicle first (real data already on file), then
+    // falls back to App\Data\OemDatabase::lookup() as a suggestion.
+    // =========================================================
+    public function oemLookup(Request $request)
+    {
+        $make     = trim($request->get('make', ''));
+        $model    = trim($request->get('model', ''));
+        $year     = (int) $request->get('year', 0);
+        $engineL  = $request->get('engine_l') ? (float) $request->get('engine_l') : 0;
+
+        if ($make === '' || $model === '' || $year === 0) {
+            return response()->json(['source' => null]);
+        }
+
+        // ── 1. Check existing inventory for this exact vehicle first ──
+        $existingQuery = DB::table('parts_inventory')
+            ->where('brand', $make)
+            ->where('model', $model)
+            ->where('year_from', '<=', $year)
+            ->where('year_to', '>=', $year)
+            ->where(function ($q) {
+                $q->whereNotNull('engine_code_oem')
+                  ->orWhereNotNull('transmission_code_oem');
+            });
+
+        $existing = $existingQuery->select('engine_code_oem', 'transmission_code_oem', 'pin_count', 'gear_alias')
+            ->limit(50)
+            ->get();
+
+        // Flag if this vehicle has more than one distinct engine code on file —
+        // front-end should prompt for Engine Size (L) to disambiguate.
+        $distinctEngines = $existing->pluck('engine_code_oem')->filter()->unique()->values();
+        $multipleEngines = $distinctEngines->count() > 1;
+
+        if ($existing->isNotEmpty()) {
+            // If engine size was given and we have multiple options, narrow
+            // to the matching one using App\Data\OemDatabase as the reference
+            // for which engine code corresponds to that displacement.
+            $filtered = $existing;
+            if ($multipleEngines && $engineL > 0) {
+                $refOem = \App\Data\OemDatabase::lookup($make, $model, $year, 0, $engineL);
+                if (!empty($refOem['engine_code'])) {
+                    $narrowed = $existing->where('engine_code_oem', $refOem['engine_code']);
+                    if ($narrowed->isNotEmpty()) $filtered = $narrowed;
+                }
+            }
+
+            $engineCode = $filtered->pluck('engine_code_oem')->filter()->countBy()->sortDesc()->keys()->first();
+            $transCode  = $filtered->pluck('transmission_code_oem')->filter()->countBy()->sortDesc()->keys()->first();
+            $pinCount   = $filtered->where('transmission_code_oem', $transCode)->pluck('pin_count')->filter()->first();
+            $gearAlias  = $filtered->where('transmission_code_oem', $transCode)->pluck('gear_alias')->filter()->first();
+
+            return response()->json([
+                'source'           => 'inventory',
+                'match_count'      => $filtered->count(),
+                'multiple_engines' => $multipleEngines,
+                'engine_code'      => $engineCode,
+                'transmission_code'=> $transCode,
+                'pin_count'        => $pinCount,
+                'gear_alias'       => $gearAlias,
+            ]);
+        }
+
+        // ── 2. Fallback: OemDatabase suggestion (not yet confirmed by stock) ──
+        $oem = \App\Data\OemDatabase::lookup($make, $model, $year, 0, $engineL);
+
+        return response()->json([
+            'source'            => 'suggestion',
+            'match_count'       => 0,
+            'multiple_engines'  => false,
+            'engine_code'       => $oem['engine_code']       ?? null,
+            'transmission_code' => $oem['transmission_code'] ?? null,
+            'pin_count'         => $oem['pin_count']         ?? null,
+            'gear_alias'        => $oem['gear_alias']        ?? null,
+        ]);
+    }
+
     // ── Create form ───────────────────────────────────────────────
     public function create()
     {
@@ -206,6 +313,12 @@ class InventoryController extends Controller
             'location'           => 'required|string',
             'stock_qty'          => 'nullable|integer|min:1',
         ]);
+
+        // ── Part name guard (admin-only for unlisted names) ──────────
+        if ($err = $this->assertAllowedPartName($request->part_name)) {
+            return back()->withErrors(['part_name' => $err])->withInput();
+        }
+        // ──────────────────────────────────────────────────────────────
 
         // Typed brand not in our known list: JS already sends brand=Generic
         // with the real name in other_brand — fold it into part_name.
@@ -273,6 +386,12 @@ class InventoryController extends Controller
         }
 
         $request->validate($rules);
+
+        // ── Part name guard (admin-only for unlisted names) ──────────
+        if ($err = $this->assertAllowedPartName($request->part_name)) {
+            return back()->withErrors(['part_name' => $err])->withInput();
+        }
+        // ──────────────────────────────────────────────────────────────
 
         $prefix   = $isConsumable ? 'CON' : substr(strtoupper($request->part_category), 0, 3);
         $lastCode = DB::table('parts_inventory')

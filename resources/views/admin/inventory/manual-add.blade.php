@@ -45,8 +45,8 @@
     <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-4">Vehicle Fitment</h2>
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div>
-  <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1" id="brandLabel">Make / Brand</label>
-  <select name="brand" id="brandSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1" id="brandLabel">Make / Brand</label>
+        <select name="brand" id="brandSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
           <option value="">Select Make</option>
           @foreach(\App\Data\VehicleDatabase::makes() as $make)
             <option value="{{ $make }}">{{ $make }}</option>
@@ -56,8 +56,9 @@
       </div>
       <div id="modelField">
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Model</label>
-        <input type="text" name="model" id="modelInput" placeholder="e.g. CAMRY"
+        <input type="text" name="model" id="modelInput" list="modelDatalist" placeholder="Select brand first, or type new model"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+        <datalist id="modelDatalist"></datalist>
       </div>
       <div id="yearFromField">
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Year From</label>
@@ -74,22 +75,17 @@
         <input type="text" name="unit_size" placeholder="e.g. 5L, 1 Quart, 4-pack"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
       </div>
-      
+      <div id="engineSizeField">
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Engine Size (L)</label>
+        <input type="number" step="0.1" min="0.5" max="8.0" id="engineSizeInput" placeholder="e.g. 2.5"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+        <p class="text-xs text-gray-400 font-body mt-1">Needed for correct engine/gear code — some models have multiple engine options (e.g. 2.5L vs 3.5L V6).</p>
+      </div>
     </div>
     <div class="mt-3" id="compatNoteField" style="display:none;">
       <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Compatibility Note (optional)</label>
       <input type="text" name="compatibility_note" placeholder="e.g. Suitable for most 4-cylinder Toyota/Honda engines"
         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
-    </div>
-        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Year From</label>
-        <input type="number" name="year_from" placeholder="{{ date('Y') }}" min="1986" max="2027"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
-      </div>
-      <div>
-        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Year To</label>
-        <input type="number" name="year_to" placeholder="{{ date('Y') }}" min="1986" max="2027"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
-      </div>
     </div>
     <div class="mt-3">
       <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Donor VIN (if available)</label>
@@ -104,8 +100,24 @@
     <div class="grid grid-cols-2 gap-3">
       <div class="col-span-2">
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Part Name *</label>
-        <input type="text" name="part_name" placeholder="e.g. Engine, Transmission, Door Panel"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+        @if(session('staff_role') === 'admin')
+          <input type="text" name="part_name" list="partNameDatalist" placeholder="Select a standard name, or type a new one"
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+          <datalist id="partNameDatalist">
+            @foreach(\App\Data\PartNames::flat() as $pn)
+              <option value="{{ $pn }}"></option>
+            @endforeach
+          </datalist>
+          <p class="text-xs text-gray-400 font-body mt-1">As admin, you can type a new name if it's not listed — this keeps naming consistent for everyone else.</p>
+        @else
+          <select name="part_name" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
+            <option value="">Select a standard part name</option>
+            @foreach(\App\Data\PartNames::flat() as $pn)
+              <option value="{{ $pn }}">{{ $pn }}</option>
+            @endforeach
+          </select>
+          <p class="text-xs text-gray-400 font-body mt-1">Only admin can add a name not on this list, to keep naming uniform.</p>
+        @endif
       </div>
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Category *</label>
@@ -164,7 +176,8 @@
   {{-- ── OEM / Technical Details ───────────────────────────────────── --}}
   <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
     <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-1">OEM / Technical Details</h2>
-    <p class="text-xs text-gray-400 font-body mb-4">These make the part searchable by engine code and transmission code — important for the Nigerian market</p>
+    <p class="text-xs text-gray-400 font-body mb-1">These make the part searchable by engine code and transmission code — important for the Nigerian market</p>
+    <p id="oemLookupNote" class="text-xs font-body mb-4 text-blue-600"></p>
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">OEM Engine Code</label>
@@ -218,10 +231,10 @@
         </select>
       </div>
       <div>
-    <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Stock Quantity</label>
-    <input type="number" name="stock_qty" id="stockQtyInput" value="1" min="1"
-      class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
-</div>
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Stock Quantity</label>
+        <input type="number" name="stock_qty" id="stockQtyInput" value="1" min="1"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+      </div>
     </div>
   </div>
 
@@ -254,6 +267,7 @@ function toggleConsumableFields() {
     document.getElementById('modelField').style.display     = isConsumable ? 'none' : '';
     document.getElementById('yearFromField').style.display  = isConsumable ? 'none' : '';
     document.getElementById('yearToField').style.display     = isConsumable ? 'none' : '';
+    document.getElementById('engineSizeField').style.display = isConsumable ? 'none' : '';
     document.getElementById('unitSizeField').style.display   = isConsumable ? '' : 'none';
     document.getElementById('compatNoteField').style.display = isConsumable ? '' : 'none';
 
@@ -270,6 +284,83 @@ function toggleConsumableFields() {
 
 document.getElementById('categorySelect').addEventListener('change', toggleConsumableFields);
 document.addEventListener('DOMContentLoaded', toggleConsumableFields);
+
+// ── Model auto-populate (datalist) — mirrors customer search page ──────────
+document.getElementById('brandSelect').addEventListener('change', async function() {
+    await loadModels(this.value);
+    triggerOemLookup();
+});
+
+async function loadModels(make) {
+    const datalist = document.getElementById('modelDatalist');
+    if (!make || make === 'UNIVERSAL') {
+        datalist.innerHTML = '';
+        return;
+    }
+    try {
+        const res  = await fetch(`{{ route('parts.models') }}?make=${encodeURIComponent(make.toUpperCase())}`);
+        const data = await res.json();
+        datalist.innerHTML = (data.models || []).map(m => `<option value="${m}"></option>`).join('');
+    } catch (e) {
+        datalist.innerHTML = '';
+    }
+}
+
+// ── OEM / Technical Details auto-populate ──────────────────────────────────
+// Triggered on Make/Model/Year change. Checks existing inventory for this
+// vehicle first; falls back to OemDatabase suggestion if nothing on file.
+// Only fills fields that are currently empty — never overwrites a value
+// staff has already typed.
+let oemLookupTimer = null;
+function triggerOemLookup() {
+    clearTimeout(oemLookupTimer);
+    oemLookupTimer = setTimeout(runOemLookup, 350);
+}
+
+async function runOemLookup() {
+    const make       = document.getElementById('brandSelect').value;
+    const model      = document.getElementById('modelInput').value;
+    const year       = document.getElementById('yearFromInput').value;
+    const engineSize = document.getElementById('engineSizeInput').value;
+
+    if (!make || make === 'UNIVERSAL' || !model || !year) return;
+
+    const engineField = document.querySelector('input[name="engine_code_oem"]');
+    const transField  = document.querySelector('input[name="transmission_code_oem"]');
+    const pinField     = document.querySelector('input[name="pin_count"]');
+    const aliasField   = document.querySelector('input[name="gear_alias"]');
+    const oemNote       = document.getElementById('oemLookupNote');
+
+    try {
+        const params = new URLSearchParams({ make, model, year });
+        if (engineSize) params.set('engine_l', engineSize);
+        const res  = await fetch(`{{ route('admin.inventory.oem-lookup') }}?${params.toString()}`);
+        const data = await res.json();
+
+        if (!data.source) { if (oemNote) oemNote.textContent = ''; return; }
+
+        if (engineField && !engineField.value && data.engine_code) engineField.value = data.engine_code;
+        if (transField   && !transField.value   && data.transmission_code) transField.value = data.transmission_code;
+        if (pinField      && !pinField.value      && data.pin_count) pinField.value = data.pin_count;
+        if (aliasField    && !aliasField.value    && data.gear_alias) aliasField.value = data.gear_alias;
+
+        if (oemNote) {
+            if (!engineSize && data.multiple_engines) {
+                oemNote.textContent = '⚠ This model has multiple engine options — enter Engine Size (L) above for an accurate match.';
+            } else {
+                oemNote.textContent = data.source === 'inventory'
+                    ? `✓ Auto-filled from ${data.match_count} existing part(s) on file for this vehicle.`
+                    : (data.engine_code || data.transmission_code ? '⚠ Suggested codes — not yet confirmed by stock on hand. Please verify.' : '');
+            }
+        }
+    } catch (e) {
+        // silent fail — staff can still type OEM fields manually
+    }
+}
+
+document.getElementById('modelInput').addEventListener('change', triggerOemLookup);
+document.getElementById('yearFromInput').addEventListener('change', triggerOemLookup);
+document.getElementById('engineSizeInput').addEventListener('change', triggerOemLookup);
 </script>
 
 @endsection

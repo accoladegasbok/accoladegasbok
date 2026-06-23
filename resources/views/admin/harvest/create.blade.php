@@ -7,9 +7,25 @@
 @section('content')
 <div class="max-w-3xl">
 
-  {{-- VIN decode box --}}
-  <div class="stat-card mb-6">
-    <h2 class="font-display font-700 text-navy text-base tracking-wide mb-1 uppercase">Step 1 — Decode the VIN</h2>
+  {{-- ── Tab switcher ──────────────────────────────────────────────── --}}
+  <div class="flex gap-2 mb-5">
+    <button type="button" id="tabVin"
+      class="harvest-tab-btn bg-navy text-white font-display font-700 text-xs px-5 py-2.5 rounded-full tracking-wide">
+      VIN DECODE
+    </button>
+    <button type="button" id="tabManual"
+      class="harvest-tab-btn bg-gray-100 text-gray-500 hover:bg-gray-200 font-display font-700 text-xs px-5 py-2.5 rounded-full tracking-wide transition-colors">
+      MANUAL ENTRY
+    </button>
+    <button type="button" id="tabSearch"
+      class="harvest-tab-btn bg-gray-100 text-gray-500 hover:bg-gray-200 font-display font-700 text-xs px-5 py-2.5 rounded-full tracking-wide transition-colors">
+      SEARCH EXISTING
+    </button>
+  </div>
+
+  {{-- ── Tab 1: VIN decode box ────────────────────────────────────── --}}
+  <div id="panelVin" class="harvest-tab-panel stat-card mb-6">
+    <h2 class="font-display font-700 text-navy text-base tracking-wide mb-1 uppercase">Decode the VIN</h2>
     <p class="text-xs text-gray-400 font-body mb-4">Enter the 17-character VIN from the dashboard, door jamb, or title. The system will fill in the vehicle details automatically.</p>
 
     <div class="flex gap-2">
@@ -26,6 +42,25 @@
       <span id="vinCount" class="text-xs text-gray-400 font-mono">0/17</span>
       <span id="vinStatus" class="text-xs font-body"></span>
     </div>
+  </div>
+
+  {{-- ── Tab 3: Search Existing donor vehicles ───────────────────────
+       NOTE: requires GET route admin.harvest.search-donors returning
+       { results: [{ year, make, model, trim, vin, location, status, session_id }] } ── --}}
+  <div id="panelSearch" class="harvest-tab-panel stat-card mb-6 hidden">
+    <h2 class="font-display font-700 text-navy text-base tracking-wide mb-1 uppercase">Search Existing Donor Vehicles</h2>
+    <p class="text-xs text-gray-400 font-body mb-4">Find a donor vehicle already registered in the system by make, model, VIN, or notes.</p>
+
+    <div class="flex gap-2">
+      <input type="text" id="donorSearchInput" placeholder="Search by make, model, plate number, or notes..."
+        class="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm font-body focus:outline-none focus:border-gold focus:ring-1 focus:ring-yellow-400">
+      <button onclick="searchDonors()" id="donorSearchBtn"
+        class="border border-navy text-navy font-display font-700 text-sm px-5 py-3 rounded-xl tracking-wide hover:bg-navy hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        Search
+      </button>
+    </div>
+    <div id="donorSearchResults" class="mt-3 space-y-2 hidden"></div>
   </div>
 
   {{-- Vehicle registration form --}}
@@ -49,21 +84,36 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Make *</label>
-          <input type="text" name="make" id="f_make" value="{{ old('make') }}" required
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-            placeholder="Toyota, Honda, Nissan...">
+          <select name="make" id="f_make" required
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            <option value="">Select Make</option>
+            @foreach(\App\Data\VehicleDatabase::makes() as $mk)
+              <option value="{{ $mk }}" {{ old('make')===$mk?'selected':'' }}>{{ $mk }}</option>
+            @endforeach
+            <option value="UNIVERSAL" {{ old('make')==='UNIVERSAL'?'selected':'' }}>OTHER / NOT LISTED</option>
+          </select>
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Model *</label>
-          <input type="text" name="model" id="f_model" value="{{ old('model') }}" required
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-            placeholder="Camry, Accord, Altima...">
+          <select name="model" id="f_model" required
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            <option value="">Select Model</option>
+            @if(old('model'))
+              <option value="{{ old('model') }}" selected>{{ old('model') }}</option>
+            @endif
+          </select>
+          <input type="text" id="f_model_custom" placeholder="Type model if not listed"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 mt-1.5 hidden">
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Year *</label>
-          <input type="number" name="year" id="f_year" value="{{ old('year') }}" required min="1990" max="{{ date('Y')+1 }}"
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-            placeholder="2019">
+          <select name="year" id="f_year" required
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            <option value="">Select Year</option>
+            @foreach(\App\Data\VehicleDatabase::years() as $yr)
+              <option value="{{ $yr }}" {{ (string) old('year') === (string) $yr ? 'selected' : '' }}>{{ $yr }}</option>
+            @endforeach
+          </select>
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Trim</label>
@@ -79,9 +129,13 @@
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Engine</label>
+          <select id="f_engineSelect"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            <option value="">Select Make/Model/Year first</option>
+          </select>
           <input type="text" name="engine" id="f_engine" value="{{ old('engine') }}"
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-            placeholder="2.5L I4, 3.5L V6...">
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 mt-1.5 hidden"
+            placeholder="e.g. 2.5L I4 (type manually if not listed)">
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Exterior Colour</label>
@@ -90,10 +144,10 @@
             placeholder="White, Silver, Black...">
         </div>
         <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Mileage *</label>
-          <input type="number" name="mileage" value="{{ old('mileage') }}" required min="0"
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Mileage</label>
+          <input type="number" name="mileage" value="{{ old('mileage') }}" min="0"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-            placeholder="65000">
+            placeholder="65000 (optional)">
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Vehicle Condition *</label>
@@ -147,6 +201,173 @@
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
+// ── Model dropdown auto-populate (mirrors customer search page) ───────────
+const VEHICLE_MODELS = {
+    @foreach(\App\Data\VehicleDatabase::makes() as $mk)
+        "{{ $mk }}": {!! json_encode(\App\Data\VehicleDatabase::modelsForMake($mk)) !!},
+    @endforeach
+};
+
+const makeSelect      = document.getElementById('f_make');
+const modelSelect      = document.getElementById('f_model');
+const modelCustomInput = document.getElementById('f_model_custom');
+
+makeSelect.addEventListener('change', function() {
+    const models = VEHICLE_MODELS[this.value] || [];
+    if (this.value === 'UNIVERSAL' || models.length === 0) {
+        modelSelect.classList.add('hidden');
+        modelSelect.required = false;
+        modelCustomInput.classList.remove('hidden');
+        modelCustomInput.name = 'model';
+        modelCustomInput.required = true;
+        modelSelect.name = '';
+        return;
+    }
+    modelSelect.classList.remove('hidden');
+    modelSelect.required = true;
+    modelSelect.name = 'model';
+    modelCustomInput.classList.add('hidden');
+    modelCustomInput.required = false;
+    modelCustomInput.name = '';
+    modelSelect.innerHTML = '<option value="">Select Model</option>' +
+        models.map(m => `<option value="${m}">${m}</option>`).join('') +
+        '<option value="__other__">OTHER / NOT LISTED</option>';
+    loadEngineOptions();
+});
+
+modelSelect.addEventListener('change', function() {
+    if (this.value === '__other__') {
+        modelSelect.classList.add('hidden');
+        modelSelect.name = '';
+        modelCustomInput.classList.remove('hidden');
+        modelCustomInput.name = 'model';
+        modelCustomInput.required = true;
+        modelCustomInput.focus();
+    }
+    loadEngineOptions();
+});
+
+document.getElementById('f_year').addEventListener('change', loadEngineOptions);
+modelCustomInput.addEventListener('change', loadEngineOptions);
+
+// ── Engine options dropdown — populated from OemDatabase based on
+// Make/Model/Year, same data a VIN decode would reveal for one car,
+// here offered as a choice since we don't have a VIN to read it from.
+let engineOptionsTimer = null;
+function loadEngineOptions() {
+    clearTimeout(engineOptionsTimer);
+    engineOptionsTimer = setTimeout(fetchEngineOptions, 300);
+}
+
+async function fetchEngineOptions() {
+    const make  = makeSelect.value;
+    const model = modelSelect.classList.contains('hidden') ? modelCustomInput.value : modelSelect.value;
+    const year  = document.getElementById('f_year').value;
+    const engineSelect = document.getElementById('f_engineSelect');
+    const engineCustom  = document.getElementById('f_engine');
+
+    if (!make || make === 'UNIVERSAL' || !model || model === '__other__' || !year) {
+        engineSelect.innerHTML = '<option value="">Select Make/Model/Year first</option>';
+        return;
+    }
+
+    engineSelect.innerHTML = '<option value="">Loading...</option>';
+
+    try {
+        const res  = await fetch(`/admin/harvest/engine-options?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&year=${encodeURIComponent(year)}`);
+        const data = await res.json();
+
+        if (!data.options || data.options.length === 0) {
+            engineSelect.innerHTML = '<option value="">No engine data on file \u2014 type manually below</option>';
+            engineCustom.classList.remove('hidden');
+            return;
+        }
+
+        engineSelect.innerHTML = '<option value="">Select Engine</option>' +
+            data.options.map(o => `<option value="${o.label}">${o.label}</option>`).join('') +
+            '<option value="__other__">OTHER / NOT LISTED</option>';
+        engineCustom.classList.add('hidden');
+    } catch (e) {
+        engineSelect.innerHTML = '<option value="">Could not load \u2014 type manually below</option>';
+        engineCustom.classList.remove('hidden');
+    }
+}
+
+document.getElementById('f_engineSelect').addEventListener('change', function() {
+    const engineCustom = document.getElementById('f_engine');
+    if (this.value === '__other__') {
+        engineCustom.classList.remove('hidden');
+        engineCustom.value = '';
+        engineCustom.focus();
+    } else {
+        engineCustom.classList.add('hidden');
+        engineCustom.value = this.value;
+    }
+});
+
+// ── Tab switching ───────────────────────────────────────────────────────────
+const tabVin     = document.getElementById('tabVin');
+const tabManual  = document.getElementById('tabManual');
+const tabSearch  = document.getElementById('tabSearch');
+const panelVin    = document.getElementById('panelVin');
+const panelSearch = document.getElementById('panelSearch');
+
+const ACTIVE   = 'harvest-tab-btn bg-navy text-white font-display font-700 text-xs px-5 py-2.5 rounded-full tracking-wide';
+const INACTIVE = 'harvest-tab-btn bg-gray-100 text-gray-500 hover:bg-gray-200 font-display font-700 text-xs px-5 py-2.5 rounded-full tracking-wide transition-colors';
+
+function setTab(active) {
+    tabVin.className    = active === 'vin'    ? ACTIVE : INACTIVE;
+    tabManual.className = active === 'manual' ? ACTIVE : INACTIVE;
+    tabSearch.className = active === 'search' ? ACTIVE : INACTIVE;
+
+    panelVin.classList.toggle('hidden', active !== 'vin');
+    panelSearch.classList.toggle('hidden', active !== 'search');
+    // "Manual" just hides the VIN + Search panels and lets Step 2 stand alone.
+}
+
+tabVin.addEventListener('click', () => setTab('vin'));
+tabManual.addEventListener('click', () => setTab('manual'));
+tabSearch.addEventListener('click', () => setTab('search'));
+
+// ── Non-VIN donor vehicle search ───────────────────────────────────────────
+async function searchDonors() {
+    const q = document.getElementById('donorSearchInput').value.trim();
+    const resultsBox = document.getElementById('donorSearchResults');
+    if (!q) return;
+
+    resultsBox.classList.remove('hidden');
+    resultsBox.innerHTML = '<div class="text-xs text-gray-400 font-body">Searching...</div>';
+
+    try {
+        const res = await fetch(`/admin/harvest/search-donors?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+
+        if (!data.results || data.results.length === 0) {
+            resultsBox.innerHTML = '<div class="text-xs text-gray-400 font-body">No matching donor vehicles found. Switch to Manual Entry to register this vehicle.</div>';
+            return;
+        }
+
+        resultsBox.innerHTML = data.results.map(d => `
+            <div class="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2.5">
+                <div>
+                    <div class="font-body font-500 text-sm text-navy">${d.year} ${d.make} ${d.model}${d.trim ? ' · ' + d.trim : ''}</div>
+                    <div class="text-xs text-gray-400 font-mono mt-0.5">${d.vin || 'No VIN on file'} · ${d.location || ''}</div>
+                </div>
+                ${d.status === 'in_progress'
+                    ? `<a href="/admin/harvest/${d.session_id}/checklist" class="text-xs font-body bg-gold text-navy px-3 py-1.5 rounded-lg hover:bg-yellow-500 transition-colors font-500">Continue Checklist</a>`
+                    : `<span class="text-xs font-body text-gray-400">Already completed</span>`
+                }
+            </div>
+        `).join('');
+    } catch (e) {
+        resultsBox.innerHTML = '<div class="text-xs text-red-600 font-body">Search failed. Switch to Manual Entry to register this vehicle.</div>';
+    }
+}
+
+document.getElementById('donorSearchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); searchDonors(); }
+});
+
 async function decodeVin() {
   const vin = document.getElementById('vinInput').value.trim().toUpperCase();
   if (vin.length !== 17) {
@@ -175,12 +396,19 @@ async function decodeVin() {
 
     const v = data.vehicle;
     document.getElementById('vinField').value   = vin;
-    document.getElementById('f_make').value     = v.make   || '';
-    document.getElementById('f_model').value    = v.model  || '';
+    document.getElementById('f_make').value     = (v.make || '').toUpperCase();
+    document.getElementById('f_make').dispatchEvent(new Event('change'));
+    setTimeout(() => {
+        document.getElementById('f_model').value = (v.model || '').toUpperCase();
+    }, 0);
     document.getElementById('f_year').value     = v.year   || '';
     document.getElementById('f_trim').value     = v.trim   || '';
     document.getElementById('f_body').value     = v.body_style || '';
     document.getElementById('f_engine').value = v.engine_l ? v.engine_l + 'L' : '';
+    if (v.engine_l) {
+        document.getElementById('f_engine').classList.remove('hidden');
+        document.getElementById('f_engineSelect').innerHTML = '<option value="">(filled from VIN decode below)</option>';
+    }
     const label = document.getElementById('decodedLabel');
     const sub   = document.getElementById('decodedSub');
     label.textContent = `${v.year} ${v.make} ${v.model}${v.trim ? ' · ' + v.trim : ''}`;

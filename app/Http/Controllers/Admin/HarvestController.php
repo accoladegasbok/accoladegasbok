@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Log;
 use App\Data\OemDatabase;
+use App\Services\InterchangeService;
 
 class HarvestController extends Controller
 {
@@ -34,9 +35,22 @@ class HarvestController extends Controller
     // =========================================================
     // PRIVATE HELPERS
     // =========================================================
-    private function getOemSuggest(string $make, string $model, int $year): array
+
+    // Parses a free-text engine field like "2.5L I4" or "3.5 V6" into
+    // a displacement float (2.5, 3.5). Returns 0 if nothing parseable —
+    // OemDatabase::lookup() falls back to its default guess in that case.
+    private function parseEngineSize(?string $engineText): float
     {
-        $oem = OemDatabase::lookup($make, $model, $year);
+        if (!$engineText) return 0;
+        if (preg_match('/(\d+(\.\d+)?)\s*L/i', $engineText, $m)) {
+            return (float) $m[1];
+        }
+        return 0;
+    }
+
+    private function getOemSuggest(string $make, string $model, int $year, float $engineL = 0): array
+    {
+        $oem = OemDatabase::lookup($make, $model, $year, 0, $engineL);
         return [
             'engine_code'       => $oem['engine_code'],
             'transmission_code' => $oem['transmission_code'],
@@ -45,9 +59,9 @@ class HarvestController extends Controller
         ];
     }
 
-    private function suggestOemCodes(string $model, int $year): array
+    private function suggestOemCodes(string $model, int $year, float $engineL = 0): array
     {
-        $oem = OemDatabase::lookup('TOYOTA', $model, $year);
+        $oem = OemDatabase::lookup('TOYOTA', $model, $year, 0, $engineL);
         return [
             'engine_code'       => $oem['engine_code'],
             'transmission_code' => $oem['transmission_code'],
@@ -93,6 +107,85 @@ class HarvestController extends Controller
                 'Accra Ghana',
             ],
         ]);
+    }
+
+    // =========================================================
+    // GET /admin/harvest/search-donors?q=...
+    // Non-VIN search — finds existing donor vehicles by make,
+    // model, VIN fragment, or notes. Used by the "No VIN? Search
+    // or Enter Manually" box on the New Harvest page.
+    //
+    // IMPORTANT: register this route ABOVE any
+    // /admin/harvest/{session}/... pattern routes in web.php,
+    // e.g.:
+    //   Route::get('/admin/harvest/search-donors',
+    //       [HarvestController::class, 'searchDonors'])
+    //       ->name('admin.harvest.search-donors');
+    // =========================================================
+    public function searchDonors(Request $request)
+    {
+        $q = trim($request->get('q', ''));
+
+        if ($q === '') {
+            return response()->json(['results' => []]);
+        }
+
+        $rows = DB::table('donor_vehicles as dv')
+            ->leftJoin('harvest_sessions as hs', 'hs.donor_vehicle_id', '=', 'dv.id')
+            ->where(function ($query) use ($q) {
+                $query->where('dv.make', 'like', "%{$q}%")
+                    ->orWhere('dv.model', 'like', "%{$q}%")
+                    ->orWhere('dv.vin', 'like', "%{$q}%")
+                    ->orWhere('dv.notes', 'like', "%{$q}%")
+                    ->orWhere('dv.trim', 'like', "%{$q}%");
+            })
+            ->select(
+                'dv.id as dv_id',
+                'dv.year', 'dv.make', 'dv.model', 'dv.trim',
+                'dv.vin', 'dv.location',
+                'hs.id as session_id', 'hs.status'
+            )
+            ->orderByDesc('dv.created_at')
+            ->limit(15)
+            ->get();
+
+        $results = $rows->map(function ($r) {
+            return [
+                'year'       => $r->year,
+                'make'       => $r->make,
+                'model'      => $r->model,
+                'trim'       => $r->trim,
+                'vin'        => $r->vin,
+                'location'   => $r->location,
+                'status'     => $r->status,
+                'session_id' => $r->session_id,
+            ];
+        });
+
+        return response()->json(['results' => $results]);
+    }
+
+    // =========================================================
+    // GET /admin/harvest/engine-options?make=&model=&year=
+    // Returns the distinct engine configurations available for this
+    // vehicle (e.g. "2.5L 4-Cyl (2AR-FE)", "3.5L V6 (2GR-FE)") so
+    // staff can pick the correct one on Manual Entry — same data a
+    // VIN decode would reveal, just offered as a choice instead of
+    // assumed from one specific car's VIN.
+    // =========================================================
+    public function engineOptions(Request $request)
+    {
+        $make  = trim($request->get('make', ''));
+        $model = trim($request->get('model', ''));
+        $year  = (int) $request->get('year', 0);
+
+        if ($make === '' || $model === '' || $year === 0) {
+            return response()->json(['options' => []]);
+        }
+
+        $options = OemDatabase::engineOptions($make, $model, $year);
+
+        return response()->json(['options' => $options]);
     }
 
     // =========================================================
@@ -154,23 +247,33 @@ class HarvestController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'vin'       => 'required|string|size:17',
+            'vin'       => 'nullable|string|size:17',
             'make'      => 'required|string|max:60',
             'model'     => 'required|string|max:80',
             'year'      => 'required|integer|min:1986|max:2027',
-            'mileage'   => 'required|integer|min:0|max:9999999',
+            'mileage'   => 'nullable|integer|min:0|max:9999999',
             'condition' => 'required|in:Good,Fair,Poor',
             'source'    => 'required|in:Auction,Insurance,Private Sale,Dealer,Other',
             'location'  => 'required|string|max:60',
         ]);
 
+        // Manual entry with no VIN — generate a 17-char placeholder so it
+        // fits the vin column constraint, and so downstream donor_vin
+        // linking (parts_inventory, harvest_sessions) still works.
+        // Format: MAN + 12-digit timestamp (yymmddHHiiss) + 2 random chars = 17 chars
+        $vin = strtoupper(trim($request->vin ?? ''));
+        if ($vin === '') {
+            $vin = 'MAN' . now()->format('ymdHis') . strtoupper(substr(uniqid(), -2));
+        }
+
         $dvId = DB::table('donor_vehicles')->insertGetId([
-            'vin'             => strtoupper($request->vin),
+            'vin'             => $vin,
             'year'            => $request->year,
             'make'            => $request->make,
             'model'           => $request->model,
             'trim'            => $request->trim,
             'colour'          => $request->colour,
+            'engine'          => $request->engine,
             'mileage'         => $request->mileage,
             'date_acquired'   => today(),
             'source'          => $request->source,
@@ -206,7 +309,7 @@ class HarvestController extends Controller
             ->select(
                 'hs.*',
                 'dv.make', 'dv.model', 'dv.year', 'dv.vin',
-                'dv.mileage', 'dv.colour', 'dv.body_style',
+                'dv.mileage', 'dv.colour', 'dv.body_style', 'dv.engine',
                 'dv.location', 'dv.id as donor_id'
             )
             ->first();
@@ -219,7 +322,7 @@ class HarvestController extends Controller
             ->toArray();
 
         $partsByCategory = $this->getPartsList();
-        $oemSuggest      = $this->getOemSuggest($session->make, $session->model, (int) $session->year);
+        $oemSuggest      = $this->getOemSuggest($session->make, $session->model, (int) $session->year, $this->parseEngineSize($session->engine ?? null));
 
         // ── CURRENCY based on harvest/vehicle location ────────────
         $harvestLocation = $session->location ?? 'Waxahachie TX';
@@ -248,7 +351,7 @@ class HarvestController extends Controller
             ->select(
                 'hs.*',
                 'dv.make', 'dv.model', 'dv.year', 'dv.vin',
-                'dv.mileage', 'dv.colour', 'dv.body_style',
+                'dv.mileage', 'dv.colour', 'dv.body_style', 'dv.engine',
                 'dv.location', 'dv.id as donor_id'
             )
             ->first();
@@ -272,9 +375,17 @@ class HarvestController extends Controller
             return back()->with('error', 'Please tick at least one part before saving.');
         }
 
+        // ── Custom parts are admin-only, to keep naming uniform ──────────
+        $customPartsInput = $request->input('custom_parts', []);
+        if (!empty($customPartsInput) && Session::get('staff_role') !== 'admin') {
+            return back()->with('error', 'Only admin can add custom part names. Please select a part from the standard list, or ask an admin to add it.');
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         $created      = 0;
+        $interchange  = new InterchangeService();
         $flatTemplate = collect($this->getPartsList())->flatten(1);
-        $oemSuggest   = $this->suggestOemCodes($session->model, (int) $session->year);
+        $oemSuggest   = $this->suggestOemCodes($session->model, (int) $session->year, $this->parseEngineSize($session->engine ?? null));
 
         DB::beginTransaction();
         try {
@@ -323,7 +434,7 @@ class HarvestController extends Controller
                 $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix) + 1) + 1 : 1;
                 $partCode = $prefix . '-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
 
-                DB::table('parts_inventory')->insert([
+                $newPartId = DB::table('parts_inventory')->insertGetId([
                     'part_code'             => $partCode,
                     'brand'                 => $session->make,
                     'model'                 => $session->model,
@@ -356,6 +467,17 @@ class HarvestController extends Controller
                     'updated_at'            => now(),
                 ]);
 
+                // ── Auto-join an existing interchange group if this part's
+                // vehicle/year already falls within one for this part name.
+                // Doesn't create a NEW group automatically — only joins one
+                // an admin has already confirmed, so stock aggregates
+                // correctly across interchangeable years (e.g. 2009 + 2010
+                // Corolla headlight-R counted as one combined "in stock").
+                $matchedGroup = $interchange->findGroupByVehicle($tpl['label'], $session->make, $session->model, (int) $session->year);
+                if ($matchedGroup) {
+                    $interchange->assignPartToGroup($newPartId, $matchedGroup->id);
+                }
+
                 $created++;
             }
 
@@ -372,7 +494,7 @@ class HarvestController extends Controller
                 ));
                 $cpCode = $cpPrefix . '-' . str_pad(DB::table('parts_inventory')->count() + 1, 5, '0', STR_PAD_LEFT);
 
-                DB::table('parts_inventory')->insert([
+                $newCpId = DB::table('parts_inventory')->insertGetId([
                     'part_code'             => $cpCode,
                     'brand'                 => $session->make,
                     'model'                 => $session->model,
@@ -404,6 +526,11 @@ class HarvestController extends Controller
                     'created_at'            => now(),
                     'updated_at'            => now(),
                 ]);
+
+                $matchedGroupCp = $interchange->findGroupByVehicle($cp['name'], $session->make, $session->model, (int) $session->year);
+                if ($matchedGroupCp) {
+                    $interchange->assignPartToGroup($newCpId, $matchedGroupCp->id);
+                }
 
                 $created++;
             }

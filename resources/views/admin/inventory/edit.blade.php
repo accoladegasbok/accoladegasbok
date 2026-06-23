@@ -23,7 +23,13 @@
         <div class="sm:col-span-2">
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
           <input type="text" name="part_name" value="{{ old('part_name', $part->part_name) }}" required
+            list="partNameDatalist" placeholder="Select a standard name, or type a new one"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <datalist id="partNameDatalist">
+            @foreach(\App\Data\PartNames::flat() as $pn)
+              <option value="{{ $pn }}"></option>
+            @endforeach
+          </datalist>
         </div>
 
         <div>
@@ -177,23 +183,27 @@
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
             Compatible From Year
-            <span class="text-gray-400 normal-case font-400">(1986–2027)</span>
           </label>
-          <input type="number" name="compat_year_from"
-            value="{{ old('compat_year_from', $part->compat_year_from ?? $part->year_from) }}"
-            min="1986" max="2027"
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <select name="compat_year_from"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            @php $selFrom = old('compat_year_from', $part->compat_year_from ?? $part->year_from); @endphp
+            @foreach(\App\Data\VehicleDatabase::years() as $yr)
+              <option value="{{ $yr }}" {{ (string)$selFrom === (string)$yr ? 'selected' : '' }}>{{ $yr }}</option>
+            @endforeach
+          </select>
         </div>
 
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
             Compatible To Year
-            <span class="text-gray-400 normal-case font-400">(1986–2027)</span>
           </label>
-          <input type="number" name="compat_year_to"
-            value="{{ old('compat_year_to', $part->compat_year_to ?? $part->year_to) }}"
-            min="1986" max="2027"
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <select name="compat_year_to"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            @php $selTo = old('compat_year_to', $part->compat_year_to ?? $part->year_to); @endphp
+            @foreach(\App\Data\VehicleDatabase::years() as $yr)
+              <option value="{{ $yr }}" {{ (string)$selTo === (string)$yr ? 'selected' : '' }}>{{ $yr }}</option>
+            @endforeach
+          </select>
         </div>
 
         <div class="sm:col-span-2">
