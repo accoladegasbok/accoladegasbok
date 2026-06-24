@@ -393,7 +393,9 @@ class HarvestController extends Controller
                 $tpl = $flatTemplate->firstWhere('key', $key);
                 if (!$tpl) continue;
 
-                // ── Staff enters price in LOCAL currency → convert to USD for DB storage
+                // ── Staff enters price in LOCAL currency — that's now the
+                // authoritative, never-recalculated value. price_usd is
+                // stored once as a historical snapshot only.
                 $rawPrice = (float) ($prices[$key] ?? 0);
                 if ($rawPrice <= 0) continue;
                 $priceUsd = $rawPrice / $currency['rate'];
@@ -457,7 +459,9 @@ class HarvestController extends Controller
                     'pin_count'             => $pinCount,
                     'gear_alias'            => $gearAlias,
                     'origin_market'         => 'N/A',
-                    'price_usd'             => $priceUsd,          // ← always USD in DB
+                    'price_usd'             => $priceUsd,          // ← frozen snapshot only, never recalculated
+                    'price_local'           => $rawPrice,         // ← authoritative price, fixed currency
+                    'currency_code'         => $currency['code'],
                     'location'              => $session->location,
                     'stock_qty'             => 1,
                     'status'                => 'Available',
@@ -486,7 +490,8 @@ class HarvestController extends Controller
             foreach ($customParts as $cp) {
                 if (empty($cp['name']) || empty($cp['price'])) continue;
 
-                // Convert custom part price from local currency to USD
+                // Custom part price is entered in LOCAL currency — that's the
+                // authoritative value now. price_usd is a frozen snapshot only.
                 $cpUsd = (float) $cp['price'] / $currency['rate'];
 
                 $cpPrefix = strtoupper(substr(
@@ -517,7 +522,9 @@ class HarvestController extends Controller
                     'pin_count'             => null,
                     'gear_alias'            => null,
                     'origin_market'         => 'N/A',
-                    'price_usd'             => $cpUsd,             // ← always USD in DB
+                    'price_usd'             => $cpUsd,             // ← frozen snapshot only, never recalculated
+                    'price_local'           => (float) $cp['price'],
+                    'currency_code'         => $currency['code'],
                     'location'              => $session->location,
                     'stock_qty'             => 1,
                     'status'                => 'Available',

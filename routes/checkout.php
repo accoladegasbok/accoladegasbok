@@ -22,8 +22,11 @@ Route::prefix('checkout')->name('checkout.')->group(function () {
     Route::post('/transfer-proof',          [CheckoutController::class, 'submitTransferProof'])->name('transfer-proof');
 });
 
-// ── Admin order management ────────────────────────────────────────────────────
-Route::prefix('admin/orders')->middleware(['auth', 'role:admin,staff'])->name('admin.orders.')->group(function () {
-    Route::post('/{id}/confirm-payment',    [CheckoutController::class, 'adminConfirmPayment'])->name('confirm-payment');
-    Route::post('/{id}/cancel',             [CheckoutController::class, 'adminCancelOrder'])->name('cancel');
-});
+// ── REMOVED: duplicate "admin/orders" block that used to live here ──────────
+// It pointed to CheckoutController::adminConfirmPayment / adminCancelOrder
+// and used a 'role' middleware that was never registered as an alias,
+// which crashed with "Target class [role] does not exist." every time it
+// ran. The real, working admin order routes (confirm-payment, cancel,
+// status) already exist in routes/admin.php under OrderAdminController,
+// protected by the proper 'admin.auth' middleware — this block was a
+// leftover duplicate competing with those and is no longer needed here.

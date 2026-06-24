@@ -1,30 +1,28 @@
 <?php
 // FILE: app/Http/Controllers/PartController.php
+// UPDATED: Fixed-currency pricing (price_local/currency_code, no live
+// conversion) + interchange group data (aggregated stock, also-fits
+// vehicles) wired in for the detail page.
 
 namespace App\Http\Controllers;
 
+use App\Services\InterchangeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 
 class PartController extends Controller
 {
-    // ── Currency rates ────────────────────────────────────────
-    private function rates(): array
+    private function currencySymbol(string $code): string
     {
-        return Cache::remember('exchange_rates', now()->addHours(24), function () {
-            try {
-                $r = \Illuminate\Support\Facades\Http::timeout(5)
-                    ->get('https://open.er-api.com/v6/latest/USD')
-                    ->json('rates', []);
-                return [
-                    'NGN' => round($r['NGN'] ?? 1600, 2),
-                    'GHS' => round($r['GHS'] ?? 15.5,  2),
-                ];
-            } catch (\Exception $e) {
-                return ['NGN' => 1600, 'GHS' => 15.5];
-            }
-        });
+        return match ($code) {
+            'NGN' => '₦', 'GHS' => 'GH₵', 'GBP' => '£', default => '$',
+        };
+    }
+
+    private function formatLocal(float $priceLocal, string $currencyCode): string
+    {
+        $decimals = $currencyCode === 'NGN' ? 0 : 2;
+        return $this->currencySymbol($currencyCode) . number_format($priceLocal, $decimals);
     }
 
     // =========================================================
@@ -41,9 +39,13 @@ class PartController extends Controller
             abort(404, 'Part not found.');
         }
 
-        $photos  = json_decode($part->photos ?? '[]', true);
-        $rates   = $this->rates();
-        $currency = $request->get('currency', 'USD');
+        $photos = json_decode($part->photos ?? '[]', true);
+
+        // ── FIXED PRICE — this part's own currency, no conversion ──
+        $priceLocal   = $part->price_local ?? $part->price_usd; // fallback for pre-migration rows
+        $currencyCode = $part->currency_code ?? 'USD';
+        $priceDisplay = $this->formatLocal($priceLocal, $currencyCode);
+        $currency     = $currencyCode; // kept for template compatibility
 
         // ── Compatibility data from parts_compatibility table ──
         $compat = DB::table('parts_compatibility')
@@ -65,6 +67,16 @@ class PartController extends Controller
             $alsoFits = json_decode($compat->also_fits, true) ?? [];
         }
 
+        // ── Interchange group — confirmed compatible vehicles +
+        // combined stock count across all of them (Phase B3) ──────────
+        $interchangeVehicles = collect();
+        $aggregatedStock      = null;
+        if (!empty($part->interchange_group_id)) {
+            $interchange = new InterchangeService();
+            $interchangeVehicles = $interchange->vehiclesForGroup($part->interchange_group_id);
+            $aggregatedStock     = $interchange->aggregatedStock($part->interchange_group_id);
+        }
+
         // ── Related parts — same category + brand ─────────────
         $related = DB::table('parts_inventory')
             ->where('brand',        $part->brand)
@@ -72,15 +84,17 @@ class PartController extends Controller
             ->where('status',       'Available')
             ->where('id',           '!=', $id)
             ->select('id','part_code','part_name','model','year_from','year_to',
-                     'condition_grade','price_usd','location','photos','side')
+                     'condition_grade','price_local','currency_code','price_usd','location','photos','side')
             ->orderByRaw("FIELD(model, ?) DESC", [$part->model])
-            ->orderBy('price_usd')
+            ->orderBy('price_local')
             ->limit(6)
             ->get()
-            ->map(function ($p) use ($rates, $currency) {
+            ->map(function ($p) {
                 $ph = json_decode($p->photos ?? '[]', true);
                 $p->thumb = $ph[0] ?? null;
-                $p->price_display = $this->formatPrice($p->price_usd, $currency, $rates);
+                $pLocal = $p->price_local ?? $p->price_usd;
+                $pCode  = $p->currency_code ?? 'USD';
+                $p->price_display = $this->formatLocal($pLocal, $pCode);
                 return $p;
             });
 
@@ -104,10 +118,9 @@ class PartController extends Controller
         }
 
         // ── Whatsapp pre-filled msg ───────────────────────────
-        $yearRange    = $part->year_from === $part->year_to
+        $yearRange = $part->year_from === $part->year_to
             ? $part->year_from
             : "{$part->year_from}–{$part->year_to}";
-        $priceDisplay = $this->formatPrice($part->price_usd, $currency, $rates);
         $waMsg = urlencode(
             "Hi, I'm enquiring about: {$part->part_name} for {$yearRange} {$part->brand} {$part->model}. " .
             "Part code: {$part->part_code}. Location: {$part->location}. Price: {$priceDisplay}. Is this available?"
@@ -117,34 +130,26 @@ class PartController extends Controller
         $waNumber = $this->waNumber($part->location);
 
         return view('parts.show', [
-            'part'        => $part,
-            'photos'      => $photos,
-            'rates'       => $rates,
-            'currency'    => $currency,
-            'priceDisplay'=> $priceDisplay,
-            'compat'      => $compat,
-            'alsoFits'    => $alsoFits,
-            'related'     => $related,
-            'donor'       => $donor,
-            'inCart'      => $inCart,
-            'waMsg'       => $waMsg,
-            'waNumber'    => $waNumber,
-            'yearRange'   => $yearRange,
+            'part'                 => $part,
+            'photos'               => $photos,
+            'currency'             => $currency,
+            'priceDisplay'         => $priceDisplay,
+            'compat'               => $compat,
+            'alsoFits'             => $alsoFits,
+            'interchangeVehicles'  => $interchangeVehicles,
+            'aggregatedStock'      => $aggregatedStock,
+            'related'              => $related,
+            'donor'                => $donor,
+            'inCart'               => $inCart,
+            'waMsg'                => $waMsg,
+            'waNumber'             => $waNumber,
+            'yearRange'            => $yearRange,
         ]);
     }
 
     // =========================================================
     // Helpers
     // =========================================================
-    private function formatPrice(float $usd, string $currency, array $rates): string
-    {
-        return match($currency) {
-            'NGN'   => '₦' . number_format(round($usd * $rates['NGN'])),
-            'GHS'   => 'GH₵' . number_format($usd * $rates['GHS'], 2),
-            default => '$' . number_format($usd, 2),
-        };
-    }
-
     private function waNumber(string $location): string
     {
         return match(true) {

@@ -116,7 +116,7 @@
 
           {{-- Order status --}}
           <td class="px-4 py-3">
-            <select onchange="updateStatus({{ $o->id }}, this.value, this)"
+            <select onchange="updateStatus({{ $o->id }}, this.value, this)" data-prev="{{ $o->order_status }}"
               class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-body bg-white focus:outline-none focus:border-yellow-400 min-w-36">
               @foreach([
                 'awaiting_payment'              => 'Awaiting Payment',
@@ -131,6 +131,7 @@
                 <option value="{{ $val }}" {{ $o->order_status===$val?'selected':'' }}>{{ $lbl }}</option>
               @endforeach
             </select>
+            <div id="status-feedback-{{ $o->id }}" class="text-xs font-body mt-1"></div>
           </td>
 
           {{-- Date --}}
@@ -202,45 +203,85 @@ async function confirmPayment(orderId, btn) {
   btn.disabled = true;
   btn.textContent = '...';
 
-  const res  = await fetch(`/admin/orders/${orderId}/confirm-payment`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-    body: JSON.stringify({ confirmed_by: staffName }),
-  });
-  const data = await res.json();
+  try {
+    const res  = await fetch(`/admin/orders/${orderId}/confirm-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ confirmed_by: staffName }),
+    });
 
-  if (data.success) {
-    btn.remove();
-    const badge = document.getElementById('pay-badge-' + orderId);
-    if (badge) {
-      badge.textContent = 'confirmed';
-      badge.className   = 'badge badge-green';
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('Confirm payment failed', res.status, text);
+      alert(`Server error (${res.status}). Check console for details.`);
+      btn.disabled = false;
+      btn.textContent = 'Confirm ₦';
+      return;
     }
-  } else {
+
+    const data = await res.json();
+
+    if (data.success) {
+      btn.remove();
+      const badge = document.getElementById('pay-badge-' + orderId);
+      if (badge) {
+        badge.textContent = 'confirmed';
+        badge.className   = 'badge badge-green';
+      }
+    } else {
+      alert(data.error || 'Could not confirm payment.');
+      btn.disabled = false;
+      btn.textContent = 'Confirm ₦';
+    }
+  } catch (e) {
+    console.error('Confirm payment network/parse error', e);
+    alert('Network or response error — check console.');
     btn.disabled = false;
     btn.textContent = 'Confirm ₦';
-    alert('Error. Please try again.');
   }
 }
 
 async function updateStatus(orderId, status, sel) {
-  const res  = await fetch(`/admin/orders/${orderId}/status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-    body: JSON.stringify({ order_status: status }),
-  });
-  const data = await res.json();
-  if (!data.success) {
-    alert('Could not update status.');
-    sel.value = sel.dataset.prev || '';
-  } else {
+  const feedback = document.getElementById('status-feedback-' + orderId);
+  if (feedback) { feedback.textContent = 'Saving...'; feedback.className = 'text-xs font-body mt-1 text-gray-400'; }
+
+  try {
+    const res  = await fetch(`/admin/orders/${orderId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ order_status: status }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('Status update failed', res.status, text);
+      if (feedback) { feedback.textContent = `Error (HTTP ${res.status}) — see console`; feedback.className = 'text-xs font-body mt-1 text-red-600'; }
+      sel.value = sel.dataset.prev || '';
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!data.success) {
+      console.error('Status update returned failure', data);
+      if (feedback) { feedback.textContent = data.error || 'Could not update status.'; feedback.className = 'text-xs font-body mt-1 text-red-600'; }
+      sel.value = sel.dataset.prev || '';
+      return;
+    }
+
     sel.dataset.prev = status;
-    // Visual feedback
+    if (feedback) { feedback.textContent = '✓ Saved'; feedback.className = 'text-xs font-body mt-1 text-green-600'; }
+    setTimeout(() => { if (feedback) feedback.textContent = ''; }, 2500);
+
     const row = document.getElementById('order-row-' + orderId);
     if (row) {
       row.style.opacity = '.5';
-      setTimeout(() => row.style.opacity = '1', 600);
+      setTimeout(() => row.style.opacity = '1', 400);
     }
+  } catch (e) {
+    console.error('Status update network/parse error', e);
+    if (feedback) { feedback.textContent = 'Network error — see console'; feedback.className = 'text-xs font-body mt-1 text-red-600'; }
+    sel.value = sel.dataset.prev || '';
   }
 }
 </script>

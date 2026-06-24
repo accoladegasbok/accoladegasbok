@@ -21,7 +21,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/logout',[AuthController::class, 'logout'])->name('logout');
 
     // ── Protected admin routes ────────────────────────────────────────────────
-    Route::middleware('admin.auth')->group(function () {
+    Route::middleware(['admin.auth', 'stocking-clerk'])->group(function () {
 
         // Dashboard
         Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -79,7 +79,41 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/complete',   [AuditController::class, 'complete'])->name('complete');
         });
         // Financial reporting
-        Route::get('/reports/financial', [FinancialReportController::class, 'index'])->name('reports.financial');
+        Route::middleware('admin.auth:admin,manager')->get('/reports/financial', [FinancialReportController::class, 'index'])->name('reports.financial');
+
+        // Storage rooms & bin locations (Phase A2)
+        Route::prefix('storage')->name('storage.')->group(function () {
+            Route::get('/',                          [\App\Http\Controllers\Admin\StorageController::class, 'index'])->name('index');
+            Route::get('/rooms-for-location',         [\App\Http\Controllers\Admin\StorageController::class, 'roomsForLocation'])->name('rooms-for-location');
+            Route::get('/shelves-for-room',          [\App\Http\Controllers\Admin\StorageController::class, 'shelvesForRoom'])->name('shelves-for-room');
+            Route::post('/',                         [\App\Http\Controllers\Admin\StorageController::class, 'store'])->name('store');
+            Route::get('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'show'])->name('show');
+            Route::delete('/{id}',                   [\App\Http\Controllers\Admin\StorageController::class, 'destroyRoom'])->name('destroy');
+            Route::post('/{id}/shelves',              [\App\Http\Controllers\Admin\StorageController::class, 'addShelf'])->name('shelves.add');
+            Route::post('/{id}/shelves/bulk',          [\App\Http\Controllers\Admin\StorageController::class, 'bulkGenerateShelves'])->name('shelves.bulk');
+            Route::delete('/shelves/{shelfId}',        [\App\Http\Controllers\Admin\StorageController::class, 'destroyShelf'])->name('shelves.destroy');
+        });
+
+        // Returns (Phase B2)
+        Route::prefix('returns')->name('returns.')->group(function () {
+            Route::get('/',                  [\App\Http\Controllers\Admin\ReturnsController::class, 'index'])->name('index');
+            Route::get('/create',            [\App\Http\Controllers\Admin\ReturnsController::class, 'create'])->name('create');
+            Route::get('/search-parts',      [\App\Http\Controllers\Admin\ReturnsController::class, 'searchParts'])->name('search-parts');
+            Route::get('/search-invoices',   [\App\Http\Controllers\Admin\ReturnsController::class, 'searchInvoices'])->name('search-invoices');
+            Route::get('/invoice-items',     [\App\Http\Controllers\Admin\ReturnsController::class, 'invoiceItems'])->name('invoice-items');
+            Route::post('/',                 [\App\Http\Controllers\Admin\ReturnsController::class, 'store'])->name('store');
+            Route::get('/{id}',              [\App\Http\Controllers\Admin\ReturnsController::class, 'show'])->name('show');
+            Route::post('/{id}/resolve',     [\App\Http\Controllers\Admin\ReturnsController::class, 'resolve'])->name('resolve');
+        });
+
+        // Interchange groups (Phase B3)
+        Route::prefix('interchange')->name('interchange.')->group(function () {
+            Route::post('/groups',                       [\App\Http\Controllers\Admin\InterchangeController::class, 'createGroup'])->name('groups.create');
+            Route::post('/groups/{groupId}/vehicles',    [\App\Http\Controllers\Admin\InterchangeController::class, 'addVehicle'])->name('groups.add-vehicle');
+            Route::post('/promote-heuristic',             [\App\Http\Controllers\Admin\InterchangeController::class, 'promoteHeuristic'])->name('promote-heuristic');
+            Route::post('/parts/{partId}/remove',         [\App\Http\Controllers\Admin\InterchangeController::class, 'removePart'])->name('parts.remove');
+            Route::post('/parts/{partId}/assign',         [\App\Http\Controllers\Admin\InterchangeController::class, 'assignExisting'])->name('parts.assign');
+        });
         // Staff management (admin/manager only)
         Route::middleware('admin.auth:admin,manager')
             ->prefix('staff')->name('staff.')->group(function () {

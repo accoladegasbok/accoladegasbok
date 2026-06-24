@@ -137,9 +137,13 @@
         </select>
       </div>
       <div>
-        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Price (USD) *</label>
-        <input type="number" name="price_usd" step="0.01" min="0" placeholder="0.00"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-gold">
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1" id="priceLabel">Price (Select Location) *</label>
+        <div class="relative">
+          <span id="priceSymbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-mono text-gray-400">—</span>
+          <input type="number" name="price_usd" step="0.01" min="0" placeholder="0.00" id="priceInput"
+            class="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm font-mono focus:outline-none focus:border-gold">
+        </div>
+        <p class="text-xs text-gray-400 font-body mt-1">Price is fixed in this location's currency — no conversion happens later.</p>
       </div>
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Mileage (miles)</label>
@@ -212,8 +216,8 @@
       </div>
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Bin Location</label>
-        <input type="text" name="bin_location" placeholder="e.g. A-01-B2"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+        <input type="text" id="binLocationDisplay" readonly placeholder="Select Location, Store Room & Bin below"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-gray-50 text-gray-500 focus:outline-none">
       </div>
     </div>
   </div>
@@ -221,14 +225,28 @@
   {{-- ── Location & Stock ─────────────────────────────────────────── --}}
   <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
     <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-4">Location & Stock</h2>
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Warehouse Location *</label>
-        <select name="location" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
+        <select name="location" id="locationSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
           @foreach(['Waxahachie TX','Elkhorn WI','Ile-Ife Nigeria','Ibadan Nigeria','Lagos Nigeria','Accra Ghana'] as $loc)
             <option value="{{ $loc }}">{{ $loc }}</option>
           @endforeach
         </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Store Room</label>
+        <select id="storeRoomSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
+          <option value="">Select Location first</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Bin</label>
+        <select id="binSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
+          <option value="">Select Store Room first</option>
+        </select>
+        <input type="hidden" name="storage_shelf_id" id="storageShelfIdInput">
+        <input type="hidden" name="bin_location" id="binLocationInput">
       </div>
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Stock Quantity</label>
@@ -361,6 +379,102 @@ async function runOemLookup() {
 document.getElementById('modelInput').addEventListener('change', triggerOemLookup);
 document.getElementById('yearFromInput').addEventListener('change', triggerOemLookup);
 document.getElementById('engineSizeInput').addEventListener('change', triggerOemLookup);
+
+// ── Price currency by location — fixed, no conversion ever ────────────────
+// Nigeria locations always show ₦, Ghana always shows GH₵, US locations
+// always show $. This matches what the server will actually store.
+function currencyForLocationName(loc) {
+    const l = (loc || '').toLowerCase();
+    if (l.includes('nigeria') || l.includes('lagos') || l.includes('ife') || l.includes('ibadan') || l.includes('oshodi')) {
+        return { symbol: '₦', code: 'NGN', step: '1' };
+    }
+    if (l.includes('ghana') || l.includes('accra')) {
+        return { symbol: 'GH₵', code: 'GHS', step: '0.01' };
+    }
+    return { symbol: '$', code: 'USD', step: '0.01' };
+}
+
+function updatePriceCurrency() {
+    const loc = document.getElementById('locationSelect').value;
+    const cur = currencyForLocationName(loc);
+    document.getElementById('priceSymbol').textContent = cur.symbol;
+    document.getElementById('priceLabel').textContent = `Price (${cur.code}) *`;
+    document.getElementById('priceInput').step = cur.step;
+}
+
+document.getElementById('locationSelect').addEventListener('change', updatePriceCurrency);
+document.addEventListener('DOMContentLoaded', updatePriceCurrency);
+
+// ── Store Room / Bin cascade ───────────────────────────────────────────────
+document.getElementById('locationSelect').addEventListener('change', loadStoreRooms);
+
+async function loadStoreRooms() {
+    const loc = document.getElementById('locationSelect').value;
+    const roomSelect = document.getElementById('storeRoomSelect');
+    const binSelect   = document.getElementById('binSelect');
+
+    binSelect.innerHTML = '<option value="">Select Store Room first</option>';
+    document.getElementById('storageShelfIdInput').value = '';
+    document.getElementById('binLocationInput').value = '';
+    document.getElementById('binLocationDisplay').value = '';
+
+    if (!loc) {
+        roomSelect.innerHTML = '<option value="">Select Location first</option>';
+        return;
+    }
+
+    roomSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+        const res  = await fetch(`/admin/storage/rooms-for-location?location=${encodeURIComponent(loc)}`);
+        const data = await res.json();
+        if (!data.rooms || data.rooms.length === 0) {
+            roomSelect.innerHTML = '<option value="">No store rooms set up for this location yet</option>';
+            return;
+        }
+        roomSelect.innerHTML = '<option value="">Select Store Room</option>' +
+            data.rooms.map(r => `<option value="${r.id}">${r.name} (${r.code})</option>`).join('');
+    } catch (e) {
+        roomSelect.innerHTML = '<option value="">Could not load rooms</option>';
+    }
+}
+
+document.getElementById('storeRoomSelect').addEventListener('change', loadBinsForRoom);
+
+async function loadBinsForRoom() {
+    const roomId = document.getElementById('storeRoomSelect').value;
+    const binSelect = document.getElementById('binSelect');
+
+    document.getElementById('storageShelfIdInput').value = '';
+    document.getElementById('binLocationInput').value = '';
+    document.getElementById('binLocationDisplay').value = '';
+
+    if (!roomId) {
+        binSelect.innerHTML = '<option value="">Select Store Room first</option>';
+        return;
+    }
+
+    binSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+        const res  = await fetch(`/admin/storage/shelves-for-room?room_id=${encodeURIComponent(roomId)}`);
+        const data = await res.json();
+        if (!data.shelves || data.shelves.length === 0) {
+            binSelect.innerHTML = '<option value="">No bins set up for this room yet</option>';
+            return;
+        }
+        binSelect.innerHTML = '<option value="">Select Bin (optional)</option>' +
+            data.shelves.map(s => `<option value="${s.id}" data-code="${s.full_bin_code}">${s.full_bin_code}</option>`).join('');
+    } catch (e) {
+        binSelect.innerHTML = '<option value="">Could not load bins</option>';
+    }
+}
+
+document.getElementById('binSelect').addEventListener('change', function() {
+    const selected = this.options[this.selectedIndex];
+    const code = selected ? selected.dataset.code : '';
+    document.getElementById('storageShelfIdInput').value = this.value;
+    document.getElementById('binLocationInput').value = code || '';
+    document.getElementById('binLocationDisplay').value = code || '';
+});
 </script>
 
 @endsection

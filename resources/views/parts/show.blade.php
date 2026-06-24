@@ -124,24 +124,13 @@
         @endif
       </div>
 
-      {{-- Price block --}}
+      {{-- Price block — fixed, in this part's own currency. No live FX,
+           no currency switcher: every part has exactly one real price. --}}
       <div class="bg-gray-50 rounded-2xl border border-gray-200 p-5 mb-5">
         <div class="flex items-end justify-between gap-4">
           <div>
             <div class="text-xs text-gray-400 font-body uppercase tracking-wider mb-1">Price</div>
             <div class="font-display font-800 text-navy text-4xl leading-none">{{ $priceDisplay }}</div>
-            <div class="text-xs text-gray-400 font-body mt-1">
-              @if($currency !== 'USD') USD: ${{ number_format($part->price_usd, 2) }}
-              @else ≈ ₦{{ number_format(round($part->price_usd * $rates['NGN'])) }}
-              @endif
-            </div>
-          </div>
-          <div class="flex gap-1">
-            @foreach(['USD'=>'$','NGN'=>'₦','GHS'=>'₵'] as $cur => $sym)
-              <a href="{{ request()->fullUrlWithQuery(['currency'=>$cur]) }}"
-                class="text-xs font-mono font-500 w-8 h-8 rounded-lg flex items-center justify-center transition-colors
-                {{ $currency===$cur ? 'bg-navy text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-navy hover:text-navy' }}">{{ $sym }}</a>
-            @endforeach
           </div>
         </div>
         <div class="flex items-center gap-2 mt-3 text-sm font-body">
@@ -299,6 +288,30 @@
           @if(!empty($af['notes']))
             <div class="text-xs text-green-600 font-body mt-1 leading-relaxed">{{ $af['notes'] }}</div>
           @endif
+        </div>
+        @endforeach
+      </div>
+    </div>
+    @endif
+
+    {{-- ── Interchange group — confirmed compatible vehicles + combined
+         stock count. Requires $interchangeVehicles / $aggregatedStock
+         to be passed from the controller (see InterchangeService). ── --}}
+    @if(!empty($interchangeVehicles) && count($interchangeVehicles) > 0)
+    <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-body font-500 text-blue-700 uppercase tracking-wider">
+          Interchangeable — also fits these vehicles
+        </div>
+        @if(isset($aggregatedStock))
+        <div class="text-sm font-display font-700 text-navy">{{ $aggregatedStock }} total in stock</div>
+        @endif
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        @foreach($interchangeVehicles as $iv)
+        <div class="bg-white border border-blue-100 rounded-xl p-3.5">
+          <div class="font-display font-700 text-navy text-sm">{{ $iv->make }} {{ $iv->model }}</div>
+          <div class="text-xs text-gray-500 font-body mt-0.5">{{ $iv->year_from }}@if($iv->year_to != $iv->year_from)–{{ $iv->year_to }}@endif</div>
         </div>
         @endforeach
       </div>

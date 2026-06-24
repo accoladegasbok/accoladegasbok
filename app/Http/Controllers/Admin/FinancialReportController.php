@@ -1,4 +1,8 @@
 <?php
+// UPDATED: Fixed-currency reporting. Revenue is now reported PER CURRENCY
+// separately (e.g. "₦4,500,000 in Nigeria" and "$3,200 in Texas" shown as
+// distinct totals) — no blended/converted grand total across currencies,
+// per business decision to avoid FX-loss distortion in reporting.
 
 namespace App\Http\Controllers\Admin;
 
@@ -22,76 +26,84 @@ class FinancialReportController extends Controller
             ->where('payment_status', 'confirmed')
             ->where('order_status', 'completed')
             ->whereBetween('created_at', [$from, $to])
-            ->get(['id', 'order_ref', 'total_amount_usd', 'customer_country', 'confirmed_by', 'created_at']);
+            ->get(['id', 'order_ref', 'total_amount_usd', 'currency_code', 'customer_country', 'confirmed_by', 'created_at']);
 
         // ── Manual / walk-in invoices within range ─────────────────
         $invoices = DB::table('invoices')
             ->whereBetween('created_at', [$from, $to])
-            ->get(['id', 'invoice_no', 'subtotal_usd', 'location', 'created_by', 'created_at']);
+            ->get(['id', 'invoice_no', 'subtotal_local', 'subtotal_usd', 'currency_code', 'location', 'created_by', 'created_at']);
 
-        $totalRevenue = $orders->sum('total_amount_usd') + $invoices->sum('subtotal_usd');
-        $totalTransactions = $orders->count() + $invoices->count();
+        // Normalize both sources into one shape: amount + currency_code
+        $allTransactions = $orders->map(fn($o) => (object)[
+                'source'   => 'order',
+                'amount'   => $o->total_amount_usd, // orders predate fixed-currency change; treat as their stored currency
+                'currency' => $o->currency_code ?? 'USD',
+                'location' => $o->customer_country . ' (Online)',
+                'staff'    => $o->confirmed_by,
+                'date'     => $o->created_at,
+            ])
+            ->concat($invoices->map(fn($i) => (object)[
+                'source'   => 'invoice',
+                'amount'   => $i->subtotal_local ?? $i->subtotal_usd,
+                'currency' => $i->currency_code ?? 'USD',
+                'location' => $i->location,
+                'staff'    => $i->created_by,
+                'date'     => $i->created_at,
+            ]));
 
-        // ── Revenue by location ─────────────────────────────────
-        // Orders use customer_country as a rough location proxy;
-        // invoices have an explicit warehouse location.
-        $byLocation = collect();
+        $totalTransactions = $allTransactions->count();
 
-        foreach ($orders->groupBy('customer_country') as $country => $group) {
-            $byLocation->push((object)[
-                'location' => $country . ' (Online)',
-                'revenue'  => $group->sum('total_amount_usd'),
-                'count'    => $group->count(),
-            ]);
-        }
-        foreach ($invoices->groupBy('location') as $loc => $group) {
-            $byLocation->push((object)[
-                'location' => $loc,
-                'revenue'  => $group->sum('subtotal_usd'),
-                'count'    => $group->count(),
-            ]);
-        }
-        $byLocation = $byLocation->sortByDesc('revenue')->values();
+        // ── Revenue PER CURRENCY — no blending across currencies ───
+        $revenueByCurrency = $allTransactions->groupBy('currency')
+            ->map(fn($group, $code) => (object)[
+                'currency_code' => $code,
+                'symbol'        => InvoiceController::currencyMeta($code)['symbol'],
+                'total'         => $group->sum('amount'),
+                'count'         => $group->count(),
+            ])
+            ->values();
 
-        // ── Revenue by staff ─────────────────────────────────────
-        // Orders attribute to confirmed_by (the staff who confirmed payment);
-        // invoices attribute to created_by (the staff who wrote the invoice).
-        $byStaff = collect();
+        // ── Revenue by location, WITHIN each currency (no cross-currency sum) ──
+        $byLocation = $allTransactions->groupBy(fn($t) => $t->location . '|' . $t->currency)
+            ->map(function ($group) {
+                $first = $group->first();
+                return (object)[
+                    'location'      => $first->location,
+                    'currency_code' => $first->currency,
+                    'symbol'        => InvoiceController::currencyMeta($first->currency)['symbol'],
+                    'revenue'       => $group->sum('amount'),
+                    'count'         => $group->count(),
+                ];
+            })
+            ->sortByDesc('revenue')
+            ->values();
 
-        foreach ($orders->groupBy(fn($o) => $o->confirmed_by ?: 'Unattributed') as $staff => $group) {
-            $byStaff->push((object)[
-                'staff'   => $staff,
-                'revenue' => $group->sum('total_amount_usd'),
-                'count'   => $group->count(),
-                'source'  => 'Online Orders',
-            ]);
-        }
-        foreach ($invoices->groupBy(fn($i) => $i->created_by ?: 'Unattributed') as $staff => $group) {
-            $byStaff->push((object)[
-                'staff'   => $staff,
-                'revenue' => $group->sum('subtotal_usd'),
-                'count'   => $group->count(),
-                'source'  => 'In-Store Invoices',
-            ]);
-        }
+        // ── Revenue by staff, WITHIN each currency (no cross-currency sum) ──
+        $byStaff = $allTransactions->groupBy(fn($t) => ($t->staff ?: 'Unattributed') . '|' . $t->currency)
+            ->map(function ($group) {
+                $first = $group->first();
+                return (object)[
+                    'staff'         => $first->staff ?: 'Unattributed',
+                    'currency_code' => $first->currency,
+                    'symbol'        => InvoiceController::currencyMeta($first->currency)['symbol'],
+                    'revenue'       => $group->sum('amount'),
+                    'count'         => $group->count(),
+                ];
+            })
+            ->sortByDesc('revenue')
+            ->values();
 
-        // Merge entries for the same staff member across both sources
-        $byStaffMerged = $byStaff->groupBy('staff')->map(function ($group, $staff) {
-            return (object)[
-                'staff'   => $staff,
-                'revenue' => $group->sum('revenue'),
-                'count'   => $group->sum('count'),
-                'breakdown' => $group->map(fn($g) => "{$g->source}: \${$g->revenue} ({$g->count})")->all(),
-            ];
-        })->sortByDesc('revenue')->values();
-
-        // ── Revenue trend (grouped by day within range, for the chart) ──
-        $trend = collect();
-        $allTransactions = $orders->map(fn($o) => (object)['date' => Carbon::parse($o->created_at)->format('Y-m-d'), 'amount' => $o->total_amount_usd])
-            ->concat($invoices->map(fn($i) => (object)['date' => Carbon::parse($i->created_at)->format('Y-m-d'), 'amount' => $i->subtotal_usd]));
-
-        $trend = $allTransactions->groupBy('date')
-            ->map(fn($g, $date) => (object)['date' => $date, 'revenue' => $g->sum('amount')])
+        // ── Revenue trend, grouped by day AND currency (separate lines
+        // per currency on the chart — never summed together) ──
+        $trend = $allTransactions->groupBy(fn($t) => Carbon::parse($t->date)->format('Y-m-d') . '|' . $t->currency)
+            ->map(function ($group) {
+                $first = $group->first();
+                return (object)[
+                    'date'          => Carbon::parse($first->date)->format('Y-m-d'),
+                    'currency_code' => $first->currency,
+                    'revenue'       => $group->sum('amount'),
+                ];
+            })
             ->sortBy('date')
             ->values();
 
@@ -99,10 +111,10 @@ class FinancialReportController extends Controller
             'period'             => $period,
             'from'               => $from,
             'to'                 => $to,
-            'totalRevenue'       => $totalRevenue,
+            'revenueByCurrency'  => $revenueByCurrency, // e.g. [{NGN, ₦4.5M, 12 txns}, {USD, $3.2K, 8 txns}]
             'totalTransactions'  => $totalTransactions,
             'byLocation'         => $byLocation,
-            'byStaff'            => $byStaffMerged,
+            'byStaff'            => $byStaff,
             'trend'              => $trend,
         ]);
     }

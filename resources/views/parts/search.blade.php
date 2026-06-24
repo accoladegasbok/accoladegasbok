@@ -40,12 +40,6 @@
         </div>
 
         {{-- ── VIN Result Banner (hidden until decoded) ────────────────────── --}}
-        {{-- 
-  REPLACE the entire vinResultBanner div in resources/views/parts/search.blade.php
-  Find: <div id="vinResultBanner" class="max-w-3xl mx-auto hidden">
-  Replace the whole block to the closing </div> with this:
---}}
-
 <div id="vinResultBanner" class="max-w-3xl mx-auto hidden">
   <div class="border border-white border-opacity-20 rounded-2xl overflow-hidden">
 
@@ -231,10 +225,13 @@
                         </div>
                     </div>
 
-                    {{-- Price Range --}}
+                    {{-- Price Range — note: prices are in each part's own
+                         fixed local currency now; filtering mixes currencies
+                         if "All Locations" is selected. Best paired with a
+                         Location filter for a meaningful range. --}}
                     <div class="p-4 border-b border-gray-100">
                         <button type="button" class="filter-toggle w-full flex justify-between items-center text-left mb-3" data-target="price-filter">
-                            <span class="font-body font-500 text-sm text-gray-700 uppercase tracking-wider">Price Range (USD)</span>
+                            <span class="font-body font-500 text-sm text-gray-700 uppercase tracking-wider">Price Range</span>
                             <svg class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                         </button>
                         <div id="price-filter" class="flex gap-2 items-center">
@@ -244,23 +241,13 @@
                             <input type="number" name="price_max" value="{{ $filters['price_max'] }}" placeholder="Max" min="0"
                                 class="w-1/2 border border-gray-200 rounded-lg px-2 py-2 text-sm font-body focus:outline-none focus:border-gold">
                         </div>
-                        <button type="submit" class="mt-3 w-full text-xs font-body font-500 text-gold hover:text-gold-dark underline text-left">Apply Price Filter</button>
-                    </div>
-
-                    {{-- Currency Display --}}
-                    <div class="p-4">
-                        <label class="block text-xs font-body font-500 text-gray-500 mb-2 uppercase tracking-wider">Display Currency</label>
-                        <select name="currency" onchange="this.form.submit()"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold bg-white">
-                            <option value="USD" {{ ($filters['currency'] ?? 'USD') === 'USD' ? 'selected' : '' }}>🇺🇸 USD — US Dollars</option>
-                            <option value="NGN" {{ ($filters['currency'] ?? '') === 'NGN' ? 'selected' : '' }}>🇳🇬 NGN — Nigerian Naira</option>
-                            <option value="GHS" {{ ($filters['currency'] ?? '') === 'GHS' ? 'selected' : '' }}>🇬🇭 GHS — Ghanaian Cedi</option>
-                        </select>
+                        <p class="text-xs text-gray-400 font-body mt-2">Tip: select a Location above for an accurate range — each location prices in its own currency.</p>
+                        <button type="submit" class="mt-2 w-full text-xs font-body font-500 text-gold hover:text-gold-dark underline text-left">Apply Price Filter</button>
                     </div>
                 </div>
 
                 {{-- Clear all filters --}}
-                @if(array_filter(Arr::except($filters, ['sort','currency'])))
+                @if(array_filter(Arr::except($filters, ['sort'])))
                     <a href="{{ route('parts.search') }}" class="block text-center text-xs font-body text-red-600 hover:text-red-800 mt-3 underline">Clear all filters</a>
                 @endif
             </form>
@@ -370,12 +357,17 @@
                             $photos  = json_decode($part->photos ?? '[]', true);
                             $thumb   = $photos[0] ?? null;
                             $photoCount = count($photos);
-                            $currency = $filters['currency'] ?? 'USD';
-                            $price = match($currency) {
-                                'NGN'   => '₦' . number_format($part->price_usd * $rates['NGN']),
-                                'GHS'   => 'GH₵' . number_format($part->price_usd * $rates['GHS'], 2),
-                                default => '$' . number_format($part->price_usd, 2),
+
+                            // ── FIXED PRICE — each part shows its own real
+                            // price in its own currency. No live FX math.
+                            $priceLocal = $part->price_local ?? $part->price_usd; // fallback for pre-migration rows
+                            $currencyCode = $part->currency_code ?? 'USD';
+                            $currencySymbol = match($currencyCode) {
+                                'NGN' => '₦', 'GHS' => 'GH₵', 'GBP' => '£', default => '$',
                             };
+                            $priceDecimals = $currencyCode === 'NGN' ? 0 : 2;
+                            $price = $currencySymbol . number_format($priceLocal, $priceDecimals);
+
                             $locClass = match(true) {
                                 str_contains($part->location, 'Nigeria') || str_contains($part->location, 'Lagos') => 'loc-ng',
                                 str_contains($part->location, 'Ghana')   => 'loc-gh',
@@ -482,13 +474,10 @@
                                 </div>
 
                                 <div class="mt-auto">
-                                    {{-- Price --}}
+                                    {{-- Price — fixed, in this part's own currency --}}
                                     <div class="flex items-end justify-between mb-3">
                                         <div>
                                             <div class="font-display font-800 text-navy text-2xl leading-none tracking-wide">{{ $price }}</div>
-                                            @if($currency !== 'USD')
-                                                <div class="text-xs text-gray-400 font-body mt-0.5">(USD ${{ number_format($part->price_usd, 2) }})</div>
-                                            @endif
                                         </div>
                                         <div class="text-right">
                                             <div class="text-xs text-gray-400 font-body">Part ID</div>
@@ -521,12 +510,16 @@
                         @php
                             $photos  = json_decode($part->photos ?? '[]', true);
                             $thumb   = $photos[0] ?? null;
-                            $currency = $filters['currency'] ?? 'USD';
-                            $price = match($currency) {
-                                'NGN'   => '₦' . number_format($part->price_usd * $rates['NGN']),
-                                'GHS'   => 'GH₵' . number_format($part->price_usd * $rates['GHS'], 2),
-                                default => '$' . number_format($part->price_usd, 2),
+
+                            // ── FIXED PRICE — same as grid view, no conversion ──
+                            $priceLocal = $part->price_local ?? $part->price_usd;
+                            $currencyCode = $part->currency_code ?? 'USD';
+                            $currencySymbol = match($currencyCode) {
+                                'NGN' => '₦', 'GHS' => 'GH₵', 'GBP' => '£', default => '$',
                             };
+                            $priceDecimals = $currencyCode === 'NGN' ? 0 : 2;
+                            $price = $currencySymbol . number_format($priceLocal, $priceDecimals);
+
                             $gradeClass = match($part->condition_grade) { 'A'=>'grade-a','B'=>'grade-b','C'=>'grade-c','New'=>'grade-new',default=>'grade-b' };
                             $whatsappMsg = urlencode("Hi, I'm enquiring about {$part->part_name} ({$part->part_code}) for a {$part->brand} {$part->model}. Price: {$price}.");
                         @endphp
@@ -841,4 +834,3 @@ document.querySelectorAll('.filter-toggle').forEach(btn => {
 });
 </script>
 @endpush
-

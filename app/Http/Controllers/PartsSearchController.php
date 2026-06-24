@@ -1,6 +1,9 @@
 <?php
 // FILE: app/Http/Controllers/PartsSearchController.php
-// Updated: now uses OemDatabase class for OEM code lookups
+// UPDATED: Fixed-currency pricing. price_local + currency_code are now
+// authoritative for filtering, sorting, and display. price_usd is kept
+// only as a fallback for any pre-migration row that wasn't backfilled.
+// getCurrencyRates() is kept (harmless) but no longer used for pricing.
 
 namespace App\Http\Controllers;
 
@@ -31,12 +34,11 @@ class PartsSearchController extends Controller
         });
     }
 
-    private function locationCurrency(string $location): string
+    private function currencySymbol(string $code): string
     {
-        if (str_contains($location, 'Ghana')) return 'GHS';
-        if (str_contains(strtolower($location), 'nigeria') ||
-            str_contains(strtolower($location), 'lagos')) return 'NGN';
-        return 'USD';
+        return match ($code) {
+            'NGN' => '₦', 'GHS' => 'GH₵', 'GBP' => '£', default => '$',
+        };
     }
 
     public function index(Request $request)
@@ -50,7 +52,7 @@ class PartsSearchController extends Controller
 
         $filters = $this->buildFilters($request);
         $parts   = $this->searchParts($filters);
-        $rates   = $this->getCurrencyRates();
+        $rates   = $this->getCurrencyRates(); // kept for any legacy view references; no longer used for pricing
         $currency = $request->get('currency', 'USD');
 
         $totalAvailable = DB::table('parts_inventory')
@@ -152,10 +154,9 @@ class PartsSearchController extends Controller
     {
         $filters = $this->buildFilters($request);
         $parts   = $this->searchParts($filters);
-        $rates   = $this->getCurrencyRates();
 
         return response()->json([
-            'parts' => $parts->map(fn($p) => $this->formatPart($p, $rates)),
+            'parts' => $parts->map(fn($p) => $this->formatPart($p)),
             'total' => $parts->total(),
             'pages' => $parts->lastPage(),
         ]);
@@ -190,8 +191,13 @@ class PartsSearchController extends Controller
         if ($filters['category']) $q->where('part_category', $filters['category']);
         if ($filters['location']) $q->where('location', $filters['location']);
         if ($filters['condition'])$q->where('condition_grade', $filters['condition']);
-        if ($filters['price_min'])$q->where('price_usd', '>=', $filters['price_min']);
-        if ($filters['price_max'])$q->where('price_usd', '<=', $filters['price_max']);
+
+        // ── Price filter — now against price_local (each part's own fixed
+        // currency). NOTE: if "All Locations" is selected, this mixes
+        // different currencies in one numeric range — best paired with a
+        // Location filter for a meaningful result (flagged to user in UI).
+        if ($filters['price_min']) $q->where('price_local', '>=', $filters['price_min']);
+        if ($filters['price_max']) $q->where('price_local', '<=', $filters['price_max']);
 
         if ($filters['year']) {
             $q->where('year_from', '<=', $filters['year'])
@@ -212,22 +218,32 @@ class PartsSearchController extends Controller
             });
         }
 
-        if ($filters['sort'] === 'price_asc')  $q->reorder('price_usd', 'asc');
-        if ($filters['sort'] === 'price_desc') $q->reorder('price_usd', 'desc');
+        // ── Sort — now by price_local (each part's fixed price)
+        if ($filters['sort'] === 'price_asc')  $q->reorder('price_local', 'asc');
+        if ($filters['sort'] === 'price_desc') $q->reorder('price_local', 'desc');
         if ($filters['sort'] === 'mileage')    $q->reorder('mileage',   'asc');
 
         return $q->paginate(24);
     }
 
-    private function formatPart(object $p, array $rates): array
+    private function formatPart(object $p): array
     {
         $photos = json_decode($p->photos ?? '[]', true);
-        $cur    = $this->locationCurrency($p->location);
-        $price  = match($cur) {
-            'NGN'   => '₦' . number_format(round($p->price_usd * $rates['NGN'])),
-            'GHS'   => 'GH₵' . number_format($p->price_usd * $rates['GHS'], 2),
-            default => '$' . number_format($p->price_usd, 2),
-        };
+
+        // ── FIXED PRICE — no live conversion. Each part displays in its
+        // own currency, set once at creation/harvest time.
+        $priceLocal   = $p->price_local ?? $p->price_usd; // fallback for pre-migration rows
+        $currencyCode = $p->currency_code ?? 'USD';
+        $decimals     = $currencyCode === 'NGN' ? 0 : 2;
+        $price        = $this->currencySymbol($currencyCode) . number_format($priceLocal, $decimals);
+
+        // ── Interchangeable stock — if this part belongs to a confirmed
+        // group, show the combined total across all compatible years,
+        // not just this one row's stock_qty.
+        $aggregatedStock = null;
+        if (!empty($p->interchange_group_id)) {
+            $aggregatedStock = (new \App\Services\InterchangeService())->aggregatedStock($p->interchange_group_id);
+        }
 
         return [
             'id'                    => $p->id,
@@ -240,7 +256,9 @@ class PartsSearchController extends Controller
             'part_category'         => $p->part_category,
             'condition_grade'       => $p->condition_grade,
             'price_display'         => $price,
-            'price_usd'             => $p->price_usd,
+            'price_local'           => $priceLocal,
+            'currency_code'         => $currencyCode,
+            'price_usd'             => $p->price_usd, // kept for template compatibility — frozen snapshot, not for display
             'location'              => $p->location,
             'status'                => $p->status,
             'thumb'                 => $photos[0] ?? null,
@@ -249,6 +267,7 @@ class PartsSearchController extends Controller
             'transmission_code_oem' => $p->transmission_code_oem ?? null,
             'pin_count'             => $p->pin_count ?? null,
             'gear_alias'            => $p->gear_alias ?? null,
+            'aggregated_stock'      => $aggregatedStock, // null if not in a group
         ];
     }
 
@@ -297,7 +316,6 @@ class PartsSearchController extends Controller
         string $partName = '',
         string $category = ''
     ): array {
-        $rates = $this->getCurrencyRates();
         $oem   = OemDatabase::lookup($make, $model, $year);
 
         // ── 1. Direct fit parts ──────────────────────────────────
@@ -410,8 +428,8 @@ class PartsSearchController extends Controller
             ],
             'part_name'             => $partName,
             'category'              => $category,
-            'direct_parts'          => $directParts->map(fn($p) => $this->formatPart($p, $rates))->values()->all(),
-            'interchange_parts'     => $interchangeParts->map(fn($p) => $this->formatPart($p, $rates))->values()->all(),
+            'direct_parts'          => $directParts->map(fn($p) => $this->formatPart($p))->values()->all(),
+            'interchange_parts'     => $interchangeParts->map(fn($p) => $this->formatPart($p))->values()->all(),
             'interchange_reference' => $interchangeReference,
             'part_coverage'         => $partCoverage,
             'total_found'           => $directParts->count() + $interchangeParts->count(),

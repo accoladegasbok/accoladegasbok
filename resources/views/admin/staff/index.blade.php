@@ -74,9 +74,12 @@
             <span class="badge
               @if($m->role==='admin') bg-navy text-gold border-navy
               @elseif($m->role==='manager') badge-blue
+              @elseif($m->role==='supervisor') badge-blue
               @elseif($m->role==='staff') badge-green
+              @elseif($m->role==='sales_rep') badge-amber
+              @elseif($m->role==='stocking_clerk') badge-amber
               @else badge-gray @endif">
-              {{ ucfirst($m->role) }}
+              {{ ucwords(str_replace('_',' ',$m->role)) }}
             </span>
           </td>
 
@@ -127,10 +130,13 @@
   <div class="text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-3">Role Permissions</div>
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-body">
     @foreach([
-      'Admin'   => ['bg-navy text-gold', 'Everything — staff management, delete parts, cancel orders'],
-      'Manager' => ['badge-blue',         'Harvest, inventory, orders — no staff management'],
-      'Staff'   => ['badge-green',        'Harvest new vehicles + view inventory and orders'],
-      'Viewer'  => ['badge-gray',         'Read-only — dashboard and inventory list only'],
+      'Admin'          => ['bg-navy text-gold', 'Everything — staff management, discount caps, commission terms, financial reports'],
+      'Manager'        => ['badge-blue',         'Everything except staff management and discount/commission editing'],
+      'Supervisor'     => ['badge-blue',         'Manager-level EXCEPT staff management, discount caps, and financial reports'],
+      'Staff'          => ['badge-green',        'Harvest, inventory, invoices, customers'],
+      'Sales Rep'      => ['badge-amber',        'Create invoices, earns commission on sales (set by admin)'],
+      'Stocking Clerk' => ['badge-amber',        'New Harvest, Add Part Manually, Add Consumable ONLY — nothing else'],
+      'Viewer'         => ['badge-gray',         'Read-only — dashboard and inventory list only'],
     ] as $role => [$cls, $desc])
     <div class="bg-gray-50 rounded-xl p-3">
       <span class="badge {{ $cls }} mb-2 inline-block">{{ $role }}</span>

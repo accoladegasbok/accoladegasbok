@@ -99,12 +99,46 @@ class InventoryController extends Controller
         $part = DB::table('parts_inventory')->where('id', $id)->first();
         if (!$part) abort(404);
 
+        // If this part already has a structured bin assigned, fetch its
+        // room id so the edit form can preselect Store Room → Bin.
+        $currentRoomId = null;
+        if ($part->storage_shelf_id) {
+            $currentRoomId = DB::table('storage_shelves')
+                ->where('id', $part->storage_shelf_id)
+                ->value('storage_room_id');
+        }
+
+        // ── Interchange (Phase B3) ────────────────────────────────────
+        $interchange = new \App\Services\InterchangeService();
+        $interchangeGroup    = null;
+        $interchangeVehicles = collect();
+        $aggregatedStock     = null;
+        $heuristicSuggestion = null;
+
+        if ($part->interchange_group_id) {
+            $interchangeGroup    = DB::table('part_interchange_groups')->where('id', $part->interchange_group_id)->first();
+            $interchangeVehicles = $interchange->vehiclesForGroup($part->interchange_group_id);
+            $aggregatedStock     = $interchange->aggregatedStockBreakdown($part->interchange_group_id);
+        } else {
+            // No group yet — show a live heuristic suggestion if one exists
+            $result = $interchange->interchangeFor($part->part_name, $part->engine_code_oem, $part->transmission_code_oem);
+            if ($result['found'] && $result['source'] === 'auto_heuristic') {
+                $heuristicSuggestion = $result['vehicles'];
+            }
+        }
+        // ──────────────────────────────────────────────────────────────
+
         return view('admin.inventory.edit', [
-            'part'      => $part,
-            'brands'    => self::BRANDS,
-            'categories'=> self::CATEGORIES,
-            'locations' => self::LOCATIONS,
-            'years'     => $this->yearRange(),
+            'part'                 => $part,
+            'brands'               => self::BRANDS,
+            'categories'           => self::CATEGORIES,
+            'locations'            => self::LOCATIONS,
+            'years'                => $this->yearRange(),
+            'currentRoomId'        => $currentRoomId,
+            'interchangeGroup'     => $interchangeGroup,
+            'interchangeVehicles'  => $interchangeVehicles,
+            'aggregatedStock'      => $aggregatedStock,
+            'heuristicSuggestion'  => $heuristicSuggestion,
         ]);
     }
 
@@ -140,9 +174,20 @@ class InventoryController extends Controller
         }
         // ──────────────────────────────────────────────────────────────
 
+        // ── Fixed currency by location — the price staff types is the
+        // authoritative, never-recalculated value in that location's
+        // native currency. price_usd is updated only as a fresh snapshot,
+        // not used for display going forward.
+        $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
+        $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
+        $priceUsdSnapshot = $priceLocal / $currency['rate'];
+        // ──────────────────────────────────────────────────────────────
+
         DB::table('parts_inventory')->where('id', $id)->update([
             'part_name'              => $request->part_name,
-            'price_usd'              => $request->price_usd,
+            'price_usd'              => $priceUsdSnapshot,
+            'price_local'            => $priceLocal,
+            'currency_code'          => $currency['code'],
             'condition_grade'        => $request->condition_grade,
             'status'                 => $request->status,
             'location'               => $request->location,
@@ -151,6 +196,7 @@ class InventoryController extends Controller
             'mileage'                => $request->mileage,
             'colour'                 => $request->colour,
             'bin_location'           => $request->bin_location,
+            'storage_shelf_id'       => $request->storage_shelf_id ?: null,
             'engine_code_oem'        => $request->engine_code_oem
                                           ? strtoupper(trim($request->engine_code_oem)) : null,
             'transmission_code_oem'  => $request->transmission_code_oem
@@ -334,6 +380,12 @@ class InventoryController extends Controller
         $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix)+1) + 1 : 1;
         $partCode = $prefix.'-'.str_pad($nextNum, 5, '0', STR_PAD_LEFT);
 
+        // ── Fixed currency by location ──────────────────────────────
+        $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
+        $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
+        $priceUsdSnapshot = $priceLocal / $currency['rate'];
+        // ──────────────────────────────────────────────────────────────
+
         DB::table('parts_inventory')->insert([
             'part_code'           => $partCode,
             'brand'                => $brand,
@@ -348,7 +400,9 @@ class InventoryController extends Controller
             'part_category'        => 'Consumable',
             'side'                 => 'N/A',
             'condition_grade'      => $request->condition_grade,
-            'price_usd'            => $request->price_usd,
+            'price_usd'            => $priceUsdSnapshot,
+            'price_local'          => $priceLocal,
+            'currency_code'        => $currency['code'],
             'location'             => $request->location,
             'origin_market'        => 'N/A',
             'description'          => $request->description,
@@ -393,6 +447,15 @@ class InventoryController extends Controller
         }
         // ──────────────────────────────────────────────────────────────
 
+        // ── Fixed currency by location — the price staff types is now
+        // the authoritative, never-recalculated value in that location's
+        // native currency. price_usd is stored once as a snapshot only,
+        // never used for display going forward.
+        $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
+        $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
+        $priceUsdSnapshot = $priceLocal / $currency['rate'];
+        // ──────────────────────────────────────────────────────────────
+
         $prefix   = $isConsumable ? 'CON' : substr(strtoupper($request->part_category), 0, 3);
         $lastCode = DB::table('parts_inventory')
             ->where('part_code','like',$prefix.'-%')
@@ -419,8 +482,12 @@ class InventoryController extends Controller
             'part_category'          => $request->part_category,
             'side'                   => $request->side ?? 'N/A',
             'condition_grade'        => $request->condition_grade,
-            'price_usd'              => $request->price_usd,
+            'price_usd'              => $priceUsdSnapshot,
+            'price_local'            => $priceLocal,
+            'currency_code'          => $currency['code'],
             'location'               => $request->location,
+            'storage_shelf_id'       => $request->storage_shelf_id ?: null,
+            'bin_location'           => $request->bin_location,
             'oem_part_number'        => $request->oem_part_number,
             'engine_code_oem'        => $request->engine_code_oem
                                           ? strtoupper(trim($request->engine_code_oem)) : null,

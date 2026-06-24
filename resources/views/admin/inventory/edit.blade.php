@@ -58,11 +58,28 @@
 
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Location *</label>
-          <select name="location" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+          <select name="location" id="locationSelect" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
             @foreach($locations as $l)
               <option value="{{ $l }}" {{ old('location',$part->location)===$l?'selected':'' }}>{{ $l }}</option>
             @endforeach
           </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Store Room</label>
+          <select id="storeRoomSelect" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Bin</label>
+          <select id="binSelect" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
+            <option value="">Select Store Room first</option>
+          </select>
+          <input type="hidden" name="storage_shelf_id" id="storageShelfIdInput" value="{{ old('storage_shelf_id', $part->storage_shelf_id) }}">
+          <input type="hidden" name="bin_location" id="binLocationInput" value="{{ old('bin_location', $part->bin_location) }}">
+          <p class="text-xs text-gray-400 font-body mt-1">Current: <span class="font-mono">{{ $part->bin_location ?: '—' }}</span></p>
         </div>
 
         <div>
@@ -81,13 +98,6 @@
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Colour</label>
           <input type="text" name="colour" value="{{ old('colour', $part->colour) }}"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
-        </div>
-
-        <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Bin Location</label>
-          <input type="text" name="bin_location" value="{{ old('bin_location', $part->bin_location) }}"
-            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400"
-            placeholder="e.g. A-01-B1">
         </div>
 
       </div>
@@ -269,5 +279,179 @@
       </a>
     </div>
   </form>
+
+  {{-- ── Interchange / Compatibility Aggregation (Phase B3) ───────────
+       Separate forms (own POST actions) — not part of the main Save form. --}}
+  <div class="stat-card mb-5">
+    <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Interchangeable Parts</h2>
+    <p class="text-xs text-gray-400 font-body mb-4">
+      Parts in the same interchange group share their stock count — e.g. a 2009 and a 2010 Corolla headlight-right
+      both count toward the same total "in stock" number, since they fit the same range of vehicles.
+    </p>
+
+    @if($interchangeGroup)
+      {{-- ── Already in a group ─────────────────────────────────────── --}}
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <span class="font-mono font-700 text-navy text-sm">{{ $interchangeGroup->group_code }}</span>
+            <span class="text-xs text-gray-400 ml-2">{{ $interchangeGroup->source === 'manual' ? 'Confirmed' : 'Auto-suggested' }}</span>
+          </div>
+          <form method="POST" action="{{ route('admin.interchange.parts.remove', $part->id) }}" onsubmit="return confirm('Remove this part from its interchange group? The group itself will remain.')">
+            @csrf
+            <button type="submit" class="text-xs font-body text-red-500 hover:text-red-700 underline">Remove from group</button>
+          </form>
+        </div>
+        @if($aggregatedStock)
+        <div class="font-display font-700 text-navy text-2xl mb-2">{{ $aggregatedStock['total'] }} <span class="text-sm font-body font-400 text-gray-500">total in stock across all compatible years</span></div>
+        <div class="space-y-1">
+          @foreach($aggregatedStock['lines'] as $line)
+            <div class="flex justify-between text-xs font-body text-gray-600 {{ $line->id === $part->id ? 'font-700 text-navy' : '' }}">
+              <span>{{ $line->part_code }} — {{ $line->brand }} {{ $line->model }} {{ $line->year_from }}@if($line->year_to != $line->year_from)–{{ $line->year_to }}@endif {{ $line->side !== 'N/A' ? '· '.$line->side : '' }}</span>
+              <span>{{ $line->stock_qty }} unit{{ $line->stock_qty != 1 ? 's' : '' }}</span>
+            </div>
+          @endforeach
+        </div>
+        @endif
+      </div>
+
+      {{-- Add another compatible vehicle to this group --}}
+      <details class="border border-gray-200 rounded-xl p-3">
+        <summary class="text-sm font-body font-500 text-navy cursor-pointer">+ Add a compatible vehicle (research-based)</summary>
+        <form method="POST" action="{{ route('admin.interchange.groups.add-vehicle', $interchangeGroup->id) }}" class="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
+          @csrf
+          <input type="hidden" name="part_id" value="{{ $part->id }}">
+          <input type="text" name="make" required placeholder="Make" class="border border-gray-200 rounded-lg px-2.5 py-2 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <input type="text" name="model" required placeholder="Model" class="border border-gray-200 rounded-lg px-2.5 py-2 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <input type="number" name="year_from" required placeholder="From" min="1986" max="2027" class="border border-gray-200 rounded-lg px-2.5 py-2 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <input type="number" name="year_to" required placeholder="To" min="1986" max="2027" class="border border-gray-200 rounded-lg px-2.5 py-2 text-sm font-body focus:outline-none focus:border-yellow-400">
+          <button type="submit" class="bg-navy text-white font-display font-700 text-xs rounded-lg hover:bg-navy-light transition-colors">+ Add</button>
+        </form>
+      </details>
+
+    @elseif($heuristicSuggestion && count($heuristicSuggestion) > 0)
+      {{-- ── No confirmed group yet, but a heuristic match exists ────── --}}
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div class="text-xs font-body font-500 text-amber-700 uppercase tracking-wider mb-2">⚠ Suggested — not yet confirmed</div>
+        <p class="text-xs text-gray-600 font-body mb-3">
+          Other parts in inventory share this OEM code. Confirm this as a real interchange group to start aggregating stock counts.
+        </p>
+        <div class="space-y-1 mb-3">
+          @foreach($heuristicSuggestion as $v)
+            <div class="text-xs font-body text-gray-600">{{ $v->make }} {{ $v->model }} {{ $v->year_from }}@if($v->year_to != $v->year_from)–{{ $v->year_to }}@endif</div>
+          @endforeach
+        </div>
+        <form method="POST" action="{{ route('admin.interchange.promote-heuristic') }}" class="flex gap-2">
+          @csrf
+          <input type="hidden" name="part_id" value="{{ $part->id }}">
+          <input type="text" name="group_code" required placeholder="Group code, e.g. COROLLA-E170-HEADLIGHT-R"
+            class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:border-yellow-400">
+          <button type="submit" class="bg-gold text-navy font-display font-700 text-xs px-4 py-2 rounded-lg hover:bg-yellow-500 transition-colors whitespace-nowrap">
+            Confirm & Save
+          </button>
+        </form>
+      </div>
+
+    @else
+      {{-- ── No group, no suggestion — manual create ──────────────────── --}}
+      <p class="text-xs text-gray-400 font-body mb-3">This part isn't in an interchange group yet. Create one if you know it's compatible with other vehicles.</p>
+      <form method="POST" action="{{ route('admin.interchange.groups.create') }}" class="flex gap-2">
+        @csrf
+        <input type="hidden" name="part_id" value="{{ $part->id }}">
+        <input type="text" name="group_code" required placeholder="Group code, e.g. COROLLA-E170-HEADLIGHT-R"
+          class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:border-yellow-400">
+        <button type="submit" class="bg-gold text-navy font-display font-700 text-xs px-4 py-2 rounded-lg hover:bg-yellow-500 transition-colors whitespace-nowrap">
+          + Create Group
+        </button>
+      </form>
+    @endif
+  </div>
 </div>
+@push('scripts')
+<script>
+const CURRENT_ROOM_ID  = {{ $currentRoomId ?? 'null' }};
+const CURRENT_SHELF_ID = {{ $part->storage_shelf_id ?? 'null' }};
+
+document.getElementById('locationSelect').addEventListener('change', () => loadStoreRooms());
+document.addEventListener('DOMContentLoaded', () => loadStoreRooms(true));
+
+async function loadStoreRooms(isInitialLoad = false) {
+    const loc = document.getElementById('locationSelect').value;
+    const roomSelect = document.getElementById('storeRoomSelect');
+    const binSelect   = document.getElementById('binSelect');
+
+    if (!isInitialLoad) {
+        binSelect.innerHTML = '<option value="">Select Store Room first</option>';
+        document.getElementById('storageShelfIdInput').value = '';
+        document.getElementById('binLocationInput').value = '';
+    }
+
+    if (!loc) {
+        roomSelect.innerHTML = '<option value="">Select Location first</option>';
+        return;
+    }
+
+    roomSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+        const res  = await fetch(`/admin/storage/rooms-for-location?location=${encodeURIComponent(loc)}`);
+        const data = await res.json();
+        if (!data.rooms || data.rooms.length === 0) {
+            roomSelect.innerHTML = '<option value="">No store rooms set up for this location yet</option>';
+            return;
+        }
+        roomSelect.innerHTML = '<option value="">Select Store Room</option>' +
+            data.rooms.map(r => `<option value="${r.id}">${r.name} (${r.code})</option>`).join('');
+
+        if (isInitialLoad && CURRENT_ROOM_ID) {
+            roomSelect.value = CURRENT_ROOM_ID;
+            await loadBinsForRoom(true);
+        }
+    } catch (e) {
+        roomSelect.innerHTML = '<option value="">Could not load rooms</option>';
+    }
+}
+
+document.getElementById('storeRoomSelect').addEventListener('change', () => loadBinsForRoom());
+
+async function loadBinsForRoom(isInitialLoad = false) {
+    const roomId = document.getElementById('storeRoomSelect').value;
+    const binSelect = document.getElementById('binSelect');
+
+    if (!isInitialLoad) {
+        document.getElementById('storageShelfIdInput').value = '';
+        document.getElementById('binLocationInput').value = '';
+    }
+
+    if (!roomId) {
+        binSelect.innerHTML = '<option value="">Select Store Room first</option>';
+        return;
+    }
+
+    binSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+        const res  = await fetch(`/admin/storage/shelves-for-room?room_id=${encodeURIComponent(roomId)}`);
+        const data = await res.json();
+        if (!data.shelves || data.shelves.length === 0) {
+            binSelect.innerHTML = '<option value="">No bins set up for this room yet</option>';
+            return;
+        }
+        binSelect.innerHTML = '<option value="">Select Bin (optional)</option>' +
+            data.shelves.map(s => `<option value="${s.id}" data-code="${s.full_bin_code}">${s.full_bin_code}</option>`).join('');
+
+        if (isInitialLoad && CURRENT_SHELF_ID) {
+            binSelect.value = CURRENT_SHELF_ID;
+        }
+    } catch (e) {
+        binSelect.innerHTML = '<option value="">Could not load bins</option>';
+    }
+}
+
+document.getElementById('binSelect').addEventListener('change', function() {
+    const selected = this.options[this.selectedIndex];
+    const code = selected ? selected.dataset.code : '';
+    document.getElementById('storageShelfIdInput').value = this.value;
+    document.getElementById('binLocationInput').value = code || '';
+});
+</script>
+@endpush
 @endsection

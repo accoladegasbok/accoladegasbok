@@ -425,6 +425,46 @@ class OemDatabase
 
         return $result;
     }
+// ============================================================
+    // ENGINE OPTIONS — for a given Make/Model/Year, returns the
+    // distinct engine configurations our lookup() logic already
+    // knows about (since lookup() branches on cylinder count /
+    // displacement). Used to populate a dropdown on manual entry
+    // forms, the same way a VIN decode reveals ONE specific engine
+    // — this reveals ALL engines that vehicle could have come with.
+    // ============================================================
+    public static function engineOptions(string $make, string $model, int $year): array
+    {
+        $probes = [
+            ['cyl' => 4, 'engL' => 0],
+            ['cyl' => 6, 'engL' => 0],
+            ['cyl' => 8, 'engL' => 0],
+        ];
+
+        $options = [];
+        $seen    = [];
+
+        foreach ($probes as $p) {
+            $r = self::lookup($make, $model, $year, $p['cyl'], $p['engL']);
+            if (!$r['engine_code']) continue;
+
+            $key = $r['engine_code']; // dedupe by resulting engine code
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+
+            $cylLabel = $p['cyl'] ? "{$p['cyl']}-Cyl" : '';
+            $label = trim(($r['engine_l'] ? $r['engine_l'] . 'L ' : '') . $cylLabel . " ({$r['engine_code']})");
+
+            $options[] = [
+                'engine_l'    => $r['engine_l'],
+                'cyl'         => $p['cyl'],
+                'engine_code' => $r['engine_code'],
+                'label'       => $label,
+            ];
+        }
+
+        return $options;
+    }
 
     // ============================================================
     // PIN COUNT REFERENCE TABLE

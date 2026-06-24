@@ -25,7 +25,7 @@
 
 {{-- Status tabs --}}
 <div class="flex flex-wrap gap-2 mb-5">
-  @foreach([''=> 'All Parts', 'Available'=>'Available', 'Reserved'=>'Reserved', 'Sold'=>'Sold'] as $val => $lbl)
+  @foreach([''=> 'All Parts', 'Available'=>'Available', 'Reserved'=>'Reserved', 'Sold'=>'Sold', 'Hold'=>'Hold', 'Core'=>'Core', 'Scrapped'=>'Scrapped'] as $val => $lbl)
   <a href="{{ request()->fullUrlWithQuery(['status'=>$val,'page'=>1]) }}"
      class="inline-flex items-center gap-1.5 text-xs font-body font-500 px-3 py-1.5 rounded-full border transition-colors
        {{ request('status')===$val ? 'bg-navy text-white border-navy' : 'bg-white text-gray-600 border-gray-200 hover:border-navy' }}">
@@ -105,8 +105,15 @@
             </span>
           </td>
           <td class="px-4 py-3">
-            <div class="font-display font-700 text-navy text-sm">${{ number_format($p->price_usd, 2) }}</div>
-            <div class="text-xs text-gray-400">₦{{ number_format($p->price_usd * 1600) }}</div>
+            @php
+              // ── FIXED PRICE — this part's own currency, no live conversion ──
+              $priceLocal = $p->price_local ?? $p->price_usd; // fallback for pre-migration rows
+              $currencyCode = $p->currency_code ?? 'USD';
+              $symbol = match($currencyCode) { 'NGN' => '₦', 'GHS' => 'GH₵', 'GBP' => '£', default => '$' };
+              $decimals = $currencyCode === 'NGN' ? 0 : 2;
+            @endphp
+            <div class="font-display font-700 text-navy text-sm">{{ $symbol }}{{ number_format($priceLocal, $decimals) }}</div>
+            <div class="text-xs text-gray-400">{{ $currencyCode }}</div>
           </td>
           <td class="px-4 py-3 text-xs text-gray-600">{{ $p->location }}</td>
           <td class="px-4 py-3">

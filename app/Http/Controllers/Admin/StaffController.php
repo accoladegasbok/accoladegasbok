@@ -1,5 +1,7 @@
 <?php
 // FILE: app/Http/Controllers/Admin/StaffController.php
+// UPDATED: New roles — supervisor (manager-level minus staff/discount/financial),
+// stocking_clerk (inventory-add only), sales_rep (commission-based).
 
 namespace App\Http\Controllers\Admin;
 
@@ -17,13 +19,13 @@ class StaffController extends Controller
         'Ile-Ife Nigeria','Ibadan Nigeria','Oshodi Lagos','Accra Ghana',
     ];
 
-    const ROLES = ['admin','manager','staff','viewer'];
+    const ROLES = ['admin','manager','supervisor','staff','stocking_clerk','sales_rep','viewer'];
 
     // ── List all staff ────────────────────────────────────────────
     public function index()
     {
         $staff = DB::table('staff')
-            ->orderByRaw("FIELD(role,'admin','manager','staff','viewer')")
+            ->orderByRaw("FIELD(role,'admin','manager','supervisor','staff','sales_rep','stocking_clerk','viewer')")
             ->orderBy('name')
             ->get();
 
@@ -49,15 +51,16 @@ class StaffController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name'     => 'required|string|max:100',
-            'email'    => 'required|email|max:150|unique:staff,email',
-            'password' => 'required|string|min:8|confirmed',
-            'role'     => 'required|in:admin,manager,staff,viewer',
-            'location' => 'required|string',
-            'phone'    => 'nullable|string|max:30',
+            'name'                     => 'required|string|max:100',
+            'email'                    => 'required|email|max:150|unique:staff,email',
+            'password'                 => 'required|string|min:8|confirmed',
+            'role'                     => 'required|in:' . implode(',', self::ROLES),
+            'location'                 => 'required|string',
+            'phone'                    => 'nullable|string|max:30',
+            'commission_base_percent' => 'nullable|numeric|min:0|max:100',
         ]);
 
-        DB::table('staff')->insert([
+        $data = [
             'name'       => trim($request->name),
             'email'      => strtolower(trim($request->email)),
             'password'   => Hash::make($request->password),
@@ -67,7 +70,18 @@ class StaffController extends Controller
             'is_active'  => true,
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ];
+
+        // Commission % only meaningful (and only settable) for sales_rep,
+        // and only by an admin — same trust boundary as discount caps.
+        if ($request->role === 'sales_rep' && Session::get('staff_role') === 'admin') {
+            $data['commission_base_percent'] = $request->commission_base_percent;
+            $data['commission_tiers'] = $request->commission_tiers
+                ? json_encode(json_decode($request->commission_tiers, true))
+                : null;
+        }
+
+        DB::table('staff')->insert($data);
 
         return redirect()->route('admin.staff.index')
             ->with('success', "{$request->name} added as {$request->role}.");
@@ -91,12 +105,13 @@ class StaffController extends Controller
         $request->validate([
             'name'     => 'required|string|max:100',
             'email'    => 'required|email|max:150|unique:staff,email,'.$id,
-            'role'     => 'required|in:admin,manager,staff,viewer',
+            'role'     => 'required|in:' . implode(',', self::ROLES),
             'location' => 'required|string',
             'phone'    => 'nullable|string|max:30',
             'password' => 'nullable|string|min:8|confirmed',
-            'discount_cap_fixed'   => 'nullable|numeric|min:0',
-            'discount_cap_percent' => 'nullable|numeric|min:0|max:100',
+            'discount_cap_fixed'      => 'nullable|numeric|min:0',
+            'discount_cap_percent'    => 'nullable|numeric|min:0|max:100',
+            'commission_base_percent' => 'nullable|numeric|min:0|max:100',
         ]);
         $data = [
             'name'       => trim($request->name),
@@ -110,10 +125,16 @@ class StaffController extends Controller
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
         }
-        // Discount caps are admin-privilege only — only an admin can set them
+        // Discount caps AND commission terms are admin-privilege only —
+        // a manager/supervisor editing a profile cannot change either,
+        // even if they have access to this edit screen.
         if (Session::get('staff_role') === 'admin') {
-            $data['discount_cap_fixed']   = $request->discount_cap_fixed;
-            $data['discount_cap_percent'] = $request->discount_cap_percent;
+            $data['discount_cap_fixed']      = $request->discount_cap_fixed;
+            $data['discount_cap_percent']    = $request->discount_cap_percent;
+            $data['commission_base_percent'] = $request->commission_base_percent;
+            $data['commission_tiers'] = $request->commission_tiers
+                ? json_encode(json_decode($request->commission_tiers, true))
+                : null;
         }
         DB::table('staff')->where('id', $id)->update($data);
         return redirect()->route('admin.staff.index')

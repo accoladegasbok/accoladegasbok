@@ -1,5 +1,12 @@
 <?php
 // FILE: app/Http/Controllers/Admin/InvoiceController.php
+//
+// UPDATED: Fixed-currency pricing. price_local + currency_code are now the
+// authoritative, never-recalculated values (set once at creation/harvest
+// time, based on the location). price_usd is kept ONLY as a frozen
+// historical snapshot for cross-location $ reference — it is NEVER used
+// for display or live conversion anymore. formatPrice() now formats
+// whatever currency a record was actually priced in; it does not convert.
 
 namespace App\Http\Controllers\Admin;
 
@@ -14,6 +21,10 @@ class InvoiceController extends Controller
     // CURRENCY HELPERS — static so HarvestController can call them
     // =========================================================
 
+    // Still used to DETERMINE which currency a NEW record should be
+    // priced in, based on its location. Once set, that currency is
+    // fixed for that record forever — this is not used to convert
+    // existing records on the fly anymore.
     public static function currencyForLocation(string $location): array
     {
         $loc = strtolower(trim($location));
@@ -45,6 +56,30 @@ class InvoiceController extends Controller
         return ['code' => 'USD', 'symbol' => '$', 'rate' => 1, 'decimals' => 2];
     }
 
+    // Maps a currency CODE back to its display symbol/decimals — used
+    // when formatting an already-fixed price_local + currency_code pair,
+    // with NO conversion happening (rate is irrelevant here).
+    public static function currencyMeta(string $code): array
+    {
+        return match ($code) {
+            'NGN' => ['code' => 'NGN', 'symbol' => '₦', 'decimals' => 0],
+            'GHS' => ['code' => 'GHS', 'symbol' => 'GH₵', 'decimals' => 2],
+            'GBP' => ['code' => 'GBP', 'symbol' => '£', 'decimals' => 2],
+            default => ['code' => 'USD', 'symbol' => '$', 'decimals' => 2],
+        };
+    }
+
+    // Formats a FIXED local price with its own currency's symbol —
+    // no conversion, no rate involved. This is the only formatter
+    // that should be used for displaying parts/invoice prices now.
+    public static function formatLocal(float $priceLocal, string $currencyCode): string
+    {
+        $meta = self::currencyMeta($currencyCode);
+        return $meta['symbol'] . number_format($priceLocal, $meta['decimals']);
+    }
+
+    // ── Legacy formatter, kept only for any code path still passing
+    // a USD snapshot + rate table. New code should use formatLocal().
     public static function formatPrice(float $usdPrice, array $currency): string
     {
         $amount = $usdPrice * $currency['rate'];
@@ -129,6 +164,63 @@ class InvoiceController extends Controller
 }
 
     // =========================================================
+    // Commission helper — credits the creating staff member if they
+    // are a sales_rep. Uses commission_tiers (volume-based, evaluated
+    // against the rep's running total this calendar month in their
+    // own currency) if set, falling back to commission_base_percent.
+    // =========================================================
+    private function creditCommissionIfApplicable(int $invoiceId, float $saleAmountLocal, string $currencyCode): void
+    {
+        $staffId = Session::get('staff_id');
+        if (!$staffId) return;
+
+        $staff = DB::table('staff')->where('id', $staffId)->first();
+        if (!$staff || $staff->role !== 'sales_rep') return;
+
+        $percent = (float) ($staff->commission_base_percent ?? 0);
+
+        if ($staff->commission_tiers) {
+            $tiers = json_decode($staff->commission_tiers, true);
+            if (is_array($tiers) && count($tiers) > 0) {
+                // Running volume this calendar month, same currency, sale-type entries only
+                $monthVolume = (float) DB::table('sales_commissions')
+                    ->where('staff_id', $staffId)
+                    ->where('currency_code', $currencyCode)
+                    ->where('type', 'sale')
+                    ->whereYear('created_at', now()->year)
+                    ->whereMonth('created_at', now()->month)
+                    ->sum('sale_amount_local');
+
+                $projectedVolume = $monthVolume + $saleAmountLocal;
+
+                // Pick the highest tier whose min_volume the projected volume has reached
+                usort($tiers, fn($a, $b) => $a['min_volume'] <=> $b['min_volume']);
+                foreach ($tiers as $tier) {
+                    if ($projectedVolume >= ($tier['min_volume'] ?? 0)) {
+                        $percent = (float) ($tier['percent'] ?? $percent);
+                    }
+                }
+            }
+        }
+
+        if ($percent <= 0) return;
+
+        $commissionAmount = round($saleAmountLocal * ($percent / 100), 2);
+
+        DB::table('sales_commissions')->insert([
+            'staff_id'                 => $staffId,
+            'invoice_id'               => $invoiceId,
+            'currency_code'            => $currencyCode,
+            'sale_amount_local'        => $saleAmountLocal,
+            'commission_percent'       => $percent,
+            'commission_amount_local'  => $commissionAmount,
+            'type'                     => 'sale',
+            'created_at'               => now(),
+            'updated_at'               => now(),
+        ]);
+    }
+
+    // =========================================================
     // SHOW — Invoice from an existing Order
     // GET /admin/orders/{id}/invoice
     // =========================================================
@@ -143,6 +235,8 @@ class InvoiceController extends Controller
             ->select(
                 'oi.qty',
                 'oi.unit_price_usd',
+                'p.price_local',
+                'p.currency_code',
                 'p.part_name',
                 'p.part_code',
                 'p.brand',
@@ -158,20 +252,23 @@ class InvoiceController extends Controller
         $saleLocation = $order->location
             ?? ($items->first()->part_location ?? 'Waxahachie TX');
 
-        $currency     = self::currencyForLocation($saleLocation);
+        // Use the FIXED currency already stamped on the parts themselves
+        // (they were priced once at harvest/entry time and never change).
+        $currencyCode = $items->first()->currency_code ?? self::currencyForLocation($saleLocation)['code'];
         $businessInfo = $this->getBusinessInfo($saleLocation);
 
-        $subtotalUsd = 0;
-        $lineItems = $items->map(function ($item) use ($currency, &$subtotalUsd) {
-            $lineUsd      = $item->unit_price_usd * $item->qty;
-            $subtotalUsd += $lineUsd;
+        $subtotalLocal = 0;
+        $lineItems = $items->map(function ($item) use (&$subtotalLocal) {
+            $unitLocal     = $item->price_local ?? $item->unit_price_usd; // fallback for pre-migration rows
+            $lineLocal     = $unitLocal * $item->qty;
+            $subtotalLocal += $lineLocal;
             return (object) array_merge((array) $item, [
-                'unit_price_fmt' => self::formatPrice($item->unit_price_usd, $currency),
-                'total_fmt'      => self::formatPrice($lineUsd, $currency),
+                'unit_price_fmt' => self::formatLocal($unitLocal, $item->currency_code ?? 'USD'),
+                'total_fmt'      => self::formatLocal($lineLocal, $item->currency_code ?? 'USD'),
             ]);
         });
 
-        $subtotalFmt = self::formatPrice($subtotalUsd, $currency);
+        $subtotalFmt = self::formatLocal($subtotalLocal, $currencyCode);
         $invoiceNo   = 'AZP-' . date('Y') . '-' . str_pad($orderId, 5, '0', STR_PAD_LEFT);
 
         $customerInfo = (object)[
@@ -181,10 +278,12 @@ class InvoiceController extends Controller
             'address' => $order->customer_address ?? '',
         ];
 
+        $currency      = self::currencyMeta($currencyCode); // for blade templates expecting ['symbol'=>..,'code'=>..]
         $location      = $saleLocation;
         $createdAt     = $order->created_at ?? now();
         $paymentMethod = $order->payment_method ?? 'Cash';
         $copyKey       = 'customer';
+        $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real USD conversion anymore
 
         return view('admin.invoices.show', compact(
             'order', 'lineItems', 'currency', 'subtotalFmt',
@@ -218,10 +317,12 @@ class InvoiceController extends Controller
             ->get();
 
         $harvestLocation = $harvest->location ?? $harvest->vehicle_location ?? 'Waxahachie TX';
-        $currency        = self::currencyForLocation($harvestLocation);
+        $currencyCode    = $parts->first()->currency_code ?? self::currencyForLocation($harvestLocation)['code'];
+        $currency        = self::currencyMeta($currencyCode);
         $businessInfo    = $this->getBusinessInfo($harvestLocation);
 
-        $lineItems = $parts->map(function ($p) use ($currency) {
+        $lineItems = $parts->map(function ($p) {
+            $priceLocal = $p->price_local ?? $p->price_usd; // fallback for pre-migration rows
             return (object)[
                 'part_name'       => $p->part_name,
                 'part_code'       => $p->part_code,
@@ -231,15 +332,16 @@ class InvoiceController extends Controller
                 'year_to'         => $p->year_to,
                 'condition_grade' => $p->condition_grade,
                 'qty'             => 1,
-                'unit_fmt'        => self::formatPrice($p->price_usd, $currency),
-                'total_fmt'       => self::formatPrice($p->price_usd, $currency),
-                'price_usd'       => $p->price_usd,
+                'unit_fmt'        => self::formatLocal($priceLocal, $p->currency_code ?? 'USD'),
+                'total_fmt'       => self::formatLocal($priceLocal, $p->currency_code ?? 'USD'),
+                'price_usd'       => $priceLocal, // kept for template compatibility
             ];
         });
 
-        $subtotalUsd = $parts->sum('price_usd');
-        $subtotalFmt = self::formatPrice($subtotalUsd, $currency);
-        $invoiceNo   = 'HVSN-' . str_pad($harvestId, 5, '0', STR_PAD_LEFT);
+        $subtotalLocal = $parts->sum(fn($p) => $p->price_local ?? $p->price_usd);
+        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
+        $subtotalUsd   = $subtotalLocal; // kept for template compatibility
+        $invoiceNo     = 'HVSN-' . str_pad($harvestId, 5, '0', STR_PAD_LEFT);
 
         return view('admin.invoices.harvest', compact(
             'harvest', 'lineItems', 'currency', 'subtotalFmt',
@@ -257,7 +359,7 @@ class InvoiceController extends Controller
             ->where('status', 'Available')
             ->orderBy('brand')->orderBy('part_name')
             ->get(['id','part_code','part_name','brand','model',
-                   'year_from','year_to','price_usd','condition_grade','location']);
+                   'year_from','year_to','price_local','currency_code','price_usd','condition_grade','location']);
 
         $locations = [
             'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
@@ -299,7 +401,7 @@ class InvoiceController extends Controller
             ->where('status', 'Available')
             ->orderBy('brand')->orderBy('part_name')
             ->get(['id','part_code','part_name','brand','model',
-                   'year_from','year_to','price_usd','condition_grade','location']);
+                   'year_from','year_to','price_local','currency_code','price_usd','condition_grade','location']);
 
         $locations = [
             'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
@@ -317,13 +419,17 @@ class InvoiceController extends Controller
         $currentStaff = DB::table('staff')->where('id', Session::get('staff_id'))->first();
         $staffDiscountCapFixed   = $currentStaff->discount_cap_fixed ?? null;
         $staffDiscountCapPercent = $currentStaff->discount_cap_percent ?? null;
-        $currency = self::currencyForLocation($invoice->location);
 
-        $existingItemsJson = $items->map(function ($i) use ($currency) {
+        // Currency is now FIXED on the invoice itself — never recalculated
+        $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
+        $currency     = self::currencyMeta($currencyCode);
+
+        $existingItemsJson = $items->map(function ($i) {
+            $priceLocal = $i->unit_price_local ?? $i->unit_price_usd; // fallback for pre-migration rows
             return [
                 'name'           => $i->part_name,
                 'part_id'        => $i->part_id,
-                'price'          => $i->unit_price_usd * $currency['rate'],
+                'price'          => $priceLocal,
                 'grade'          => $i->condition_grade,
                 'qty'            => $i->qty,
                 'discount_value' => $i->discount_value,
@@ -358,56 +464,57 @@ class InvoiceController extends Controller
         ]);
 
         $saleLocation = $request->location;
-        $currency     = self::currencyForLocation($saleLocation);
+        $currencyCode = self::currencyForLocation($saleLocation)['code'];
 
-        $lineItems = collect($request->items)->map(function ($item) use ($currency) {
-            $localPrice = (float) $item['price'];
-            $usdPrice   = $localPrice / $currency['rate'];
-            $qty        = (int) $item['qty'];
-            $lineGrossUsd = $usdPrice * $qty;
+        // ── Prices entered here are now treated as FIXED local-currency
+        // values — no division by a rate, no conversion to USD storage.
+        $lineItems = collect($request->items)->map(function ($item) {
+            $priceLocal   = (float) $item['price'];
+            $qty          = (int) $item['qty'];
+            $lineGrossLocal = $priceLocal * $qty;
 
             $discType  = $item['discount_type'] ?? 'fixed';
             $discValue = (float) ($item['discount_value'] ?? 0);
-            $discUsd = 0;
+            $discLocal = 0;
             if ($discValue > 0) {
-                $discUsd = $discType === 'percent'
-                    ? $lineGrossUsd * ($discValue / 100)
-                    : min($discValue / $currency['rate'], $lineGrossUsd);
+                $discLocal = $discType === 'percent'
+                    ? $lineGrossLocal * ($discValue / 100)
+                    : min($discValue, $lineGrossLocal);
             }
-            $lineUsd = $lineGrossUsd - $discUsd;
+            $lineLocal = $lineGrossLocal - $discLocal;
 
             $part = !empty($item['part_id'])
                 ? DB::table('parts_inventory')->find($item['part_id'])
                 : null;
 
             return (object)[
-                'part_name'           => $item['name'],
-                'part_code'           => $part->part_code ?? 'MANUAL',
-                'brand'               => $part->brand ?? '',
-                'model'               => $part->model ?? '',
-                'condition_grade'     => $part->condition_grade ?? ($item['grade'] ?? 'B'),
-                'qty'                 => $qty,
-                'unit_price_usd'      => $usdPrice,
-                'discount_type'       => $discValue > 0 ? $discType : null,
-                'discount_value'      => $discValue > 0 ? $discValue : null,
-                'discount_amount_usd' => $discUsd,
-                'line_usd'            => $lineUsd,
+                'part_name'             => $item['name'],
+                'part_code'             => $part->part_code ?? 'MANUAL',
+                'brand'                 => $part->brand ?? '',
+                'model'                 => $part->model ?? '',
+                'condition_grade'       => $part->condition_grade ?? ($item['grade'] ?? 'B'),
+                'qty'                   => $qty,
+                'unit_price_local'      => $priceLocal,
+                'discount_type'         => $discValue > 0 ? $discType : null,
+                'discount_value'        => $discValue > 0 ? $discValue : null,
+                'discount_amount_local' => $discLocal,
+                'line_local'            => $lineLocal,
             ];
         });
 
-        $subtotalAfterLineDiscounts = $lineItems->sum('line_usd');
+        $subtotalAfterLineDiscounts = $lineItems->sum('line_local');
 
         $invoiceDiscType  = $request->invoice_discount_type ?? 'fixed';
         $invoiceDiscValue = (float) ($request->invoice_discount_value ?? 0);
-        $invoiceDiscUsd = 0;
+        $invoiceDiscLocal = 0;
         if ($invoiceDiscValue > 0) {
-            $invoiceDiscUsd = $invoiceDiscType === 'percent'
+            $invoiceDiscLocal = $invoiceDiscType === 'percent'
                 ? $subtotalAfterLineDiscounts * ($invoiceDiscValue / 100)
-                : min($invoiceDiscValue / $currency['rate'], $subtotalAfterLineDiscounts);
+                : min($invoiceDiscValue, $subtotalAfterLineDiscounts);
         }
 
-        $newSubtotalUsd = $subtotalAfterLineDiscounts - $invoiceDiscUsd;
-        $totalDiscountUsd = $lineItems->sum('discount_amount_usd') + $invoiceDiscUsd;
+        $newSubtotalLocal = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
+        $totalDiscountLocal = $lineItems->sum('discount_amount_local') + $invoiceDiscLocal;
 
         // ── Build a human-readable change summary before overwriting ──
         $changes = [];
@@ -417,11 +524,10 @@ class InvoiceController extends Controller
         if ($invoice->location !== $saleLocation) {
             $changes[] = "Location: \"{$invoice->location}\" → \"{$saleLocation}\"";
         }
-        if (round($invoice->subtotal_usd, 2) !== round($newSubtotalUsd, 2)) {
-            $changes[] = "Subtotal: $" . number_format($invoice->subtotal_usd, 2) . " → $" . number_format($newSubtotalUsd, 2);
-        }
-        if (round((float)($invoice->discount_amount_usd ?? 0), 2) !== round($totalDiscountUsd, 2)) {
-            $changes[] = "Discount: $" . number_format($invoice->discount_amount_usd ?? 0, 2) . " → $" . number_format($totalDiscountUsd, 2);
+        $oldSubtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
+        if (round((float) $oldSubtotalLocal, 2) !== round($newSubtotalLocal, 2)) {
+            $changes[] = "Subtotal: " . self::formatLocal($oldSubtotalLocal, $invoice->currency_code ?? $currencyCode)
+                . " → " . self::formatLocal($newSubtotalLocal, $currencyCode);
         }
         $oldItemCount = DB::table('invoice_items')->where('invoice_id', $id)->count();
         if ($oldItemCount !== $lineItems->count()) {
@@ -436,9 +542,11 @@ class InvoiceController extends Controller
             'customer_email'            => $request->customer_email ?? '',
             'customer_address'          => $request->customer_address ?? '',
             'location'                  => $saleLocation,
-            'currency_code'             => $currency['code'],
-            'subtotal_usd'              => $newSubtotalUsd,
-            'discount_amount_usd'       => $totalDiscountUsd,
+            'currency_code'             => $currencyCode,
+            'subtotal_local'            => $newSubtotalLocal,
+            'subtotal_usd'              => $newSubtotalLocal, // kept for template compatibility — not a real $ value
+            'discount_amount_local'     => $totalDiscountLocal,
+            'discount_amount_usd'       => $totalDiscountLocal, // kept for template compatibility
             'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
             'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
             'notes'                     => $request->notes ?? null,
@@ -449,20 +557,22 @@ class InvoiceController extends Controller
         DB::table('invoice_items')->where('invoice_id', $id)->delete();
         foreach ($lineItems as $li) {
             DB::table('invoice_items')->insert([
-                'invoice_id'           => $id,
-                'part_id'              => null,
-                'part_name'            => $li->part_name,
-                'part_code'            => $li->part_code,
-                'brand'                => $li->brand,
-                'model'                => $li->model,
-                'condition_grade'      => $li->condition_grade,
-                'qty'                  => $li->qty,
-                'unit_price_usd'       => $li->unit_price_usd,
-                'discount_amount_usd'  => $li->discount_amount_usd,
-                'discount_type'        => $li->discount_type,
-                'discount_value'       => $li->discount_value,
-                'created_at'           => now(),
-                'updated_at'           => now(),
+                'invoice_id'             => $id,
+                'part_id'                => null,
+                'part_name'              => $li->part_name,
+                'part_code'              => $li->part_code,
+                'brand'                  => $li->brand,
+                'model'                  => $li->model,
+                'condition_grade'        => $li->condition_grade,
+                'qty'                    => $li->qty,
+                'unit_price_local'       => $li->unit_price_local,
+                'unit_price_usd'         => $li->unit_price_local, // kept for template compatibility
+                'discount_amount_local'  => $li->discount_amount_local,
+                'discount_amount_usd'    => $li->discount_amount_local, // kept for template compatibility
+                'discount_type'          => $li->discount_type,
+                'discount_value'         => $li->discount_value,
+                'created_at'             => now(),
+                'updated_at'             => now(),
             ]);
         }
 
@@ -492,72 +602,78 @@ class InvoiceController extends Controller
         ]);
 
         $saleLocation = $request->location;
-        $currency     = self::currencyForLocation($saleLocation);
+        $currencyCode = self::currencyForLocation($saleLocation)['code'];
+        $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($saleLocation);
 
-        $lineItems = collect($request->items)->map(function ($item) use ($currency) {
-            $localPrice = (float) $item['price'];
-            $usdPrice   = $localPrice / $currency['rate'];
-            $qty        = (int) $item['qty'];
-            $lineGrossUsd = $usdPrice * $qty;
+        // ── Prices entered here are FIXED local-currency values now —
+        // no division by a rate, no USD conversion at storage time.
+        $lineItems = collect($request->items)->map(function ($item) {
+            $priceLocal     = (float) $item['price'];
+            $qty            = (int) $item['qty'];
+            $lineGrossLocal = $priceLocal * $qty;
 
             $discType  = $item['discount_type'] ?? 'fixed';
             $discValue = (float) ($item['discount_value'] ?? 0);
-            $discUsd = 0;
+            $discLocal = 0;
             if ($discValue > 0) {
-                $discUsd = $discType === 'percent'
-                    ? $lineGrossUsd * ($discValue / 100)
-                    : min($discValue / $currency['rate'], $lineGrossUsd);
+                $discLocal = $discType === 'percent'
+                    ? $lineGrossLocal * ($discValue / 100)
+                    : min($discValue, $lineGrossLocal);
             }
-            $lineUsd = $lineGrossUsd - $discUsd;
+            $lineLocal = $lineGrossLocal - $discLocal;
 
             $part = !empty($item['part_id'])
                 ? DB::table('parts_inventory')->find($item['part_id'])
                 : null;
             return (object)[
-                'part_name'           => $item['name'],
-                'part_code'           => $part->part_code ?? 'MANUAL',
-                'brand'               => $part->brand ?? '',
-                'model'               => $part->model ?? '',
-                'year_from'           => $part->year_from ?? '',
-                'year_to'             => $part->year_to ?? '',
-                'part_category'       => $part->part_category ?? '',
-                'condition_grade'     => $part->condition_grade ?? ($item['grade'] ?? 'B'),
-                'engine_code_oem'     => $part->engine_code_oem ?? '',
-                'qty'                 => $qty,
-                'unit_price_usd'      => $usdPrice,
-                'unit_price_fmt'      => self::formatPrice($usdPrice, $currency),
-                'discount_type'       => $discValue > 0 ? $discType : null,
-                'discount_value'      => $discValue > 0 ? $discValue : null,
-                'discount_amount_usd' => $discUsd,
-                'total_fmt'           => self::formatPrice($lineUsd, $currency),
-                'line_usd'            => $lineUsd,
+                'part_name'             => $item['name'],
+                'part_code'             => $part->part_code ?? 'MANUAL',
+                'brand'                 => $part->brand ?? '',
+                'model'                 => $part->model ?? '',
+                'year_from'             => $part->year_from ?? '',
+                'year_to'               => $part->year_to ?? '',
+                'part_category'         => $part->part_category ?? '',
+                'condition_grade'       => $part->condition_grade ?? ($item['grade'] ?? 'B'),
+                'engine_code_oem'       => $part->engine_code_oem ?? '',
+                'qty'                   => $qty,
+                'unit_price_local'      => $priceLocal,
+                'unit_price_fmt'        => self::formatLocal($priceLocal, $currencyCode),
+                'discount_type'         => $discValue > 0 ? $discType : null,
+                'discount_value'        => $discValue > 0 ? $discValue : null,
+                'discount_amount_local' => $discLocal,
+                'total_fmt'             => self::formatLocal($lineLocal, $currencyCode),
+                'line_local'            => $lineLocal,
             ];
         });
 
-        $subtotalAfterLineDiscounts = $lineItems->sum('line_usd');
+        $subtotalAfterLineDiscounts = $lineItems->sum('line_local');
 
         $invoiceDiscType  = $request->invoice_discount_type ?? 'fixed';
         $invoiceDiscValue = (float) ($request->invoice_discount_value ?? 0);
-        $invoiceDiscUsd = 0;
+        $invoiceDiscLocal = 0;
         if ($invoiceDiscValue > 0) {
-            $invoiceDiscUsd = $invoiceDiscType === 'percent'
+            $invoiceDiscLocal = $invoiceDiscType === 'percent'
                 ? $subtotalAfterLineDiscounts * ($invoiceDiscValue / 100)
-                : min($invoiceDiscValue / $currency['rate'], $subtotalAfterLineDiscounts);
+                : min($invoiceDiscValue, $subtotalAfterLineDiscounts);
         }
 
-        $subtotalUsd = $subtotalAfterLineDiscounts - $invoiceDiscUsd;
-        $subtotalFmt = self::formatPrice($subtotalUsd, $currency);
+        $subtotalLocal = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
+        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
 
         // ── Discount cap check (server-side, authoritative) ──────────
+        // NOTE: discount caps were previously stored/compared in USD.
+        // Now compared directly against the LOCAL currency amount.
+        // If your discount_cap_fixed values were set assuming USD,
+        // they'll need updating per-location — flag this for review.
         $currentStaffForCap = DB::table('staff')->where('id', Session::get('staff_id'))->first();
-        $totalDiscountUsd = $lineItems->sum('discount_amount_usd') + $invoiceDiscUsd;
-        $grossUsd = $subtotalAfterLineDiscounts + $lineItems->sum('discount_amount_usd');
-        $discountPercentOfGross = $grossUsd > 0 ? ($totalDiscountUsd / $grossUsd) * 100 : 0;
+        $totalDiscountLocal = $lineItems->sum('discount_amount_local') + $invoiceDiscLocal;
+        $grossLocal = $subtotalAfterLineDiscounts + $lineItems->sum('discount_amount_local');
+        $discountPercentOfGross = $grossLocal > 0 ? ($totalDiscountLocal / $grossLocal) * 100 : 0;
 
         $exceedsCap = false;
         if ($currentStaffForCap) {
-            if ($currentStaffForCap->discount_cap_fixed !== null && $totalDiscountUsd > $currentStaffForCap->discount_cap_fixed) {
+            if ($currentStaffForCap->discount_cap_fixed !== null && $totalDiscountLocal > $currentStaffForCap->discount_cap_fixed) {
                 $exceedsCap = true;
             }
             if ($currentStaffForCap->discount_cap_percent !== null && $discountPercentOfGross > $currentStaffForCap->discount_cap_percent) {
@@ -582,6 +698,7 @@ class InvoiceController extends Controller
         $createdAt     = now();
         $paymentMethod = $request->payment_method ?? 'Cash';
         $copyKey       = 'customer';
+        $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real $ conversion
 
         // ── Persist invoice + items ──────────────────────────────
         $invoiceId = DB::table('invoices')->insertGetId([
@@ -591,9 +708,11 @@ class InvoiceController extends Controller
             'customer_email'            => $customerInfo->email,
             'customer_address'          => $customerInfo->address,
             'location'                  => $saleLocation,
-            'currency_code'             => $currency['code'],
-            'subtotal_usd'              => $subtotalUsd,
-            'discount_amount_usd'       => $totalDiscountUsd,
+            'currency_code'             => $currencyCode,
+            'subtotal_local'            => $subtotalLocal,
+            'subtotal_usd'              => $subtotalLocal, // kept for template compatibility
+            'discount_amount_local'     => $totalDiscountLocal,
+            'discount_amount_usd'       => $totalDiscountLocal, // kept for template compatibility
             'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
             'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
             'discount_override'         => $exceedsCap,
@@ -607,23 +726,33 @@ class InvoiceController extends Controller
 
         foreach ($lineItems as $li) {
             DB::table('invoice_items')->insert([
-                'invoice_id'           => $invoiceId,
-                'part_id'              => null,
-                'part_name'            => $li->part_name,
-                'part_code'            => $li->part_code,
-                'brand'                => $li->brand,
-                'model'                => $li->model,
-                'condition_grade'      => $li->condition_grade,
-                'qty'                  => $li->qty,
-                'unit_price_usd'       => $li->unit_price_usd,
-                'discount_amount_usd'  => $li->discount_amount_usd,
-                'discount_type'        => $li->discount_type,
-                'discount_value'       => $li->discount_value,
-                'created_at'           => $createdAt,
-                'updated_at'           => $createdAt,
+                'invoice_id'             => $invoiceId,
+                'part_id'                => null,
+                'part_name'              => $li->part_name,
+                'part_code'              => $li->part_code,
+                'brand'                  => $li->brand,
+                'model'                  => $li->model,
+                'condition_grade'        => $li->condition_grade,
+                'qty'                    => $li->qty,
+                'unit_price_local'       => $li->unit_price_local,
+                'unit_price_usd'         => $li->unit_price_local, // kept for template compatibility
+                'discount_amount_local'  => $li->discount_amount_local,
+                'discount_amount_usd'    => $li->discount_amount_local, // kept for template compatibility
+                'discount_type'          => $li->discount_type,
+                'discount_value'         => $li->discount_value,
+                'created_at'             => $createdAt,
+                'updated_at'             => $createdAt,
             ]);
         }
         // ──────────────────────────────────────────────────────────
+
+        // ── Commission — if the staff who created this invoice is a
+        // sales_rep, credit them with commission on the net sale.
+        // Uses their volume tiers if set, else a flat base %. Computed
+        // once at sale time; Phase B returns will insert a NEGATIVE
+        // adjustment row referencing this invoice rather than editing
+        // this entry, so the ledger stays auditable.
+        $this->creditCommissionIfApplicable($invoiceId, $subtotalUsd, $currency['code']);
 
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
@@ -656,11 +785,13 @@ class InvoiceController extends Controller
             ->where('invoice_id', $id)
             ->get();
 
-        $currency     = self::currencyForLocation($invoice->location);
+        $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
+        $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($invoice->location);
 
-        $lineItems = $items->map(function ($item) use ($currency) {
-            $lineUsd = $item->unit_price_usd * $item->qty;
+        $lineItems = $items->map(function ($item) use ($currencyCode) {
+            $priceLocal = $item->unit_price_local ?? $item->unit_price_usd; // fallback for pre-migration rows
+            $lineLocal  = $priceLocal * $item->qty;
             return (object)[
                 'part_name'       => $item->part_name,
                 'part_code'       => $item->part_code,
@@ -671,9 +802,9 @@ class InvoiceController extends Controller
                 'condition_grade' => $item->condition_grade,
                 'engine_code_oem' => '',
                 'qty'             => $item->qty,
-                'unit_price_usd'  => $item->unit_price_usd,
-                'unit_price_fmt'  => self::formatPrice($item->unit_price_usd, $currency),
-                'total_fmt'       => self::formatPrice($lineUsd, $currency),
+                'unit_price_usd'  => $priceLocal, // kept for template compatibility
+                'unit_price_fmt'  => self::formatLocal($priceLocal, $currencyCode),
+                'total_fmt'       => self::formatLocal($lineLocal, $currencyCode),
             ];
         });
 
@@ -690,8 +821,9 @@ class InvoiceController extends Controller
         $paymentMethod = $invoice->payment_method;
         $copyKey       = 'customer';
         $invoiceNo     = $invoice->invoice_no;
-        $subtotalUsd   = $invoice->subtotal_usd;
-        $subtotalFmt   = self::formatPrice($subtotalUsd, $currency);
+        $subtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
+        $subtotalUsd   = $subtotalLocal; // kept for template compatibility
+        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
 
         return view('admin.invoices.show', compact(
             'invoice', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',

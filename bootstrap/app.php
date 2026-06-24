@@ -12,8 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'admin.auth' => \App\Http\Middleware\AdminAuth::class,
-        ]);
+    'admin.auth'      => \App\Http\Middleware\AdminAuth::class,
+    'stocking-clerk'  => \App\Http\Middleware\RestrictStockingClerk::class,
+]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
