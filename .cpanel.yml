@@ -2,4 +2,4 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/autodlrn/public_html
     - /bin/rsync -a --delete --exclude='.env' --exclude='vendor' --exclude='/storage' --exclude='.git' ./ $DEPLOYPATH
-    - chmod 755 $DEPLOYPATH
+    - chmod 750 $DEPLOYPATH
