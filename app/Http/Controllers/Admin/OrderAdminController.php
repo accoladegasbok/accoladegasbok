@@ -4,8 +4,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OrderReceiptMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
 
 class OrderAdminController extends Controller
@@ -64,6 +66,63 @@ class OrderAdminController extends Controller
             ->get();
 
         return view('admin.orders.show', compact('order', 'items'));
+    }
+
+    // =========================================================
+    // GET /admin/orders/{id}/print — ADMIN-ONLY quadruplicate print
+    // layout (Customer / Office / Accounts / Store Room copies),
+    // matching the existing invoice print system. The public
+    // single-copy receipt (receiptPublic below) stays separate and
+    // is the only one ever sent to customers via email/WhatsApp.
+    // =========================================================
+    public function printAdmin(int $id)
+    {
+        $order = DB::table('orders')->where('id', $id)->first();
+        if (!$order) abort(404);
+
+        $items = DB::table('order_items')->where('order_id', $id)->get();
+
+        return view('admin.orders.print', compact('order', 'items'));
+    }
+
+    // =========================================================
+    // GET /receipt/{order_ref} — PUBLIC printable receipt.
+    // No login required — this is the link sent via email/WhatsApp.
+    // Looked up by order_ref (not numeric id) so it's not trivially
+    // guessable by incrementing a number in the URL.
+    // =========================================================
+    public function receiptPublic(string $orderRef)
+    {
+        $order = DB::table('orders')->where('order_ref', $orderRef)->first();
+        if (!$order) abort(404, 'Receipt not found.');
+
+        $items = DB::table('order_items')->where('order_id', $order->id)->get();
+
+        return view('orders.receipt', compact('order', 'items'));
+    }
+
+    // =========================================================
+    // POST /admin/orders/{id}/email-receipt
+    // =========================================================
+    public function emailReceipt(Request $request, int $id)
+    {
+        $order = DB::table('orders')->where('id', $id)->first();
+        if (!$order) return response()->json(['success' => false, 'error' => 'Order not found.'], 404);
+
+        if (!$order->customer_email) {
+            return response()->json(['success' => false, 'error' => 'This customer has no email address on file.'], 422);
+        }
+
+        $items      = DB::table('order_items')->where('order_id', $id)->get();
+        $receiptUrl = route('orders.receipt.public', $order->order_ref);
+
+        try {
+            Mail::to($order->customer_email)->send(new OrderReceiptMail($order, $items, $receiptUrl));
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'error' => 'Could not send email: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'message' => "Receipt emailed to {$order->customer_email}."]);
     }
 
     // =========================================================

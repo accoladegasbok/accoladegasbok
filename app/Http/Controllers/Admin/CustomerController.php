@@ -18,6 +18,67 @@ class CustomerController extends Controller
     }
 
     // =========================================================
+    // AJAX: GET /admin/customers/lookup?q=...
+    // Used by the manual invoice form — search existing customers by
+    // phone fragment or name, so staff can pull real history instead
+    // of re-typing "Walk-in Customer" every time.
+    // =========================================================
+    public function lookup(Request $request)
+    {
+        $q = trim($request->get('q', ''));
+        if ($q === '' || strlen($q) < 2) {
+            return response()->json(['customers' => []]);
+        }
+
+        $qDigits = preg_replace('/\D/', '', $q);
+
+        $orderRows = DB::table('orders')
+            ->select('customer_name', 'customer_phone', 'customer_email', 'total_amount_usd', 'created_at')
+            ->get()
+            ->map(fn($r) => (object)[
+                'name' => $r->customer_name, 'phone' => $r->customer_phone,
+                'email' => $r->customer_email, 'address' => null,
+                'amount' => $r->total_amount_usd, 'date' => $r->created_at,
+            ]);
+
+        $invoiceRows = DB::table('invoices')
+            ->select('customer_name', 'customer_phone', 'customer_email', 'customer_address', 'subtotal_usd', 'created_at')
+            ->get()
+            ->map(fn($r) => (object)[
+                'name' => $r->customer_name, 'phone' => $r->customer_phone,
+                'email' => $r->customer_email, 'address' => $r->customer_address ?? null,
+                'amount' => $r->subtotal_usd, 'date' => $r->created_at,
+            ]);
+
+        $all = $orderRows->concat($invoiceRows);
+
+        $matches = $all->filter(function ($r) use ($q, $qDigits) {
+            $nameMatch  = $r->name && str_contains(strtolower($r->name), strtolower($q));
+            $phoneMatch = $qDigits !== '' && str_contains($this->normalizePhone($r->phone), $qDigits);
+            return $nameMatch || $phoneMatch;
+        });
+
+        $customers = $matches->groupBy(fn($r) => $this->normalizePhone($r->phone))
+            ->filter(fn($g, $phone) => $phone !== '')
+            ->map(function ($group, $phone) {
+                $latest = $group->sortByDesc('date')->first();
+                return [
+                    'phone'       => $phone,
+                    'name'        => $latest->name,
+                    'email'       => $group->pluck('email')->filter()->first(),
+                    'address'     => $group->pluck('address')->filter()->first(),
+                    'total_spent' => $group->sum('amount'),
+                    'order_count' => $group->count(),
+                ];
+            })
+            ->sortByDesc('total_spent')
+            ->take(10)
+            ->values();
+
+        return response()->json(['customers' => $customers]);
+    }
+
+    // =========================================================
     // GET /admin/customers — searchable list, auto-aggregated
     // from orders + invoices, grouped by normalized phone
     // =========================================================

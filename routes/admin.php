@@ -57,16 +57,22 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Orders
         Route::prefix('orders')->name('orders.')->group(function () {
+            Route::get('/place/create',          [\App\Http\Controllers\Admin\AdminOrderController::class, 'create'])->name('place.create');
+            Route::get('/place/search-parts',    [\App\Http\Controllers\Admin\AdminOrderController::class, 'searchParts'])->name('place.search-parts');
+            Route::post('/place',                [\App\Http\Controllers\Admin\AdminOrderController::class, 'store'])->name('place.store');
             Route::get('/',                      [OrderAdminController::class, 'index'])->name('index');
             Route::get('/{id}',                  [OrderAdminController::class, 'show'])->name('show');
+            Route::get('/{id}/print',             [OrderAdminController::class, 'printAdmin'])->name('print');
             Route::post('/{id}/confirm-payment', [OrderAdminController::class, 'confirmPayment'])->name('confirm-payment');
             Route::post('/{id}/cancel',          [OrderAdminController::class, 'cancel'])->name('cancel');
             Route::post('/{id}/status',          [OrderAdminController::class, 'updateStatus'])->name('status');
+            Route::post('/{id}/email-receipt',   [OrderAdminController::class, 'emailReceipt'])->name('email-receipt');
         });
 
         // Customers (auto-aggregated from orders + invoices)
         Route::prefix('customers')->name('customers.')->group(function () {
             Route::get('/',        [CustomerController::class, 'index'])->name('index');
+            Route::get('/lookup',  [CustomerController::class, 'lookup'])->name('lookup');
             Route::get('/{phone}', [CustomerController::class, 'show'])->name('show');
         });
         // Inventory audit sessions
@@ -134,6 +140,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/manual/{id}/edit', [InvoiceController::class, 'editManual'])->name('manual.edit');
             Route::put('/manual/{id}', [InvoiceController::class, 'updateManual'])->name('manual.update');
             Route::get('/order/{id}', [InvoiceController::class, 'show'])->name('show');
+
+            // Quick Receipt — services/labor/misc, never touches inventory
+            Route::get('/service/create', [InvoiceController::class, 'createService'])->name('service.create');
+            Route::post('/service', [InvoiceController::class, 'storeService'])->name('service.store');
+        });
+
+        // Service rate catalog (fixed-price labor/misc items)
+        Route::prefix('service-rates')->name('service-rates.')->group(function () {
+            Route::get('/',          [\App\Http\Controllers\Admin\ServiceRateController::class, 'index'])->name('index');
+            Route::post('/',         [\App\Http\Controllers\Admin\ServiceRateController::class, 'store'])->name('store');
+            Route::put('/{id}',      [\App\Http\Controllers\Admin\ServiceRateController::class, 'update'])->name('update');
+            Route::delete('/{id}',   [\App\Http\Controllers\Admin\ServiceRateController::class, 'destroy'])->name('destroy');
         });
     }); // end admin.auth middleware
 

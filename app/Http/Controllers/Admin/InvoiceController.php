@@ -608,7 +608,7 @@ class InvoiceController extends Controller
 
         // ── Prices entered here are FIXED local-currency values now —
         // no division by a rate, no USD conversion at storage time.
-        $lineItems = collect($request->items)->map(function ($item) {
+        $lineItems = collect($request->items)->map(function ($item) use ($currencyCode) {
             $priceLocal     = (float) $item['price'];
             $qty            = (int) $item['qty'];
             $lineGrossLocal = $priceLocal * $qty;
@@ -627,6 +627,7 @@ class InvoiceController extends Controller
                 ? DB::table('parts_inventory')->find($item['part_id'])
                 : null;
             return (object)[
+                'part_id'               => $part->id ?? null,
                 'part_name'             => $item['name'],
                 'part_code'             => $part->part_code ?? 'MANUAL',
                 'brand'                 => $part->brand ?? '',
@@ -685,6 +686,38 @@ class InvoiceController extends Controller
             return back()->withInput()->with('error',
                 'This discount exceeds your allowance cap. Please provide an override reason and resubmit.');
         }
+
+        // ── STOCK ENFORCEMENT — never sell more than what's physically
+        // available. Checked again here (authoritative, server-side)
+        // even though the form should already prevent this client-side.
+        // This is the line that actually protects inventory from theft/
+        // loss via under-reported or inflated sales.
+        $stockErrors = [];
+        foreach ($request->items as $item) {
+            if (empty($item['part_id'])) continue; // manually-typed item, not tied to real stock
+
+            $part = DB::table('parts_inventory')->where('id', $item['part_id'])->first();
+            $qty  = (int) ($item['qty'] ?? 1);
+
+            if (!$part) {
+                $stockErrors[] = "Part for \"{$item['name']}\" no longer exists in inventory.";
+                continue;
+            }
+            if ($part->status !== 'Available') {
+                $stockErrors[] = "{$part->part_code} ({$part->part_name}) is no longer Available (current status: {$part->status}).";
+                continue;
+            }
+            if ($qty > $part->stock_qty) {
+                $stockErrors[] = "{$part->part_code} ({$part->part_name}): requested {$qty}, but only {$part->stock_qty} in stock.";
+            }
+        }
+
+        if (!empty($stockErrors)) {
+            return back()->withInput()->with('error',
+                'Cannot complete this sale — stock check failed: ' . implode(' | ', $stockErrors));
+        }
+        // ──────────────────────────────────────────────────────────────
+
         $invoiceNo   = 'AZP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
 
         $customerInfo = (object)[
@@ -700,51 +733,79 @@ class InvoiceController extends Controller
         $copyKey       = 'customer';
         $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real $ conversion
 
-        // ── Persist invoice + items ──────────────────────────────
-        $invoiceId = DB::table('invoices')->insertGetId([
-            'invoice_no'                => $invoiceNo,
-            'customer_name'             => $customerInfo->name,
-            'customer_phone'            => $customerInfo->phone,
-            'customer_email'            => $customerInfo->email,
-            'customer_address'          => $customerInfo->address,
-            'location'                  => $saleLocation,
-            'currency_code'             => $currencyCode,
-            'subtotal_local'            => $subtotalLocal,
-            'subtotal_usd'              => $subtotalLocal, // kept for template compatibility
-            'discount_amount_local'     => $totalDiscountLocal,
-            'discount_amount_usd'       => $totalDiscountLocal, // kept for template compatibility
-            'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
-            'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
-            'discount_override'         => $exceedsCap,
-            'discount_override_reason'  => $exceedsCap ? $request->discount_override_reason : null,
-            'payment_method'            => $paymentMethod,
-            'created_by'                => Session::get('staff_name') ?? 'Admin',
-            'notes'                     => $request->notes ?? null,
-            'created_at'                => $createdAt,
-            'updated_at'                => $createdAt,
-        ]);
-
-        foreach ($lineItems as $li) {
-            DB::table('invoice_items')->insert([
-                'invoice_id'             => $invoiceId,
-                'part_id'                => null,
-                'part_name'              => $li->part_name,
-                'part_code'              => $li->part_code,
-                'brand'                  => $li->brand,
-                'model'                  => $li->model,
-                'condition_grade'        => $li->condition_grade,
-                'qty'                    => $li->qty,
-                'unit_price_local'       => $li->unit_price_local,
-                'unit_price_usd'         => $li->unit_price_local, // kept for template compatibility
-                'discount_amount_local'  => $li->discount_amount_local,
-                'discount_amount_usd'    => $li->discount_amount_local, // kept for template compatibility
-                'discount_type'          => $li->discount_type,
-                'discount_value'         => $li->discount_value,
-                'created_at'             => $createdAt,
-                'updated_at'             => $createdAt,
+        // ── Persist invoice + items + stock deduction — all in one
+        // transaction so a failure partway through never leaves stock
+        // decremented without a matching invoice, or vice versa.
+        DB::beginTransaction();
+        try {
+            $invoiceId = DB::table('invoices')->insertGetId([
+                'invoice_no'                => $invoiceNo,
+                'invoice_type'              => 'parts',
+                'customer_name'             => $customerInfo->name,
+                'customer_phone'            => $customerInfo->phone,
+                'customer_email'            => $customerInfo->email,
+                'customer_address'          => $customerInfo->address,
+                'location'                  => $saleLocation,
+                'currency_code'             => $currencyCode,
+                'subtotal_local'            => $subtotalLocal,
+                'subtotal_usd'              => $subtotalLocal, // kept for template compatibility
+                'discount_amount_local'     => $totalDiscountLocal,
+                'discount_amount_usd'       => $totalDiscountLocal, // kept for template compatibility
+                'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
+                'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
+                'discount_override'         => $exceedsCap,
+                'discount_override_reason'  => $exceedsCap ? $request->discount_override_reason : null,
+                'payment_method'            => $paymentMethod,
+                'created_by'                => Session::get('staff_name') ?? 'Admin',
+                'notes'                     => $request->notes ?? null,
+                'created_at'                => $createdAt,
+                'updated_at'                => $createdAt,
             ]);
+
+            foreach ($lineItems as $li) {
+                DB::table('invoice_items')->insert([
+                    'invoice_id'             => $invoiceId,
+                    'part_id'                => $li->part_id,
+                    'part_name'              => $li->part_name,
+                    'part_code'              => $li->part_code,
+                    'brand'                  => $li->brand,
+                    'model'                  => $li->model,
+                    'condition_grade'        => $li->condition_grade,
+                    'qty'                    => $li->qty,
+                    'unit_price_local'       => $li->unit_price_local,
+                    'unit_price_usd'         => $li->unit_price_local, // kept for template compatibility
+                    'discount_amount_local'  => $li->discount_amount_local,
+                    'discount_amount_usd'    => $li->discount_amount_local, // kept for template compatibility
+                    'discount_type'          => $li->discount_type,
+                    'discount_value'         => $li->discount_value,
+                    'created_at'             => $createdAt,
+                    'updated_at'             => $createdAt,
+                ]);
+
+                // ── Deduct stock for real inventory items only. Re-checks
+                // availability one more time inside the transaction (in
+                // case two staff sold the same last unit simultaneously)
+                // and aborts the whole sale if it's no longer sufficient.
+                if ($li->part_id) {
+                    $part = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
+                    if (!$part || $part->stock_qty < $li->qty) {
+                        throw new \Exception("Stock for {$li->part_code} changed before this sale completed — only " . ($part->stock_qty ?? 0) . " left. Please review and resubmit.");
+                    }
+                    $newQty = $part->stock_qty - $li->qty;
+                    DB::table('parts_inventory')->where('id', $li->part_id)->update([
+                        'stock_qty'  => $newQty,
+                        'status'     => $newQty <= 0 ? 'Sold' : 'Available',
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+            // ──────────────────────────────────────────────────────────
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withInput()->with('error', 'Sale could not be completed: ' . $e->getMessage());
         }
-        // ──────────────────────────────────────────────────────────
 
         // ── Commission — if the staff who created this invoice is a
         // sales_rep, credit them with commission on the net sale.
@@ -762,13 +823,197 @@ class InvoiceController extends Controller
     }
 
     // =========================================================
+    // GET /admin/invoices/service/create — Quick Receipt for services
+    // (labor, diagnostic fees, misc charges) — NEVER touches inventory.
+    // =========================================================
+    public function createService()
+    {
+        $serviceRates = DB::table('service_rates')->where('is_active', true)
+            ->orderBy('category')->orderBy('name')->get();
+
+        $locations = [
+            'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
+            'Kennedale TX'     => 'Kennedale TX — USD ($)',
+            'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
+            'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
+            'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
+            'Oshodi Lagos'     => 'Oshodi Lagos, Nigeria — NGN (₦)',
+            'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
+        ];
+
+        return view('admin.invoices.service', compact('serviceRates', 'locations'));
+    }
+
+    // =========================================================
+    // POST /admin/invoices/service — store a service/misc receipt.
+    // No part_id ever involved, no inventory touched at all — this is
+    // the whole point: labor/service charges can't be mistaken for or
+    // used to disguise a parts sale.
+    // =========================================================
+    public function storeService(Request $request)
+    {
+        $request->validate([
+            'customer_name'    => 'required|string|max:120',
+            'location'         => 'required|string',
+            'items'            => 'required|array|min:1',
+            'items.*.name'     => 'required|string',
+            'items.*.price'    => 'required|numeric|min:0',
+            'items.*.qty'      => 'required|integer|min:1',
+        ]);
+
+        $saleLocation = $request->location;
+        $currencyCode = self::currencyForLocation($saleLocation)['code'];
+        $currency     = self::currencyMeta($currencyCode);
+        $businessInfo = $this->getBusinessInfo($saleLocation);
+
+        $lineItems = collect($request->items)->map(function ($item) use ($currencyCode) {
+            $priceLocal = (float) $item['price'];
+            $qty        = (int) $item['qty'];
+            $lineLocal  = $priceLocal * $qty;
+
+            return (object)[
+                'part_id'          => null, // services never link to inventory
+                'part_name'        => $item['name'],
+                'part_code'        => 'SERVICE',
+                'brand'            => '',
+                'model'            => '',
+                'condition_grade'  => 'N/A',
+                'qty'              => $qty,
+                'unit_price_local' => $priceLocal,
+                'unit_price_fmt'   => self::formatLocal($priceLocal, $currencyCode),
+                'total_fmt'        => self::formatLocal($lineLocal, $currencyCode),
+                'line_local'       => $lineLocal,
+            ];
+        });
+
+        $subtotalLocal = $lineItems->sum('line_local');
+        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
+        $invoiceNo     = 'SVC-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+
+        $customerInfo = (object)[
+            'name'    => $request->customer_name,
+            'phone'   => $request->customer_phone ?? '',
+            'email'   => $request->customer_email ?? '',
+            'address' => $request->customer_address ?? '',
+        ];
+
+        $createdAt     = now();
+        $paymentMethod = $request->payment_method ?? 'Cash';
+        $copyKey       = 'customer';
+        $subtotalUsd   = $subtotalLocal; // kept for template compatibility
+
+        $invoiceId = DB::table('invoices')->insertGetId([
+            'invoice_no'        => $invoiceNo,
+            'invoice_type'      => 'service',
+            'customer_name'     => $customerInfo->name,
+            'customer_phone'    => $customerInfo->phone,
+            'customer_email'    => $customerInfo->email,
+            'customer_address'  => $customerInfo->address,
+            'location'          => $saleLocation,
+            'currency_code'     => $currencyCode,
+            'subtotal_local'    => $subtotalLocal,
+            'subtotal_usd'      => $subtotalLocal, // kept for template compatibility
+            'payment_method'    => $paymentMethod,
+            'created_by'        => Session::get('staff_name') ?? 'Admin',
+            'notes'             => $request->notes ?? null,
+            'created_at'        => $createdAt,
+            'updated_at'        => $createdAt,
+        ]);
+
+        foreach ($lineItems as $li) {
+            DB::table('invoice_items')->insert([
+                'invoice_id'       => $invoiceId,
+                'part_id'          => null,
+                'part_name'        => $li->part_name,
+                'part_code'        => $li->part_code,
+                'brand'            => '',
+                'model'            => '',
+                'condition_grade'  => 'N/A',
+                'qty'              => $li->qty,
+                'unit_price_local' => $li->unit_price_local,
+                'unit_price_usd'   => $li->unit_price_local, // kept for template compatibility
+                'created_at'       => $createdAt,
+                'updated_at'       => $createdAt,
+            ]);
+        }
+
+        $location = $saleLocation;
+
+        return view('admin.invoices.show', compact(
+            'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
+            'invoiceNo', 'businessInfo', 'saleLocation', 'location',
+            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
+        ));
+    }
+
+    // =========================================================
     // GET /admin/invoices — Invoice listing page
     // =========================================================
-    public function index()
+    public function index(Request $request)
     {
-        $invoices = DB::table('invoices')
-            ->orderByDesc('created_at')
-            ->paginate(20);
+        // ── Manual + service invoices (in-store / phone sales) ──────
+        $invoiceRows = DB::table('invoices')
+            ->select('id', 'invoice_no as ref', 'customer_name', 'customer_phone',
+                     'subtotal_local as amount_local', 'currency_code', 'location',
+                     'invoice_type', 'payment_method', 'created_by', 'created_at')
+            ->get()
+            ->map(fn($r) => (object)[
+                'id'            => $r->id,
+                'ref'           => $r->ref,
+                'customer_name' => $r->customer_name,
+                'customer_phone'=> $r->customer_phone,
+                'amount_local'  => $r->amount_local,
+                'currency_code' => $r->currency_code,
+                'location'      => $r->location,
+                'channel'       => 'In-Store',
+                'type'          => $r->invoice_type ?? 'parts',
+                'payment_method'=> $r->payment_method,
+                'staff'         => $r->created_by,
+                'created_at'    => $r->created_at,
+                'url'           => route('admin.invoices.show.manual', $r->id),
+            ]);
+
+        // ── Orders (online checkout + staff-placed walk-in/phone) —
+        // channel comes from the orders.channel column itself now, so
+        // every sale shows its TRUE origin regardless of which tool
+        // created it. All orders populate here unconditionally.
+        $orderRows = DB::table('orders')
+            ->select('id', 'order_ref as ref', 'customer_name', 'customer_phone',
+                     'total_amount_ngn as amount_local', 'customer_country',
+                     'payment_method', 'channel', 'created_at')
+            ->get()
+            ->map(fn($r) => (object)[
+                'id'            => $r->id,
+                'ref'           => $r->ref,
+                'customer_name' => $r->customer_name,
+                'customer_phone'=> $r->customer_phone,
+                'amount_local'  => $r->amount_local,
+                'currency_code' => 'NGN',
+                'location'      => $r->customer_country,
+                'channel'       => match($r->channel ?? 'online') {
+                    'walk-in' => 'Walk-in',
+                    'phone'   => 'Phone',
+                    default   => 'Online',
+                },
+                'type'          => 'order',
+                'payment_method'=> $r->payment_method,
+                'staff'         => in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Staff' : 'Customer (online)',
+                'created_at'    => $r->created_at,
+                'url'           => route('admin.invoices.show', $r->id),
+            ]);
+
+        $all = $invoiceRows->concat($orderRows)->sortByDesc('created_at')->values();
+
+        // Manual pagination since this is a merged in-memory collection
+        $perPage = 20;
+        $page    = (int) $request->get('page', 1);
+        $total   = $all->count();
+        $items   = $all->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $invoices = new \Illuminate\Pagination\LengthAwarePaginator(
+            $items, $total, $perPage, $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         return view('admin.invoices.index', compact('invoices'));
     }

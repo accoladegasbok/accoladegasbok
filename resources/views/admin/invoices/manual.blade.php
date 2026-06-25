@@ -14,22 +14,30 @@
   <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
     <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-4">Customer Information</h2>
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div class="col-span-2 sm:col-span-1 relative">
+        <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Phone Number <span class="text-gray-400 font-normal">(search existing customers)</span></label>
+        <input type="text" name="customer_phone" id="customerPhoneInput" placeholder="+1 512 000 0000" autocomplete="off"
+          oninput="lookupCustomer(this.value)"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+        <div id="customerSuggestions" class="absolute bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-full hidden max-h-56 overflow-y-auto"></div>
+      </div>
       <div class="col-span-2 sm:col-span-1">
         <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Customer Name *</label>
-        <input type="text" name="customer_name" required placeholder="Full name or company"
-          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
-      </div>
-      <div>
-        <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Phone Number</label>
-        <input type="text" name="customer_phone" placeholder="+1 512 000 0000"
+        <input type="text" name="customer_name" id="customerNameInput" required placeholder="Full name or company"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
       </div>
       <div>
         <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Email (optional)</label>
-        <input type="email" name="customer_email" placeholder="customer@email.com"
+        <input type="email" name="customer_email" id="customerEmailInput" placeholder="customer@email.com"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+      </div>
+      <div class="col-span-2 sm:col-span-3">
+        <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Address (optional)</label>
+        <input type="text" name="customer_address" id="customerAddressInput" placeholder="Street, city, etc."
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
       </div>
     </div>
+    <div id="customerHistoryNote" class="hidden mt-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs font-body text-blue-700"></div>
   </div>
 
   {{-- Sale Details --}}
@@ -141,33 +149,86 @@
 <script>
 const PARTS = {!! json_encode($parts) !!};
 
+// ── Currency is now FIXED per location, matching what we store on
+// each part (price_local / currency_code) — no live FX conversion.
 const CURRENCIES = {
-    'Waxahachie TX': { code: 'USD', symbol: '$',   rate: 1    },
-    'Elkhorn WI':    { code: 'USD', symbol: '$',    rate: 1    },
-    'Ile-Ife Nigeria':{ code: 'NGN', symbol: '₦',  rate: 1600 },
-    'Ibadan Nigeria':{ code: 'NGN', symbol: '₦',   rate: 1600 },
-    'Lagos Nigeria': { code: 'NGN', symbol: '₦',   rate: 1600 },
-    'Accra Ghana':   { code: 'GHS', symbol: 'GH₵', rate: 15.5 },
+    'Waxahachie TX': { code: 'USD', symbol: '$',   },
+    'Elkhorn WI':    { code: 'USD', symbol: '$',    },
+    'Ile-Ife Nigeria':{ code: 'NGN', symbol: '₦',  },
+    'Ibadan Nigeria':{ code: 'NGN', symbol: '₦',   },
+    'Lagos Nigeria': { code: 'NGN', symbol: '₦',   },
+    'Accra Ghana':   { code: 'GHS', symbol: 'GH₵', },
 };
 
 let itemCount = 0;
-let currency  = { code: 'USD', symbol: '$', rate: 1 };
+let currency  = { code: 'USD', symbol: '$' };
 
 function updateCurrency() {
     const loc = document.getElementById('locationSelect').value;
-    currency  = CURRENCIES[loc] || { code: 'USD', symbol: '$', rate: 1 };
+    currency  = CURRENCIES[loc] || { code: 'USD', symbol: '$' };
     document.getElementById('currencyDisplay').textContent = currency.code + ' (' + currency.symbol + ')';
 
-    // Update all existing item row labels, placeholders, steps
     document.querySelectorAll('.price-input').forEach(el => {
         el.placeholder = currency.code === 'NGN' ? '0' : '0.00';
         el.step        = currency.code === 'NGN' ? '1' : '0.01';
     });
-   
 
     updateTotal();
-
 }
+
+// ── Customer lookup ──────────────────────────────────────────────────────
+let customerLookupTimer = null;
+function lookupCustomer(q) {
+    clearTimeout(customerLookupTimer);
+    const box = document.getElementById('customerSuggestions');
+    if (!q || q.length < 2) { box.classList.add('hidden'); return; }
+    customerLookupTimer = setTimeout(() => fetchCustomers(q), 300);
+}
+
+async function fetchCustomers(q) {
+    const box = document.getElementById('customerSuggestions');
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Searching...</div>';
+
+    try {
+        const res = await fetch(`{{ route('admin.customers.lookup') }}?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+
+        if (!data.customers || data.customers.length === 0) {
+            box.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">No matching customer — keep typing to create a new one.</div>';
+            return;
+        }
+
+        box.innerHTML = data.customers.map(c => `
+            <div onclick='selectCustomer(${JSON.stringify(c).replace(/'/g, "&#39;")})'
+                class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100">
+                <div class="font-700 text-navy text-xs">${c.name || 'Unnamed'}</div>
+                <div class="text-xs text-gray-400">${c.phone} · ${c.order_count} order${c.order_count !== 1 ? 's' : ''} · $${Number(c.total_spent).toFixed(2)} lifetime</div>
+            </div>
+        `).join('');
+    } catch (e) {
+        box.innerHTML = '<div class="px-3 py-2 text-xs text-red-500">Search failed.</div>';
+    }
+}
+
+function selectCustomer(c) {
+    document.getElementById('customerPhoneInput').value   = c.phone || '';
+    document.getElementById('customerNameInput').value    = c.name || '';
+    document.getElementById('customerEmailInput').value   = c.email || '';
+    document.getElementById('customerAddressInput').value = c.address || '';
+    document.getElementById('customerSuggestions').classList.add('hidden');
+
+    const note = document.getElementById('customerHistoryNote');
+    note.textContent = `Returning customer — ${c.order_count} previous order${c.order_count !== 1 ? 's' : ''}, $${Number(c.total_spent).toFixed(2)} lifetime spend.`;
+    note.classList.remove('hidden');
+}
+
+document.addEventListener('click', function(e) {
+    const box = document.getElementById('customerSuggestions');
+    if (box && !box.contains(e.target) && e.target.id !== 'customerPhoneInput') {
+        box.classList.add('hidden');
+    }
+});
 
 function addItem() {
     itemCount++;
@@ -293,10 +354,11 @@ function renderSuggestions(i, box, matches) {
         const yearRange = p.year_from && p.year_to
             ? (p.year_from === p.year_to ? p.year_from : `${p.year_from}–${p.year_to}`)
             : '';
-        const localPrice = parseFloat(p.price_usd || 0) * currency.rate;
+        // ── FIXED PRICE — this part's own price_local, no conversion ──
+        const priceLocal = p.price_local ?? p.price_usd; // fallback for pre-migration rows
         const priceFmt = currency.code === 'NGN'
-            ? Math.round(localPrice).toLocaleString()
-            : localPrice.toFixed(2);
+            ? Math.round(priceLocal).toLocaleString()
+            : Number(priceLocal).toFixed(2);
 
         return `
         <div onclick="selectPart(${i}, ${JSON.stringify(p).replace(/"/g, '&quot;')})"
@@ -318,11 +380,13 @@ function selectPart(i, part) {
     document.getElementById('item-name-' + i).value  = part.part_name;
     document.getElementById('item-pid-' + i).value   = part.id;
 
-    // Convert stored USD price to local currency for display
-    const localPrice = parseFloat(part.price_usd || 0) * currency.rate;
+    // ── FIXED PRICE — use this part's own price_local directly, no
+    // conversion. It was set once at harvest/entry time and is already
+    // in the correct currency for this location.
+    const priceLocal = part.price_local ?? part.price_usd;
     document.getElementById('item-price-' + i).value = currency.code === 'NGN'
-        ? Math.round(localPrice)
-        : localPrice.toFixed(2);
+        ? Math.round(priceLocal)
+        : Number(priceLocal).toFixed(2);
 
     document.getElementById('item-grade-' + i).value = part.condition_grade || 'B';
     document.getElementById('suggestions-' + i).classList.add('hidden');
@@ -378,12 +442,12 @@ function updateTotal() {
     const { discounted: total, discountAmt: invoiceDiscountLocal } = applyDiscount(subtotal, invDiscVal, invDiscType);
 
     const totalDiscountLocal = totalLineDiscountLocal + invoiceDiscountLocal;
-    // Convert local-currency discount back to USD for cap comparison (caps are stored in USD)
-    const totalDiscountUsd = currency.code === 'NGN' || currency.code === 'GHS'
-        ? totalDiscountLocal / currency.rate
-        : totalDiscountLocal;
-    const grossUsd = (subtotal + totalLineDiscountLocal + invoiceDiscountLocal) / (currency.code === 'USD' ? 1 : currency.rate);
-    const discountPercentOfGross = grossUsd > 0 ? (totalDiscountUsd / grossUsd) * 100 : 0;
+
+    // ── Discount caps are now compared directly in LOCAL currency —
+    // no conversion to USD. (Caps were historically set assuming USD;
+    // if yours were set that way, review them per-location.)
+    const grossLocal = subtotal + totalLineDiscountLocal + invoiceDiscountLocal;
+    const discountPercentOfGross = grossLocal > 0 ? (totalDiscountLocal / grossLocal) * 100 : 0;
 
     const fmtSubtotal = currency.symbol + (currency.code === 'NGN' ? Math.round(subtotal + totalLineDiscountLocal).toLocaleString() : (subtotal + totalLineDiscountLocal).toFixed(2));
     const fmtTotal = currency.symbol + (currency.code === 'NGN' ? Math.round(total).toLocaleString() : total.toFixed(2));
@@ -391,20 +455,20 @@ function updateTotal() {
     document.getElementById('subtotalDisplay').textContent = fmtSubtotal;
     document.getElementById('totalDisplay').textContent    = fmtTotal;
 
-    checkDiscountCap(totalDiscountUsd, discountPercentOfGross);
+    checkDiscountCap(totalDiscountLocal, discountPercentOfGross);
 }
 
-function checkDiscountCap(discountUsd, discountPercent) {
+function checkDiscountCap(discountLocal, discountPercent) {
     const warningEl = document.getElementById('capWarning');
     const overrideBox = document.getElementById('overrideReasonBox');
 
-    const exceedsFixed   = STAFF_DISCOUNT_CAP_FIXED !== null && discountUsd > STAFF_DISCOUNT_CAP_FIXED;
+    const exceedsFixed   = STAFF_DISCOUNT_CAP_FIXED !== null && discountLocal > STAFF_DISCOUNT_CAP_FIXED;
     const exceedsPercent = STAFF_DISCOUNT_CAP_PERCENT !== null && discountPercent > STAFF_DISCOUNT_CAP_PERCENT;
 
     if (exceedsFixed || exceedsPercent) {
         let msg = 'This discount exceeds your allowance: ';
         const parts = [];
-        if (exceedsFixed)   parts.push(`fixed cap is $${STAFF_DISCOUNT_CAP_FIXED.toFixed(2)} (current: $${discountUsd.toFixed(2)})`);
+        if (exceedsFixed)   parts.push(`fixed cap is ${currency.symbol}${STAFF_DISCOUNT_CAP_FIXED.toFixed(2)} (current: ${currency.symbol}${discountLocal.toFixed(2)})`);
         if (exceedsPercent) parts.push(`percentage cap is ${STAFF_DISCOUNT_CAP_PERCENT}% (current: ${discountPercent.toFixed(1)}%)`);
         warningEl.textContent = msg + parts.join(' and ') + '. Please provide a reason to proceed.';
         warningEl.classList.remove('hidden');

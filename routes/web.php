@@ -8,6 +8,7 @@ require __DIR__.'/admin.php';
 require __DIR__.'/checkout.php';
 require __DIR__.'/ai.php';
 require __DIR__.'/parts_detail.php';
+require __DIR__.'/receipt.php';
 
 // Customer parts search (main page)
 Route::get('/', function () {
