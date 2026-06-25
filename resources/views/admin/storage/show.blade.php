@@ -27,26 +27,38 @@
 {{-- ── Rename room — admin only ───────────────────────────────────── --}}
 @if(session('staff_role') === 'admin')
 <div class="stat-card mb-6">
-  <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-4">Rename Room (Admin Only)</h2>
-  <form method="POST" action="{{ route('admin.storage.update', $room->id) }}" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+  <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-4">Edit Room (Admin Only)</h2>
+  <form method="POST" action="{{ route('admin.storage.update', $room->id) }}" class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
     @csrf @method('PUT')
-    <div class="sm:col-span-1">
+    <div>
       <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Room Name</label>
       <input type="text" name="name" value="{{ old('name', $room->name) }}" required
         class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+    </div>
+    <div>
+      <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Room Code</label>
+      <input type="text" name="code" value="{{ old('code', $room->code) }}" required
+        class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400">
     </div>
     <div class="sm:col-span-2">
       <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
       <input type="text" name="description" value="{{ old('description', $room->description) }}"
         class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
     </div>
-    <div class="sm:col-span-3">
+    <div class="sm:col-span-4 flex items-center justify-between">
       <button type="submit" class="bg-gold text-navy font-display font-700 text-sm px-6 py-2.5 rounded-xl hover:bg-yellow-500 transition-colors">
-        Save Room Name
+        Save Changes
       </button>
+      <form method="POST" action="{{ route('admin.storage.destroy', $room->id) }}"
+            onsubmit="return confirm('Delete this entire room? Only possible if it has zero bins remaining.')">
+        @csrf @method('DELETE')
+        <button type="submit" class="text-xs font-body border border-red-200 text-red-500 hover:bg-red-50 px-4 py-2.5 rounded-xl transition-colors">
+          Delete Room
+        </button>
+      </form>
     </div>
   </form>
-  <p class="text-xs text-gray-400 font-body mt-2">Room code ({{ $room->code }}) cannot be changed — it's baked into every bin code in this room.</p>
+  <p class="text-xs text-gray-400 font-body mt-2">Changing the room code does NOT rename existing bin codes already using the old code — only newly generated bins will use the new code. Deleting a room requires zero bins remaining inside it.</p>
 </div>
 @endif
 

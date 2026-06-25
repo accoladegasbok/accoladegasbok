@@ -77,16 +77,29 @@ class StorageController extends Controller
 
         $request->validate([
             'name'        => 'required|string|max:80',
+            'code'        => 'required|string|max:20',
             'description' => 'nullable|string|max:500',
         ]);
 
+        // Changing the code does NOT retroactively rename existing bin
+        // codes (they already have the old room code baked in) — warn
+        // if there are bins, but still allow it since the admin may be
+        // correcting a typo intentionally.
+        $shelfCount = DB::table('storage_shelves')->where('storage_room_id', $roomId)->count();
+
         DB::table('storage_rooms')->where('id', $roomId)->update([
             'name'        => $request->name,
+            'code'        => $request->code,
             'description' => $request->description,
             'updated_at'  => now(),
         ]);
 
-        return redirect()->route('admin.storage.show', $roomId)->with('success', 'Room renamed.');
+        $msg = 'Room updated.';
+        if ($shelfCount > 0 && $request->code !== $room->code) {
+            $msg .= " Note: {$shelfCount} existing bin code(s) still use the OLD room code ({$room->code}) — they won't be renamed automatically.";
+        }
+
+        return redirect()->route('admin.storage.show', $roomId)->with('success', $msg);
     }
 
     // =========================================================
