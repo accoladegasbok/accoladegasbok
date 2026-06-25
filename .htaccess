@@ -1,15 +1,25 @@
-<?php
+Options -Indexes
+DirectoryIndex index.php
 
-use Illuminate\Foundation\Application;
-use Illuminate\Http\Request;
+<IfModule mod_rewrite.c>
+    RewriteEngine On
 
-define('LARAVEL_START', microtime(true));
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-if (file_exists($maintenance = __DIR__.'/storage/framework/maintenance.php')) {
-    require $maintenance;
-}
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
 
-require __DIR__.'/vendor/autoload.php';
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
 
-(require_once __DIR__.'/bootstrap/app.php')
-    ->handleRequest(Request::capture());
+RewriteRule ^(app|bootstrap|config|database|resources|routes|tests|vendor)(/.*)?$ - [F,L]
+
+<FilesMatch "^\.env|composer\.(json|lock)|package(-lock)?\.json|artisan|phpunit\.xml|webpack\.mix\.js|vite\.config\.js|README\.md$">
+    Require all denied
+</FilesMatch>
+
+RewriteRule ^storage/(?!app/public/) - [F,L]
