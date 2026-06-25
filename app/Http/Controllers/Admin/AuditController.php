@@ -28,7 +28,7 @@ class AuditController extends Controller
     {
         $locations = [
             'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
-            'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Oshodi Lagos', 'Accra Ghana',
+            'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
         ];
         $categories = [
             'Engine','Transmission','Body','Suspension','Electrical',
@@ -105,7 +105,80 @@ class AuditController extends Controller
     }
 
     // =========================================================
+    // POST /admin/audit/{id}/scan — scan-based counting (Phase D3).
+    // Each scan of a part's barcode (= part_code) increments that
+    // item's counted_qty by 1, building the count up physically as
+    // staff walk the shelf with a scanner gun, instead of typing a
+    // final number per item. Uses the same barcode value as the
+    // printable labels (Phase D1) and the POS scanner (Phase D/POS).
+    // =========================================================
+    public function scanCount(Request $request, int $id)
+    {
+        $request->validate(['code' => 'required|string']);
+
+        $session = DB::table('audit_sessions')->where('id', $id)->first();
+        abort_if(!$session, 404);
+
+        $item = DB::table('audit_items')
+            ->where('audit_session_id', $id)
+            ->where('part_code', trim($request->code))
+            ->first();
+
+        if (!$item) {
+            return response()->json([
+                'error' => "Part code \"{$request->code}\" is not in this audit session (wrong location/category, or not expected here).",
+            ], 404);
+        }
+
+        $newCount = ($item->counted_qty ?? 0) + 1;
+        $discrepancy = $newCount - $item->expected_qty;
+
+        DB::table('audit_items')->where('id', $item->id)->update([
+            'counted_qty' => $newCount,
+            'discrepancy' => $discrepancy,
+            'updated_at'  => now(),
+        ]);
+
+        return response()->json([
+            'success'      => true,
+            'item_id'      => $item->id,
+            'part_name'    => $item->part_name,
+            'part_code'    => $item->part_code,
+            'counted_qty'  => $newCount,
+            'expected_qty' => $item->expected_qty,
+            'discrepancy'  => $discrepancy,
+        ]);
+    }
+
+    // =========================================================
+    // POST /admin/audit/{id}/scan-undo — accidental double-scan fix.
+    // Decrements counted_qty by 1 for the given part (never below 0).
+    // =========================================================
+    public function scanUndo(Request $request, int $id)
+    {
+        $request->validate(['item_id' => 'required|integer']);
+
+        $item = DB::table('audit_items')
+            ->where('id', $request->item_id)
+            ->where('audit_session_id', $id)
+            ->first();
+        abort_if(!$item, 404);
+
+        $newCount = max(0, ($item->counted_qty ?? 0) - 1);
+        $discrepancy = $newCount - $item->expected_qty;
+
+        DB::table('audit_items')->where('id', $item->id)->update([
+            'counted_qty' => $newCount,
+            'discrepancy' => $discrepancy,
+            'updated_at'  => now(),
+        ]);
+
+        return response()->json(['success' => true, 'counted_qty' => $newCount, 'discrepancy' => $discrepancy]);
+    }
+
+    // =========================================================
     // POST /admin/audit/{id}/count — submit a count for one item
+    // (manual fallback when scanning isn't practical for an item)
     // =========================================================
     public function recordCount(Request $request, int $id)
     {

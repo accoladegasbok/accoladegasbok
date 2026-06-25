@@ -83,6 +83,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/',                [AuditController::class, 'store'])->name('store');
             Route::get('/{id}',             [AuditController::class, 'show'])->name('show');
             Route::post('/{id}/count',      [AuditController::class, 'recordCount'])->name('count');
+            Route::post('/{id}/scan',       [AuditController::class, 'scanCount'])->name('scan');
+            Route::post('/{id}/scan-undo',  [AuditController::class, 'scanUndo'])->name('scan-undo');
             Route::post('/{id}/complete',   [AuditController::class, 'complete'])->name('complete');
         });
         // Financial reporting
@@ -115,6 +117,17 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/resolve',     [\App\Http\Controllers\Admin\ReturnsController::class, 'resolve'])->name('resolve');
         });
 
+        // Asset / equipment register (not for sale) - separate from parts_inventory
+        Route::prefix('assets')->name('assets.')->group(function () {
+            Route::get('/',           [\App\Http\Controllers\Admin\AssetController::class, 'index'])->name('index');
+            Route::get('/create',     [\App\Http\Controllers\Admin\AssetController::class, 'create'])->name('create');
+            Route::post('/',          [\App\Http\Controllers\Admin\AssetController::class, 'store'])->name('store');
+            Route::get('/{id}',       [\App\Http\Controllers\Admin\AssetController::class, 'show'])->name('show');
+            Route::get('/{id}/edit',  [\App\Http\Controllers\Admin\AssetController::class, 'edit'])->name('edit');
+            Route::put('/{id}',       [\App\Http\Controllers\Admin\AssetController::class, 'update'])->name('update');
+            Route::delete('/{id}',    [\App\Http\Controllers\Admin\AssetController::class, 'destroy'])->name('destroy');
+        });
+
         // POS — supermarket-style scan checkout (Phase D)
         Route::prefix('pos')->name('pos.')->group(function () {
             Route::get('/',          [\App\Http\Controllers\Admin\PosController::class, 'index'])->name('index');
@@ -136,6 +149,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Interchange groups (Phase B3)
         Route::prefix('interchange')->name('interchange.')->group(function () {
+            Route::post('/ai-suggest', [\App\Http\Controllers\Admin\InterchangeAiController::class, 'suggest'])->name('ai-suggest');
             Route::post('/groups',                       [\App\Http\Controllers\Admin\InterchangeController::class, 'createGroup'])->name('groups.create');
             Route::post('/groups/{groupId}/vehicles',    [\App\Http\Controllers\Admin\InterchangeController::class, 'addVehicle'])->name('groups.add-vehicle');
             Route::post('/promote-heuristic',             [\App\Http\Controllers\Admin\InterchangeController::class, 'promoteHeuristic'])->name('promote-heuristic');

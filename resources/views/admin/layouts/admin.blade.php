@@ -124,6 +124,10 @@
           <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pendingReturns }}</span>
         @endif
       </a>
+      <a href="{{ route('admin.assets.index') }}" class="sidebar-link {{ request()->routeIs('admin.assets*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l3 3m0 0l-3 3m3-3h-7.5M6 7.5h3v3H6v-3z"/></svg>
+        Assets & Equipment
+      </a>
       <a href="{{ route('admin.transfers.index') }}" class="sidebar-link {{ request()->routeIs('admin.transfers*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3m4 8l-4-4m0 0l4-4m-4 4h18"/></svg>
         Stock Transfers

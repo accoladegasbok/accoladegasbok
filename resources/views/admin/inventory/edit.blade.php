@@ -289,6 +289,16 @@
       both count toward the same total "in stock" number, since they fit the same range of vehicles.
     </p>
 
+    {{-- AI suggestion button — available regardless of current state --}}
+    <div class="mb-4">
+      <button type="button" onclick="getAiSuggestions()" id="aiSuggestBtn"
+        class="inline-flex items-center gap-2 bg-navy text-white font-display font-700 text-xs px-4 py-2.5 rounded-lg hover:bg-navy-light transition-colors">
+        🤖 Get AI Interchange Suggestions
+      </button>
+      <p class="text-xs text-gray-400 font-body mt-1.5">Asks AI which other makes/models/years likely share this exact part, based on its engine/transmission code. You review and confirm — nothing is added automatically.</p>
+      <div id="aiSuggestResults" class="mt-3 space-y-2"></div>
+    </div>
+
     @if($interchangeGroup)
       {{-- ── Already in a group ─────────────────────────────────────── --}}
       <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
@@ -371,6 +381,78 @@
 <script>
 const CURRENT_ROOM_ID  = {{ $currentRoomId ?? 'null' }};
 const CURRENT_SHELF_ID = {{ $part->storage_shelf_id ?? 'null' }};
+const PART_ID = {{ $part->id }};
+const HAS_GROUP = {{ $interchangeGroup ? 'true' : 'false' }};
+const GROUP_ID = {{ $interchangeGroup->id ?? 'null' }};
+
+async function getAiSuggestions() {
+    const btn = document.getElementById('aiSuggestBtn');
+    const box = document.getElementById('aiSuggestResults');
+    btn.disabled = true;
+    btn.textContent = '🤖 Thinking...';
+    box.innerHTML = '';
+
+    try {
+        const res = await fetch(`{{ route('admin.interchange.ai-suggest') }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ part_id: PART_ID }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            box.innerHTML = `<div class="text-xs text-red-600 font-body">${data.error}</div>`;
+        } else if (!data.suggestions || data.suggestions.length === 0) {
+            box.innerHTML = `<div class="text-xs text-gray-400 font-body">No confident suggestions found for this part.</div>`;
+        } else {
+            box.innerHTML = data.suggestions.map(s => `
+                <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-sm font-700 text-navy">${s.brand} ${s.model} ${s.year_from}${s.year_to !== s.year_from ? '–' + s.year_to : ''}
+                            <span class="text-xs font-body font-500 ml-1 px-2 py-0.5 rounded-full ${s.confidence==='high'?'bg-green-100 text-green-700':s.confidence==='medium'?'bg-amber-100 text-amber-700':'bg-gray-100 text-gray-500'}">${s.confidence}</span>
+                        </div>
+                        <div class="text-xs text-gray-400 font-body mt-0.5">${s.reason}</div>
+                    </div>
+                    <button type="button" onclick='confirmAiSuggestion(${JSON.stringify(s).replace(/'/g,"&#39;")})'
+                        class="text-xs font-body font-700 bg-gold text-navy px-3 py-2 rounded-lg hover:bg-yellow-500 transition-colors whitespace-nowrap">
+                        + Confirm
+                    </button>
+                </div>`).join('');
+        }
+    } catch (e) {
+        box.innerHTML = `<div class="text-xs text-red-600 font-body">Request failed — try again.</div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🤖 Get AI Interchange Suggestions';
+}
+
+async function confirmAiSuggestion(s) {
+    if (HAS_GROUP) {
+        // Add directly to the existing confirmed group
+        const form = new FormData();
+        form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+        form.append('part_id', PART_ID);
+        form.append('make', s.brand);
+        form.append('model', s.model);
+        form.append('year_from', s.year_from);
+        form.append('year_to', s.year_to);
+        await fetch(`/admin/interchange/groups/${GROUP_ID}/add-vehicle`, { method: 'POST', body: form });
+        location.reload();
+    } else {
+        const groupCode = prompt(`No confirmed interchange group exists yet for this part. Enter a group code to create one (e.g. COROLLA-E170-HEADLIGHT-R):`);
+        if (!groupCode) return;
+        const form = new FormData();
+        form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+        form.append('part_id', PART_ID);
+        form.append('group_code', groupCode);
+        const res = await fetch(`{{ route('admin.interchange.groups.create') }}`, { method: 'POST', body: form });
+        if (res.redirected || res.ok) {
+            alert('Group created — now adding the suggested vehicle. Reloading...');
+            location.reload();
+        }
+    }
+}
 
 document.getElementById('locationSelect').addEventListener('change', () => loadStoreRooms());
 document.addEventListener('DOMContentLoaded', () => loadStoreRooms(true));
