@@ -6,12 +6,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
 
 class StorageController extends Controller
 {
     const LOCATIONS = [
         'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
-        'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Oshodi Lagos', 'Accra Ghana',
+        'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
     ];
 
     // =========================================================
@@ -60,6 +61,32 @@ class StorageController extends Controller
 
         return redirect()->route('admin.storage.index')
             ->with('success', "Store room \"{$request->name}\" created.");
+    }
+
+    // =========================================================
+    // PUT /admin/storage/{id} — rename a room. Admin only.
+    // =========================================================
+    public function update(Request $request, int $roomId)
+    {
+        if (Session::get('staff_role') !== 'admin') {
+            return back()->with('error', 'Only an admin can rename a storage room.');
+        }
+
+        $room = DB::table('storage_rooms')->where('id', $roomId)->first();
+        abort_if(!$room, 404);
+
+        $request->validate([
+            'name'        => 'required|string|max:80',
+            'description' => 'nullable|string|max:500',
+        ]);
+
+        DB::table('storage_rooms')->where('id', $roomId)->update([
+            'name'        => $request->name,
+            'description' => $request->description,
+            'updated_at'  => now(),
+        ]);
+
+        return redirect()->route('admin.storage.show', $roomId)->with('success', 'Room renamed.');
     }
 
     // =========================================================
@@ -224,6 +251,16 @@ class StorageController extends Controller
             ->get(['id', 'name', 'code']);
 
         return response()->json(['rooms' => $rooms]);
+    }
+
+    // =========================================================
+    // GET /admin/storage/shelves/{id}/barcode — printable bin label
+    // =========================================================
+    public function shelfBarcode(int $shelfId)
+    {
+        $shelf = DB::table('storage_shelves')->where('id', $shelfId)->first();
+        abort_if(!$shelf, 404);
+        return view('admin.storage.bin-barcode', compact('shelf'));
     }
 
     // =========================================================

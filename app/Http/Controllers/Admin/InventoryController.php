@@ -21,6 +21,8 @@ class InventoryController extends Controller
     'Ile-Ife Nigeria',
     'Ibadan Nigeria',
     'Lagos Nigeria',
+    'Abuja Nigeria',
+    'Akure Nigeria',
     'Accra Ghana',
 ];
 
@@ -94,6 +96,16 @@ class InventoryController extends Controller
     }
 
     // ── Edit form ─────────────────────────────────────────────────
+    // =========================================================
+    // GET /admin/inventory/{id}/barcode — printable barcode label
+    // =========================================================
+    public function barcode(int $id)
+    {
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        abort_if(!$part, 404);
+        return view('admin.inventory.barcode', compact('part'));
+    }
+
     public function edit(int $id)
     {
         $part = DB::table('parts_inventory')->where('id', $id)->first();

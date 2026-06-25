@@ -48,6 +48,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/consumable/create', [InventoryController::class, 'consumableCreate'])->name('consumable.create');
             Route::post('/consumable',       [InventoryController::class, 'consumableStore'])->name('consumable.store');
             Route::post('/',            [InventoryController::class, 'store'])->name('store');
+            Route::get('/{id}/barcode', [InventoryController::class, 'barcode'])->name('barcode');
             Route::get('/{id}/edit',    [InventoryController::class, 'edit'])->name('edit');
             Route::put('/{id}',         [InventoryController::class, 'update'])->name('update');
             Route::post('/{id}/status', [InventoryController::class, 'updateStatus'])->name('status');
@@ -93,11 +94,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/rooms-for-location',         [\App\Http\Controllers\Admin\StorageController::class, 'roomsForLocation'])->name('rooms-for-location');
             Route::get('/shelves-for-room',          [\App\Http\Controllers\Admin\StorageController::class, 'shelvesForRoom'])->name('shelves-for-room');
             Route::post('/',                         [\App\Http\Controllers\Admin\StorageController::class, 'store'])->name('store');
+            Route::put('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'update'])->name('update');
             Route::get('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'show'])->name('show');
             Route::delete('/{id}',                   [\App\Http\Controllers\Admin\StorageController::class, 'destroyRoom'])->name('destroy');
             Route::post('/{id}/shelves',              [\App\Http\Controllers\Admin\StorageController::class, 'addShelf'])->name('shelves.add');
             Route::post('/{id}/shelves/bulk',          [\App\Http\Controllers\Admin\StorageController::class, 'bulkGenerateShelves'])->name('shelves.bulk');
             Route::delete('/shelves/{shelfId}',        [\App\Http\Controllers\Admin\StorageController::class, 'destroyShelf'])->name('shelves.destroy');
+            Route::get('/shelves/{shelfId}/barcode',   [\App\Http\Controllers\Admin\StorageController::class, 'shelfBarcode'])->name('shelves.barcode');
         });
 
         // Returns (Phase B2)
@@ -110,6 +113,25 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/',                 [\App\Http\Controllers\Admin\ReturnsController::class, 'store'])->name('store');
             Route::get('/{id}',              [\App\Http\Controllers\Admin\ReturnsController::class, 'show'])->name('show');
             Route::post('/{id}/resolve',     [\App\Http\Controllers\Admin\ReturnsController::class, 'resolve'])->name('resolve');
+        });
+
+        // POS — supermarket-style scan checkout (Phase D)
+        Route::prefix('pos')->name('pos.')->group(function () {
+            Route::get('/',          [\App\Http\Controllers\Admin\PosController::class, 'index'])->name('index');
+            Route::get('/lookup',    [\App\Http\Controllers\Admin\PosController::class, 'lookup'])->name('lookup');
+            Route::post('/checkout', [\App\Http\Controllers\Admin\PosController::class, 'checkout'])->name('checkout');
+        });
+
+        // Stock transfers between locations (Phase C2)
+        Route::prefix('transfers')->name('transfers.')->group(function () {
+            Route::get('/',                [\App\Http\Controllers\Admin\StockTransferController::class, 'index'])->name('index');
+            Route::get('/create',          [\App\Http\Controllers\Admin\StockTransferController::class, 'create'])->name('create');
+            Route::get('/search-parts',    [\App\Http\Controllers\Admin\StockTransferController::class, 'searchParts'])->name('search-parts');
+            Route::post('/',               [\App\Http\Controllers\Admin\StockTransferController::class, 'store'])->name('store');
+            Route::get('/{id}',            [\App\Http\Controllers\Admin\StockTransferController::class, 'show'])->name('show');
+            Route::get('/{id}/waybill',    [\App\Http\Controllers\Admin\StockTransferController::class, 'waybill'])->name('waybill');
+            Route::post('/{id}/receive',   [\App\Http\Controllers\Admin\StockTransferController::class, 'receive'])->name('receive');
+            Route::post('/{id}/cancel',    [\App\Http\Controllers\Admin\StockTransferController::class, 'cancel'])->name('cancel');
         });
 
         // Interchange groups (Phase B3)

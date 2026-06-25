@@ -216,6 +216,13 @@ $copies = [
 ];
 $createdAt = $order->created_at ?? now();
 $paymentMethod = $order->payment_method ?? 'Cash';
+
+// ── QR code target — links back to wherever this invoice actually
+// lives, whether it's a manual/service invoice row or an order-
+// derived one. Same QR appears on all 4 copies.
+$qrUrl = isset($invoice)
+    ? route('admin.invoices.show.manual', $invoice->id)
+    : (isset($order) ? route('admin.invoices.show', $order->id) : url()->current());
 @endphp
 
 @foreach($copies as $copyKey => $copyInfo)
@@ -247,6 +254,7 @@ $paymentMethod = $order->payment_method ?? 'Cash';
                     <tr><td>Location:</td><td>{{ $location }}</td></tr>
                     <tr><td>Currency:</td><td>{{ $currency['code'] }}</td></tr>
                 </table>
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=60x60&data={{ urlencode($qrUrl) }}" alt="QR" style="margin-top:6px;">
             </div>
         </div>
 

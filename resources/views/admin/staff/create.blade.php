@@ -54,7 +54,7 @@
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Role *</label>
           <select name="role" id="roleSelect" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
             @foreach($roles as $r)
-              <option value="{{ $r }}" {{ old('role')===$r?'selected':'' }}>{{ ucwords(str_replace('_',' ',$r)) }}</option>
+              <option value="{{ $r }}" {{ old('role')===$r?'selected':'' }}>{{ $roleLabels[$r] ?? ucwords(str_replace('_',' ',$r)) }}</option>
             @endforeach
           </select>
           <p class="text-xs text-gray-400 font-body mt-1.5" id="roleHint"></p>

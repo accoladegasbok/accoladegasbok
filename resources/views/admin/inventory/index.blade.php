@@ -130,6 +130,10 @@
                  class="text-xs font-body border border-gray-200 text-gray-500 hover:border-navy hover:text-navy px-3 py-1.5 rounded-lg transition-colors">
                 Edit
               </a>
+              <a href="{{ route('admin.inventory.barcode', $p->id) }}" target="_blank"
+                 class="text-xs font-body border border-gray-200 text-gray-500 hover:border-navy hover:text-navy px-3 py-1.5 rounded-lg transition-colors">
+                🏷 Barcode
+              </a>
               @if(in_array(session('staff_role'), ['admin','manager']))
               <form method="POST" action="{{ route('admin.inventory.destroy', $p->id) }}"
                     onsubmit="return confirm('Delete this part? This cannot be undone.')">

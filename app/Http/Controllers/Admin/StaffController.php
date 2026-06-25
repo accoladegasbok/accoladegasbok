@@ -16,10 +16,23 @@ class StaffController extends Controller
     const LOCATIONS = [
         'All',
         'Waxahachie TX','Elkhorn WI',
-        'Ile-Ife Nigeria','Ibadan Nigeria','Oshodi Lagos','Accra Ghana',
+        'Ile-Ife Nigeria','Ibadan Nigeria','Lagos Nigeria','Abuja Nigeria','Akure Nigeria','Accra Ghana',
     ];
 
     const ROLES = ['admin','manager','supervisor','staff','stocking_clerk','sales_rep','viewer'];
+
+    // Display labels — kept separate from the internal role key so we
+    // can rename what's shown to staff without touching the database
+    // value or any code that checks role === 'sales_rep', etc.
+    const ROLE_LABELS = [
+        'admin'          => 'Admin',
+        'manager'        => 'Manager',
+        'supervisor'     => 'Supervisor',
+        'staff'          => 'Staff',
+        'stocking_clerk' => 'Stocking Clerk',
+        'sales_rep'      => 'Sales Rep/Wholesaler',
+        'viewer'         => 'Viewer',
+    ];
 
     // ── List all staff ────────────────────────────────────────────
     public function index()
@@ -35,15 +48,16 @@ class StaffController extends Controller
             'inactive' => $staff->where('is_active', false)->count(),
         ];
 
-        return view('admin.staff.index', compact('staff','counts'));
+        return view('admin.staff.index', compact('staff','counts') + ['roleLabels' => self::ROLE_LABELS]);
     }
 
     // ── Create form ───────────────────────────────────────────────
     public function create()
     {
         return view('admin.staff.create', [
-            'locations' => self::LOCATIONS,
-            'roles'     => self::ROLES,
+            'locations'   => self::LOCATIONS,
+            'roles'       => self::ROLES,
+            'roleLabels'  => self::ROLE_LABELS,
         ]);
     }
 
@@ -94,9 +108,10 @@ class StaffController extends Controller
         abort_if(!$member, 404);
 
         return view('admin.staff.edit', [
-            'member'    => $member,
-            'locations' => self::LOCATIONS,
-            'roles'     => self::ROLES,
+            'member'      => $member,
+            'locations'   => self::LOCATIONS,
+            'roles'       => self::ROLES,
+            'roleLabels'  => self::ROLE_LABELS,
         ]);
     }
     // ── Update staff member ──────────────────────────────────────

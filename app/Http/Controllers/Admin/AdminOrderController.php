@@ -87,7 +87,7 @@ class AdminOrderController extends Controller
         $request->validate([
             'customer_name'    => 'required|string|max:120',
             'customer_phone'   => 'required|string|max:30',
-            'fulfillment_type' => 'required|in:pickup,delivery',
+            'fulfillment_type' => 'required|in:Collection,Delivery',
             'payment_method'   => 'required|string',
             'payment_received' => 'nullable|boolean',
             'items'            => 'required|array|min:1',
@@ -152,17 +152,29 @@ class AdminOrderController extends Controller
 
         $paymentReceived = $request->boolean('payment_received');
 
+        // ── customer_country is a required column on `orders` (used
+        // by the online checkout flow for shipping). For walk-in/phone
+        // sales there's no real "country" the customer entered, so we
+        // derive a sensible value from where the parts themselves are
+        // located — this is never null and always a legitimate value.
+        $firstPartLocation = $parts[0]['part']->location ?? '';
+        $derivedCountry = match(true) {
+            str_contains($firstPartLocation, 'Nigeria') => 'Nigeria',
+            str_contains($firstPartLocation, 'Ghana')   => 'Ghana',
+            default                                      => 'USA',
+        };
+
         DB::beginTransaction();
         try {
             $orderId = DB::table('orders')->insertGetId([
                 'order_ref'           => $orderRef,
-                'channel'             => $request->fulfillment_type === 'pickup' ? 'walk-in' : 'phone',
+                'channel'             => $request->fulfillment_type === 'Collection' ? 'walk-in' : 'phone',
                 'customer_name'       => $request->customer_name,
                 'customer_phone'      => $request->customer_phone,
                 'customer_whatsapp'   => $request->customer_whatsapp ?: $request->customer_phone,
                 'customer_email'      => $request->customer_email,
                 'customer_city'       => $request->customer_city,
-                'customer_country'    => $request->customer_country ?: 'Walk-in / Phone',
+                'customer_country'    => $request->customer_country ?: $derivedCountry,
                 'fulfillment_type'    => $request->fulfillment_type,
                 'delivery_address'    => $request->delivery_address,
                 'payment_method'      => $request->payment_method,
@@ -204,6 +216,7 @@ class AdminOrderController extends Controller
                     'location'        => $part->location,
                     'unit_price_ngn'  => round($unitNgn),
                     'unit_price_usd'  => round($unitUsd, 2),
+                    'subtotal_ngn'    => round($unitNgn * $p['qty']),
                     'created_at'      => now(),
                     'updated_at'      => now(),
                 ]);

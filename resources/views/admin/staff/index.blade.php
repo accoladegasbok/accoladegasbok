@@ -79,7 +79,7 @@
               @elseif($m->role==='sales_rep') badge-amber
               @elseif($m->role==='stocking_clerk') badge-amber
               @else badge-gray @endif">
-              {{ ucwords(str_replace('_',' ',$m->role)) }}
+              {{ $roleLabels[$m->role] ?? ucwords(str_replace('_',' ',$m->role)) }}
             </span>
           </td>
 
@@ -134,7 +134,7 @@
       'Manager'        => ['badge-blue',         'Everything except staff management and discount/commission editing'],
       'Supervisor'     => ['badge-blue',         'Manager-level EXCEPT staff management, discount caps, and financial reports'],
       'Staff'          => ['badge-green',        'Harvest, inventory, invoices, customers'],
-      'Sales Rep'      => ['badge-amber',        'Create invoices, earns commission on sales (set by admin)'],
+      'Sales Rep/Wholesaler' => ['badge-amber',        'Create invoices, earns commission on sales (set by admin)'],
       'Stocking Clerk' => ['badge-amber',        'New Harvest, Add Part Manually, Add Consumable ONLY — nothing else'],
       'Viewer'         => ['badge-gray',         'Read-only — dashboard and inventory list only'],
     ] as $role => [$cls, $desc])

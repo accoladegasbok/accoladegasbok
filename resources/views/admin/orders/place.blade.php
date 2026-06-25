@@ -65,8 +65,8 @@
         <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Fulfillment *</label>
         <select name="fulfillment_type" id="fulfillmentSelect" onchange="toggleDelivery()" required
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
-          <option value="pickup">Pickup (walk-in)</option>
-          <option value="delivery">Delivery / Shipping</option>
+          <option value="Collection">Pickup / Collection (walk-in)</option>
+          <option value="Delivery">Delivery / Shipping</option>
         </select>
       </div>
       <div>
@@ -143,7 +143,7 @@
 <script>
 function toggleDelivery() {
     document.getElementById('deliveryAddressBox').style.display =
-        document.getElementById('fulfillmentSelect').value === 'delivery' ? '' : 'none';
+        document.getElementById('fulfillmentSelect').value === 'Delivery' ? '' : 'none';
 }
 
 // ── Cart state ──────────────────────────────────────────────────────────

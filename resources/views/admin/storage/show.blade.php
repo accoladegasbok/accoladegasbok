@@ -24,6 +24,32 @@
 </div>
 @endif
 
+{{-- ── Rename room — admin only ───────────────────────────────────── --}}
+@if(session('staff_role') === 'admin')
+<div class="stat-card mb-6">
+  <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-4">Rename Room (Admin Only)</h2>
+  <form method="POST" action="{{ route('admin.storage.update', $room->id) }}" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+    @csrf @method('PUT')
+    <div class="sm:col-span-1">
+      <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Room Name</label>
+      <input type="text" name="name" value="{{ old('name', $room->name) }}" required
+        class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+    </div>
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
+      <input type="text" name="description" value="{{ old('description', $room->description) }}"
+        class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+    </div>
+    <div class="sm:col-span-3">
+      <button type="submit" class="bg-gold text-navy font-display font-700 text-sm px-6 py-2.5 rounded-xl hover:bg-yellow-500 transition-colors">
+        Save Room Name
+      </button>
+    </div>
+  </form>
+  <p class="text-xs text-gray-400 font-body mt-2">Room code ({{ $room->code }}) cannot be changed — it's baked into every bin code in this room.</p>
+</div>
+@endif
+
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
 
   {{-- ── Bulk generate grid ───────────────────────────────────────── --}}
@@ -118,6 +144,10 @@
             <span class="badge {{ $count > 0 ? 'badge-blue' : 'badge-gray' }}">{{ $count }} part{{ $count !== 1 ? 's' : '' }}</span>
           </td>
           <td class="px-4 py-3 text-right">
+            <a href="{{ route('admin.storage.shelves.barcode', $shelf->id) }}" target="_blank"
+               class="text-xs font-body border border-gray-200 text-gray-500 hover:border-navy hover:text-navy px-3 py-1.5 rounded-lg transition-colors mr-1">
+              🏷 Barcode
+            </a>
             <form method="POST" action="{{ route('admin.storage.shelves.destroy', $shelf->id) }}"
                   onsubmit="return confirm('Delete bin {{ $shelf->full_bin_code }}?')" class="inline">
               @csrf @method('DELETE')

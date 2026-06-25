@@ -153,10 +153,13 @@ const PARTS = {!! json_encode($parts) !!};
 // each part (price_local / currency_code) — no live FX conversion.
 const CURRENCIES = {
     'Waxahachie TX': { code: 'USD', symbol: '$',   },
+    'Kennedale TX':  { code: 'USD', symbol: '$',    },
     'Elkhorn WI':    { code: 'USD', symbol: '$',    },
     'Ile-Ife Nigeria':{ code: 'NGN', symbol: '₦',  },
     'Ibadan Nigeria':{ code: 'NGN', symbol: '₦',   },
     'Lagos Nigeria': { code: 'NGN', symbol: '₦',   },
+    'Abuja Nigeria': { code: 'NGN', symbol: '₦',   },
+    'Akure Nigeria': { code: 'NGN', symbol: '₦',   },
     'Accra Ghana':   { code: 'GHS', symbol: 'GH₵', },
 };
 

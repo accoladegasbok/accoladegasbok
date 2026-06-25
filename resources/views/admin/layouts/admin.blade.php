@@ -92,6 +92,10 @@
         Compatibility Checker
       </a>
       <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Orders</div>
+      <a href="{{ route('admin.pos.index') }}" class="sidebar-link {{ request()->routeIs('admin.pos*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 6.75a2.25 2.25 0 002.25 2.25h12a2.25 2.25 0 002.25-2.25M3.75 6.75v10.5A2.25 2.25 0 006 19.5h12a2.25 2.25 0 002.25-2.25V6.75M8.25 6.75v-2.25A2.25 2.25 0 0110.5 2.25h3a2.25 2.25 0 012.25 2.25v2.25"/></svg>
+        POS Checkout
+      </a>
       <a href="{{ route('admin.invoices.index') }}" class="sidebar-link {{ request()->routeIs('admin.invoices*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         Invoices
@@ -119,6 +123,10 @@
         @if($pendingReturns > 0)
           <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pendingReturns }}</span>
         @endif
+      </a>
+      <a href="{{ route('admin.transfers.index') }}" class="sidebar-link {{ request()->routeIs('admin.transfers*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 8l4 4m0 0l-4 4m4-4H3m4 8l-4-4m0 0l4-4m-4 4h18"/></svg>
+        Stock Transfers
       </a>
       <a href="{{ route('admin.reports.financial') }}" class="sidebar-link {{ request()->routeIs('admin.reports.financial') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>

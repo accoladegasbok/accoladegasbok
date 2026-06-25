@@ -233,8 +233,9 @@ class InvoiceController extends Controller
             ->join('parts_inventory as p', 'p.id', '=', 'oi.part_id')
             ->where('oi.order_id', $orderId)
             ->select(
-                'oi.qty',
                 'oi.unit_price_usd',
+                'oi.unit_price_ngn',
+                'oi.subtotal_ngn',
                 'p.price_local',
                 'p.currency_code',
                 'p.part_name',
@@ -247,7 +248,16 @@ class InvoiceController extends Controller
                 'p.location as part_location',
                 'p.engine_code_oem',
                 'p.part_category'
-            )->get();
+            )->get()
+            ->map(function ($item) {
+                // order_items has no qty column — each row's qty is
+                // implied by subtotal_ngn / unit_price_ngn (both exist
+                // and are always set together at order creation time).
+                $item->qty = ($item->subtotal_ngn && $item->unit_price_ngn)
+                    ? max(1, round($item->subtotal_ngn / $item->unit_price_ngn))
+                    : 1;
+                return $item;
+            });
 
         $saleLocation = $order->location
             ?? ($items->first()->part_location ?? 'Waxahachie TX');
