@@ -194,4 +194,12 @@ class AssetController extends Controller
         DB::table('assets')->where('id', $id)->delete();
         return redirect()->route('admin.assets.index')->with('success', 'Asset removed from register.');
     }
+
+    // GET /admin/assets/{id}/barcode — printable barcode label
+    public function barcode(int $id)
+    {
+        $asset = DB::table('assets')->where('id', $id)->first();
+        abort_if(!$asset, 404);
+        return view('admin.assets.barcode', compact('asset'));
+    }
 }

@@ -147,7 +147,7 @@ function toggleDelivery() {
 }
 
 // ── Cart state ──────────────────────────────────────────────────────────
-let cart = []; // [{part_id, part_code, part_name, brand, model, location, price_local, currency_code, symbol, qty, stock_qty}]
+let cart = {}; // keyed by `${item_type}-${id}` -> {item_type, id, part_code, part_name, brand, model, location, price_local, currency_code, qty, stock_qty}
 
 const SYMBOLS = { NGN: '₦', GHS: 'GH₵', USD: '$' };
 
@@ -169,19 +169,20 @@ async function doSearch() {
         const res = await fetch(`{{ route('admin.orders.place.search-parts') }}?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}`);
         const data = await res.json();
         if (!data.parts || data.parts.length === 0) {
-            box.innerHTML = '<div class="text-xs text-gray-400 col-span-2">No matching parts in stock.</div>';
+            box.innerHTML = '<div class="text-xs text-gray-400 col-span-2">No matching parts or services.</div>';
             return;
         }
         box.innerHTML = data.parts.map(p => {
             const priceLocal = p.price_local ?? p.price_usd;
             const sym = SYMBOLS[p.currency_code] || '$';
             const priceFmt = p.currency_code === 'NGN' ? Math.round(priceLocal).toLocaleString() : Number(priceLocal).toFixed(2);
+            const isService = p.item_type === 'service';
             return `
             <div onclick='addToCart(${JSON.stringify(p).replace(/'/g, "&#39;")})'
-                class="border border-gray-200 rounded-lg p-2.5 cursor-pointer hover:border-gold transition-colors">
-                <div class="font-700 text-navy text-xs">${p.part_name}</div>
-                <div class="text-xs text-gray-400">${p.brand} ${p.model} · ${p.part_code} · ${p.location}</div>
-                <div class="text-xs text-gray-500 mt-1">Grade ${p.condition_grade} · Stock: ${p.stock_qty} · <strong class="text-navy">${sym}${priceFmt}</strong></div>
+                class="border ${isService ? 'border-blue-200' : 'border-gray-200'} rounded-lg p-2.5 cursor-pointer hover:border-gold transition-colors">
+                <div class="font-700 text-navy text-xs">${p.part_name} ${isService ? '<span class="text-blue-500 text-[10px]">⚙ SERVICE</span>' : ''}</div>
+                <div class="text-xs text-gray-400">${p.brand ?? ''} ${p.model ?? ''} · ${p.part_code} ${p.location ? '· '+p.location : ''}</div>
+                <div class="text-xs text-gray-500 mt-1">${isService ? '' : `Grade ${p.condition_grade} · Stock: ${p.stock_qty} · `}<strong class="text-navy">${sym}${priceFmt}</strong></div>
             </div>`;
         }).join('');
     } catch (e) {
@@ -189,68 +190,76 @@ async function doSearch() {
     }
 }
 
-function addToCart(part) {
-    const existing = cart.find(c => c.part_id === part.id);
+function addToCart(item) {
+    const key = `${item.item_type}-${item.id}`;
+    const existing = cart[key];
     if (existing) {
-        if (existing.qty < part.stock_qty) existing.qty++;
-        else alert(`Only ${part.stock_qty} in stock for ${part.part_code}.`);
+        if (item.item_type === 'service' || existing.qty < item.stock_qty) existing.qty++;
+        else alert(`Only ${item.stock_qty} in stock for ${item.part_code}.`);
     } else {
-        cart.push({
-            part_id: part.id, part_code: part.part_code, part_name: part.part_name,
-            brand: part.brand, model: part.model, location: part.location,
-            price_local: part.price_local ?? part.price_usd, currency_code: part.currency_code || 'USD',
-            qty: 1, stock_qty: part.stock_qty,
-        });
+        cart[key] = {
+            item_type: item.item_type, id: item.id, part_code: item.part_code, part_name: item.part_name,
+            brand: item.brand, model: item.model, location: item.location,
+            price_local: item.price_local ?? item.price_usd, currency_code: item.currency_code || 'USD',
+            qty: 1, stock_qty: item.stock_qty,
+        };
     }
     renderCart();
 }
 
-function removeFromCart(partId) {
-    cart = cart.filter(c => c.part_id !== partId);
-    renderCart();
+function removeFromCart(key) {
+    const item = cart[key];
+    if (!item) return;
+    requestOverride('remove_cart_item_place_order', `Remove ${item.part_name} (${item.part_code}) from order cart`, function(approvedBy) {
+        delete cart[key];
+        renderCart();
+    });
 }
 
-function changeQty(partId, delta) {
-    const item = cart.find(c => c.part_id === partId);
+function changeQty(key, delta) {
+    const item = cart[key];
     if (!item) return;
     const newQty = item.qty + delta;
-    if (newQty < 1) { removeFromCart(partId); return; }
-    if (newQty > item.stock_qty) { alert(`Only ${item.stock_qty} in stock.`); return; }
+    if (newQty < 1) { removeFromCart(key); return; }
+    if (item.item_type === 'part' && newQty > item.stock_qty) { alert(`Only ${item.stock_qty} in stock.`); return; }
     item.qty = newQty;
     renderCart();
 }
 
 function renderCart() {
     const container = document.getElementById('cartContainer');
-    const emptyMsg = document.getElementById('emptyCartMsg');
+    const keys = Object.keys(cart);
 
-    if (cart.length === 0) {
-        container.innerHTML = '<p class="text-xs text-gray-400 font-body text-center py-4" id="emptyCartMsg">No parts added yet — search above.</p>';
+    if (keys.length === 0) {
+        container.innerHTML = '<p class="text-xs text-gray-400 font-body text-center py-4" id="emptyCartMsg">No items added yet — search above.</p>';
         document.getElementById('cartTotalDisplay').textContent = '—';
         return;
     }
 
     let totalsByCode = {};
-    container.innerHTML = cart.map((item, idx) => {
+    container.innerHTML = keys.map((key, idx) => {
+        const item = cart[key];
         const sym = SYMBOLS[item.currency_code] || '$';
         const lineTotal = item.price_local * item.qty;
         totalsByCode[item.currency_code] = (totalsByCode[item.currency_code] || 0) + lineTotal;
         const priceFmt = item.currency_code === 'NGN' ? Math.round(lineTotal).toLocaleString() : lineTotal.toFixed(2);
+        const isService = item.item_type === 'service';
 
         return `
         <div class="flex items-center justify-between py-2.5">
             <div class="flex-1">
-                <div class="font-700 text-navy text-sm">${item.part_name}</div>
-                <div class="text-xs text-gray-400">${item.part_code} · ${item.brand} ${item.model} · ${item.location}</div>
-                <input type="hidden" name="items[${idx}][part_id]" value="${item.part_id}">
+                <div class="font-700 text-navy text-sm">${item.part_name} ${isService ? '<span class="text-blue-500 text-[10px]">⚙ SERVICE</span>' : ''}</div>
+                <div class="text-xs text-gray-400">${item.part_code} · ${item.brand ?? ''} ${item.model ?? ''} ${item.location ? '· '+item.location : ''}</div>
+                <input type="hidden" name="items[${idx}][item_type]" value="${item.item_type}">
+                <input type="hidden" name="items[${idx}][id]" value="${item.id}">
                 <input type="hidden" name="items[${idx}][qty]" value="${item.qty}">
             </div>
             <div class="flex items-center gap-2">
-                <button type="button" onclick="changeQty(${item.part_id}, -1)" class="w-6 h-6 border border-gray-200 rounded text-xs hover:bg-gray-100">−</button>
+                <button type="button" onclick="changeQty('${key}', -1)" class="w-6 h-6 border border-gray-200 rounded text-xs hover:bg-gray-100">−</button>
                 <span class="text-sm font-mono w-6 text-center">${item.qty}</span>
-                <button type="button" onclick="changeQty(${item.part_id}, 1)" class="w-6 h-6 border border-gray-200 rounded text-xs hover:bg-gray-100">+</button>
+                <button type="button" onclick="changeQty('${key}', 1)" class="w-6 h-6 border border-gray-200 rounded text-xs hover:bg-gray-100">+</button>
                 <span class="font-display font-700 text-navy text-sm w-24 text-right">${sym}${priceFmt}</span>
-                <button type="button" onclick="removeFromCart(${item.part_id})" class="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
+                <button type="button" onclick="removeFromCart('${key}')" class="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
             </div>
         </div>`;
     }).join('');
@@ -263,9 +272,9 @@ function renderCart() {
 }
 
 document.getElementById('placeOrderForm').addEventListener('submit', function(e) {
-    if (cart.length === 0) {
+    if (Object.keys(cart).length === 0) {
         e.preventDefault();
-        alert('Add at least one part to the cart before placing the order.');
+        alert('Add at least one part or service to the cart before placing the order.');
     }
 });
 
@@ -304,6 +313,75 @@ function selectCustomer(c) {
 document.addEventListener('click', function(e) {
     const box = document.getElementById('customerSuggestions');
     if (box && !box.contains(e.target) && e.target.id !== 'customerPhoneInput') box.classList.add('hidden');
+});
+</script>
+
+<div id="overridePinModal" class="hidden fixed inset-0 z-[70] bg-black bg-opacity-50 items-center justify-center px-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+    <h3 class="font-display font-700 text-navy text-lg tracking-wide mb-1">Supervisor Approval Required</h3>
+    <p id="overrideContextText" class="text-sm text-gray-500 font-body mb-4"></p>
+    <input type="text" id="overridePinInput" inputmode="numeric" maxlength="4" autocomplete="off"
+      placeholder="Enter 4-digit PIN" class="w-full border-2 border-gold rounded-lg px-4 py-3 text-center text-2xl font-mono tracking-widest focus:outline-none">
+    <div id="overrideError" class="text-xs text-red-600 font-body mt-2 min-h-[16px]"></div>
+    <div class="flex gap-2 mt-4">
+      <button type="button" onclick="closeOverrideModal()" class="flex-1 border border-gray-200 text-gray-600 font-body font-500 text-sm py-2.5 rounded-xl hover:bg-gray-50">Cancel</button>
+      <button type="button" onclick="submitOverridePin()" class="flex-1 bg-gold text-navy font-display font-700 text-sm py-2.5 rounded-xl hover:bg-yellow-500">Approve</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _overrideCallback = null;
+let _overrideAction = null;
+let _overrideContext = null;
+
+function requestOverride(action, context, callback) {
+    _overrideAction = action;
+    _overrideContext = context;
+    _overrideCallback = callback;
+    document.getElementById('overrideContextText').textContent = context;
+    document.getElementById('overridePinInput').value = '';
+    document.getElementById('overrideError').textContent = '';
+    const modal = document.getElementById('overridePinModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('overridePinInput').focus();
+}
+
+function closeOverrideModal() {
+    const modal = document.getElementById('overridePinModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    _overrideCallback = null;
+}
+
+async function submitOverridePin() {
+    const pin = document.getElementById('overridePinInput').value;
+    const errorBox = document.getElementById('overrideError');
+    if (pin.length !== 4) { errorBox.textContent = 'Enter a 4-digit PIN.'; return; }
+
+    try {
+        const res = await fetch('/admin/override/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ pin, action: _overrideAction, context: _overrideContext }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            errorBox.textContent = data.error || 'Invalid PIN.';
+            document.getElementById('overridePinInput').value = '';
+            return;
+        }
+        const cb = _overrideCallback;
+        closeOverrideModal();
+        if (cb) cb(data.approved_by, data.role);
+    } catch (e) {
+        errorBox.textContent = 'Network error — try again.';
+    }
+}
+
+document.getElementById('overridePinInput')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') submitOverridePin();
 });
 </script>
 @endsection

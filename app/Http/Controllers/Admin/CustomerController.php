@@ -150,6 +150,32 @@ class CustomerController extends Controller
 
         $customers = $customers->sortByDesc('total_spent')->values();
 
+        // ── Manually-added contacts (freelancers, contractors,
+        // delivery personnel, jobbers) — these have no purchase
+        // history, so they're merged in separately rather than
+        // forced through the phone-grouping-by-purchase logic above. ──
+        $contactsQuery = DB::table('contacts');
+        if ($search) {
+            $s = strtolower($search);
+            $contactsQuery->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('phone', 'like', "%{$s}%")
+                  ->orWhere('contact_type', 'like', "%{$s}%");
+            });
+        }
+        $contacts = $contactsQuery->orderBy('name')->get()->map(fn($c) => (object)[
+            'id'            => $c->id,
+            'phone'         => $c->phone,
+            'name'          => $c->name,
+            'contact_type'  => $c->contact_type,
+            'email'         => $c->email,
+            'is_contact'    => true, // distinguishes manual contacts from purchase-derived customers in the view
+            'city'          => null, 'country' => null,
+            'total_orders'  => 0, 'total_spent' => 0, 'last_purchase' => null,
+        ]);
+
+        $customers = $customers->merge($contacts)->values();
+
         // Simple manual pagination since this is an in-memory collection
         $perPage = 25;
         $page    = (int) $request->get('page', 1);
@@ -214,16 +240,89 @@ class CustomerController extends Controller
 
         $totalSpent = $orders->sum('total_amount_usd') + $invoices->sum('subtotal_usd');
 
-        return view('admin.customers.show', [
-            'phone'      => $normalizedPhone,
-            'name'       => $latest->customer_name ?? 'Unknown',
-            'email'      => $orders->pluck('customer_email')->filter()->first()
-                              ?? $invoices->pluck('customer_email')->filter()->first(),
-            'orders'     => $orders,
-            'invoices'   => $invoices,
-            'topItems'   => $topItems,
-            'totalSpent' => $totalSpent,
-            'totalCount' => $orders->count() + $invoices->count(),
+    // =========================================================
+    // Manual contacts — freelancers, contractors, delivery
+    // personnel, jobbers, or any phone-book entry that isn't
+    // purely derived from purchase history. Editable by Staff
+    // and above (not Stocking Clerk, per the role restriction
+    // already enforced by middleware on this whole admin group).
+    // =========================================================
+
+    public function createContact()
+    {
+        return view('admin.customers.create-contact', [
+            'types' => ['Customer', 'Freelancer', 'Contractor', 'Delivery Personnel', 'Jobber', 'Other'],
         ]);
+    }
+
+    public function storeContact(Request $request)
+    {
+        $request->validate([
+            'name'         => 'required|string|max:150',
+            'contact_type' => 'required|string',
+            'phone'        => 'required|string|max:30',
+            'whatsapp'     => 'nullable|string|max:30',
+            'email'        => 'nullable|email|max:150',
+            'address'      => 'nullable|string|max:255',
+            'notes'        => 'nullable|string|max:1000',
+        ]);
+
+        $id = DB::table('contacts')->insertGetId([
+            'name'                => $request->name,
+            'contact_type'        => $request->contact_type,
+            'phone'               => $request->phone,
+            'whatsapp'            => $request->whatsapp,
+            'email'               => $request->email,
+            'address'             => $request->address,
+            'notes'               => $request->notes,
+            'created_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'),
+            'created_at'          => now(),
+            'updated_at'          => now(),
+        ]);
+
+        return redirect()->route('admin.customers.index')->with('success', 'Contact added.');
+    }
+
+    public function editContact(int $id)
+    {
+        $contact = DB::table('contacts')->where('id', $id)->first();
+        abort_if(!$contact, 404);
+
+        return view('admin.customers.edit-contact', [
+            'contact' => $contact,
+            'types' => ['Customer', 'Freelancer', 'Contractor', 'Delivery Personnel', 'Jobber', 'Other'],
+        ]);
+    }
+
+    public function updateContact(Request $request, int $id)
+    {
+        $request->validate([
+            'name'         => 'required|string|max:150',
+            'contact_type' => 'required|string',
+            'phone'        => 'required|string|max:30',
+            'whatsapp'     => 'nullable|string|max:30',
+            'email'        => 'nullable|email|max:150',
+            'address'      => 'nullable|string|max:255',
+            'notes'        => 'nullable|string|max:1000',
+        ]);
+
+        DB::table('contacts')->where('id', $id)->update([
+            'name'         => $request->name,
+            'contact_type' => $request->contact_type,
+            'phone'        => $request->phone,
+            'whatsapp'     => $request->whatsapp,
+            'email'        => $request->email,
+            'address'      => $request->address,
+            'notes'        => $request->notes,
+            'updated_at'   => now(),
+        ]);
+
+        return redirect()->route('admin.customers.index')->with('success', 'Contact updated.');
+    }
+
+    public function destroyContact(int $id)
+    {
+        DB::table('contacts')->where('id', $id)->delete();
+        return redirect()->route('admin.customers.index')->with('success', 'Contact removed.');
     }
 }

@@ -72,9 +72,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Customers (auto-aggregated from orders + invoices)
         Route::prefix('customers')->name('customers.')->group(function () {
-            Route::get('/',        [CustomerController::class, 'index'])->name('index');
-            Route::get('/lookup',  [CustomerController::class, 'lookup'])->name('lookup');
-            Route::get('/{phone}', [CustomerController::class, 'show'])->name('show');
+            Route::get('/',                    [CustomerController::class, 'index'])->name('index');
+            Route::get('/lookup',              [CustomerController::class, 'lookup'])->name('lookup');
+            Route::get('/contacts/create',     [CustomerController::class, 'createContact'])->name('contacts.create');
+            Route::post('/contacts',           [CustomerController::class, 'storeContact'])->name('contacts.store');
+            Route::get('/contacts/{id}/edit',  [CustomerController::class, 'editContact'])->name('contacts.edit');
+            Route::put('/contacts/{id}',       [CustomerController::class, 'updateContact'])->name('contacts.update');
+            Route::delete('/contacts/{id}',    [CustomerController::class, 'destroyContact'])->name('contacts.destroy');
+            Route::get('/{phone}',             [CustomerController::class, 'show'])->name('show');
         });
         // Inventory audit sessions
         Route::prefix('audit')->name('audit.')->group(function () {
@@ -117,11 +122,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/resolve',     [\App\Http\Controllers\Admin\ReturnsController::class, 'resolve'])->name('resolve');
         });
 
+        // Part Names Manager (admin only) - merge/clean duplicate names
+        Route::prefix('part-names')->name('part-names.')->group(function () {
+            Route::get('/',             [\App\Http\Controllers\Admin\PartNameManagerController::class, 'index'])->name('index');
+            Route::post('/merge',       [\App\Http\Controllers\Admin\PartNameManagerController::class, 'merge'])->name('merge');
+            Route::post('/rename-one',  [\App\Http\Controllers\Admin\PartNameManagerController::class, 'renameOne'])->name('rename-one');
+        });
+
+        // Override PIN system (#2/#14/#15)
+        Route::prefix('override')->name('override.')->group(function () {
+            Route::post('/verify',          [\App\Http\Controllers\Admin\OverrideController::class, 'verify'])->name('verify');
+            Route::post('/set-own-pin',     [\App\Http\Controllers\Admin\OverrideController::class, 'setOwnPin'])->name('set-own-pin');
+            Route::post('/clear-pin/{id}',  [\App\Http\Controllers\Admin\OverrideController::class, 'clearPin'])->name('clear-pin');
+            Route::get('/logs',             [\App\Http\Controllers\Admin\OverrideController::class, 'logs'])->name('logs');
+            Route::get('/set-pin',          fn() => view('admin.override.set-pin'))->name('set-pin-page');
+        });
+
         // Asset / equipment register (not for sale) - separate from parts_inventory
         Route::prefix('assets')->name('assets.')->group(function () {
             Route::get('/',           [\App\Http\Controllers\Admin\AssetController::class, 'index'])->name('index');
             Route::get('/create',     [\App\Http\Controllers\Admin\AssetController::class, 'create'])->name('create');
             Route::post('/',          [\App\Http\Controllers\Admin\AssetController::class, 'store'])->name('store');
+            Route::get('/{id}/barcode', [\App\Http\Controllers\Admin\AssetController::class, 'barcode'])->name('barcode');
             Route::get('/{id}',       [\App\Http\Controllers\Admin\AssetController::class, 'show'])->name('show');
             Route::get('/{id}/edit',  [\App\Http\Controllers\Admin\AssetController::class, 'edit'])->name('edit');
             Route::put('/{id}',       [\App\Http\Controllers\Admin\AssetController::class, 'update'])->name('update');
@@ -179,6 +201,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
             // Quick Receipt — services/labor/misc, never touches inventory
             Route::get('/service/create', [InvoiceController::class, 'createService'])->name('service.create');
+            Route::get('/service/search-parts', [InvoiceController::class, 'serviceSearchParts'])->name('service.search-parts');
             Route::post('/service', [InvoiceController::class, 'storeService'])->name('service.store');
         });
 
@@ -188,6 +211,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/',         [\App\Http\Controllers\Admin\ServiceRateController::class, 'store'])->name('store');
             Route::put('/{id}',      [\App\Http\Controllers\Admin\ServiceRateController::class, 'update'])->name('update');
             Route::delete('/{id}',   [\App\Http\Controllers\Admin\ServiceRateController::class, 'destroy'])->name('destroy');
+            Route::get('/{id}/barcode', [\App\Http\Controllers\Admin\ServiceRateController::class, 'barcode'])->name('barcode');
         });
     }); // end admin.auth middleware
 

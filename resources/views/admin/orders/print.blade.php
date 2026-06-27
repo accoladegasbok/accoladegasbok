@@ -50,11 +50,13 @@
   </div>
 
   @php
+    // ── Only the Customer Copy prints for Orders (online sales).
+    // The internal Office/Accounts/Store Room copies were redundant
+    // here since the Invoice print already covers all 4 copies for
+    // anything that needs full internal paperwork — Orders only ever
+    // needed the customer-facing copy. ──
     $copies = [
         ['label' => 'Customer Copy',  'class' => 'customer'],
-        ['label' => 'Office Copy',    'class' => 'office'],
-        ['label' => 'Accounts Copy',  'class' => 'accounts'],
-        ['label' => 'Store Room Copy','class' => 'store'],
     ];
   @endphp
 

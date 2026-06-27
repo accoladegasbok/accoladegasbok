@@ -59,9 +59,17 @@ class PartsSearchController extends Controller
             ->where('status', 'Available')
             ->count();
 
+        // ── Trust/growth widget — real numbers, not invented. Total
+        // orders + invoices ever processed gives a genuine sense of
+        // activity without claiming a vanity "visitor counter" we
+        // don't actually track yet. Framed as "still growing" rather
+        // than a fixed/static-feeling number.
+        $totalOrdersEver = DB::table('orders')->count() + DB::table('invoices')->count();
+        $totalCustomersServed = DB::table('customers')->count();
+
         return view('parts.search', compact(
             'makes','years','categories','parts','rates','currency',
-            'filters','totalAvailable'
+            'filters','totalAvailable','totalOrdersEver','totalCustomersServed'
         ))->with([
             'total'     => $parts->total(),
             'locations' => [
@@ -70,6 +78,8 @@ class PartsSearchController extends Controller
                 'Ile-Ife Nigeria' => 'Ile-Ife Nigeria 🇳🇬',
                 'Ibadan Nigeria'  => 'Ibadan Nigeria 🇳🇬',
                 'Lagos Nigeria'   => 'Lagos Nigeria 🇳🇬',
+                'Abuja Nigeria'   => 'Abuja Nigeria 🇳🇬',
+                'Akure Nigeria'   => 'Akure Nigeria 🇳🇬',
                 'Accra Ghana'     => 'Accra Ghana 🇬🇭',
             ],
         ]);
@@ -189,7 +199,19 @@ class PartsSearchController extends Controller
         if ($filters['make'])     $q->where('brand', 'like', '%'.$filters['make'].'%');
         if ($filters['model'])    $q->where('model', 'like', '%'.$filters['model'].'%');
         if ($filters['category']) $q->where('part_category', $filters['category']);
-        if ($filters['location']) $q->where('location', $filters['location']);
+        if ($filters['location']) {
+            // Customer-facing filter is now grouped by COUNTRY (USA /
+            // Nigeria / Ghana) rather than individual city locations —
+            // staff-side tools (Harvest, Manual Invoice, etc.) still
+            // use the precise city-level locations unaffected by this.
+            $countryLocations = match($filters['location']) {
+                'USA'     => ['Waxahachie TX', 'Kennedale TX', 'Elkhorn WI'],
+                'Nigeria' => ['Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria'],
+                'Ghana'   => ['Accra Ghana'],
+                default   => [$filters['location']], // fallback: exact match if somehow an old value is passed
+            };
+            $q->whereIn('location', $countryLocations);
+        }
         if ($filters['condition'])$q->where('condition_grade', $filters['condition']);
 
         // ── Price filter — now against price_local (each part's own fixed

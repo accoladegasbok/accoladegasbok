@@ -147,15 +147,19 @@ function changeQty(id, delta) {
     const item = cart[id];
     if (!item) return;
     const newQty = item.qty + delta;
-    if (newQty < 1) { delete cart[id]; renderCart(); return; }
+    if (newQty < 1) { removeItem(id); return; }
     if (newQty > item.stock_qty) { alert(`Only ${item.stock_qty} in stock.`); return; }
     item.qty = newQty;
     renderCart();
 }
 
 function removeItem(id) {
-    delete cart[id];
-    renderCart();
+    const item = cart[id];
+    if (!item) return;
+    requestOverride('remove_cart_item_pos', `Remove ${item.part_name} (${item.part_code}) from POS cart`, function(approvedBy) {
+        delete cart[id];
+        renderCart();
+    });
 }
 
 function clearCart() {
@@ -269,5 +273,74 @@ function beep(success) {
         osc.stop(ctx.currentTime + 0.1);
     } catch (e) {}
 }
+</script>
+
+<div id="overridePinModal" class="hidden fixed inset-0 z-[70] bg-black bg-opacity-50 items-center justify-center px-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+    <h3 class="font-display font-700 text-navy text-lg tracking-wide mb-1">Supervisor Approval Required</h3>
+    <p id="overrideContextText" class="text-sm text-gray-500 font-body mb-4"></p>
+    <input type="text" id="overridePinInput" inputmode="numeric" maxlength="4" autocomplete="off"
+      placeholder="Enter 4-digit PIN" class="w-full border-2 border-gold rounded-lg px-4 py-3 text-center text-2xl font-mono tracking-widest focus:outline-none">
+    <div id="overrideError" class="text-xs text-red-600 font-body mt-2 min-h-[16px]"></div>
+    <div class="flex gap-2 mt-4">
+      <button type="button" onclick="closeOverrideModal()" class="flex-1 border border-gray-200 text-gray-600 font-body font-500 text-sm py-2.5 rounded-xl hover:bg-gray-50">Cancel</button>
+      <button type="button" onclick="submitOverridePin()" class="flex-1 bg-gold text-navy font-display font-700 text-sm py-2.5 rounded-xl hover:bg-yellow-500">Approve</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _overrideCallback = null;
+let _overrideAction = null;
+let _overrideContext = null;
+
+function requestOverride(action, context, callback) {
+    _overrideAction = action;
+    _overrideContext = context;
+    _overrideCallback = callback;
+    document.getElementById('overrideContextText').textContent = context;
+    document.getElementById('overridePinInput').value = '';
+    document.getElementById('overrideError').textContent = '';
+    const modal = document.getElementById('overridePinModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('overridePinInput').focus();
+}
+
+function closeOverrideModal() {
+    const modal = document.getElementById('overridePinModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    _overrideCallback = null;
+}
+
+async function submitOverridePin() {
+    const pin = document.getElementById('overridePinInput').value;
+    const errorBox = document.getElementById('overrideError');
+    if (pin.length !== 4) { errorBox.textContent = 'Enter a 4-digit PIN.'; return; }
+
+    try {
+        const res = await fetch('/admin/override/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ pin, action: _overrideAction, context: _overrideContext }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            errorBox.textContent = data.error || 'Invalid PIN.';
+            document.getElementById('overridePinInput').value = '';
+            return;
+        }
+        const cb = _overrideCallback;
+        closeOverrideModal();
+        if (cb) cb(data.approved_by, data.role);
+    } catch (e) {
+        errorBox.textContent = 'Network error — try again.';
+    }
+}
+
+document.getElementById('overridePinInput')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') submitOverridePin();
+});
 </script>
 @endsection

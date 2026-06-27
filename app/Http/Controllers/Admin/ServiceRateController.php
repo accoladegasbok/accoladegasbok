@@ -26,7 +26,11 @@ class ServiceRateController extends Controller
             'notes'         => 'nullable|string|max:500',
         ]);
 
+        $seq = DB::table('service_rates')->count() + 1;
+        $serviceCode = 'SVC-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+
         DB::table('service_rates')->insert([
+            'service_code'  => $serviceCode,
             'name'          => $request->name,
             'category'      => $request->category,
             'default_price' => $request->default_price,
@@ -37,6 +41,14 @@ class ServiceRateController extends Controller
         ]);
 
         return redirect()->route('admin.service-rates.index')->with('success', "\"{$request->name}\" added to the service catalog.");
+    }
+
+    // GET /admin/service-rates/{id}/barcode — printable barcode label
+    public function barcode(int $id)
+    {
+        $service = DB::table('service_rates')->where('id', $id)->first();
+        abort_if(!$service, 404);
+        return view('admin.service-rates.barcode', compact('service'));
     }
 
     public function update(Request $request, int $id)

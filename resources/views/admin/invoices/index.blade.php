@@ -1,7 +1,7 @@
 {{-- FILE: resources/views/admin/invoices/index.blade.php --}}
 @extends('admin.layouts.admin')
-@section('title', 'Invoices')
-@section('page-title', 'Invoices')
+@section('title', 'Invoices/Receipts')
+@section('page-title', 'Invoices/Receipts')
 @section('page-sub', 'All issued invoices and receipts — online and in-store')
 
 @section('header-actions')
@@ -18,6 +18,25 @@
 @endsection
 
 @section('content')
+
+<form method="GET" class="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-4">
+  <input type="text" name="q" value="{{ request('q') }}" placeholder="Search ref, name, phone..."
+    class="sm:col-span-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+  <input type="date" name="date_from" value="{{ request('date_from') }}"
+    class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold" title="From date">
+  <input type="date" name="date_to" value="{{ request('date_to') }}"
+    class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold" title="To date">
+  <select name="sort" onchange="this.form.submit()" class="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+    <option value="date_desc"   {{ request('sort','date_desc')==='date_desc'?'selected':'' }}>Newest First</option>
+    <option value="date_asc"    {{ request('sort')==='date_asc'?'selected':'' }}>Oldest First</option>
+    <option value="name_asc"    {{ request('sort')==='name_asc'?'selected':'' }}>Customer A–Z</option>
+    <option value="name_desc"   {{ request('sort')==='name_desc'?'selected':'' }}>Customer Z–A</option>
+    <option value="amount_desc" {{ request('sort')==='amount_desc'?'selected':'' }}>Amount High–Low</option>
+    <option value="amount_asc"  {{ request('sort')==='amount_asc'?'selected':'' }}>Amount Low–High</option>
+  </select>
+  <button type="submit" class="bg-navy text-white font-display font-700 text-sm rounded-lg px-3 py-2 hover:bg-navy-light transition-colors">Filter</button>
+</form>
+
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
   <table class="w-full">
     <thead class="bg-navy text-white">
@@ -55,6 +74,9 @@
             @elseif($inv->channel === 'Phone') badge-amber
             @else badge-green @endif">
             {{ $inv->channel }}
+          </span>
+          <span class="badge {{ ($inv->doc_label ?? 'Invoice') === 'Receipt' ? 'badge-green' : 'badge-amber' }} ml-1">
+            {{ $inv->doc_label ?? 'Invoice' }}
           </span>
           @if($inv->type === 'service')
             <span class="badge badge-amber ml-1">Service</span>

@@ -1,15 +1,15 @@
-{{-- FILE: resources/views/admin/storage/bin-barcode.blade.php --}}
+{{-- FILE: resources/views/admin/service-rates/barcode.blade.php --}}
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Bin Barcode — {{ $shelf->full_bin_code }}</title>
+  <title>Barcode — {{ $service->service_code }}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f4; }
     .toolbar { text-align: center; margin-bottom: 16px; }
     .print-btn { background: #C8960C; color: #0A1F5C; border: none; padding: 10px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
-    .label { width: 280px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin: 0 auto; text-align: center; }
-    .label .bin-code { font-size: 18px; font-weight: bold; color: #0A1F5C; margin-bottom: 8px; }
+    .label { width: 280px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 14px; margin: 0 auto; text-align: center; }
+    .label .name { font-size: 13px; font-weight: bold; color: #0A1F5C; margin-bottom: 6px; }
     @media print { .no-print { display: none; } body { margin: 0; padding: 0; background: #fff; } }
   </style>
 </head>
@@ -19,7 +19,7 @@
   </div>
 
   <div class="label">
-    <div class="bin-code">{{ $shelf->full_bin_code }}</div>
+    <div class="name">{{ $service->name }}</div>
     <svg id="barcode"></svg>
   </div>
 
@@ -63,9 +63,7 @@
         };
     })(window);
 
-    renderBarcode("barcode", "{{ $shelf->full_bin_code }}", {
-        width: 2, height: 50, displayValue: true, fontSize: 14,
-    });
+    renderBarcode("barcode", "{{ $service->service_code }}", { width: 2, height: 50, displayValue: true, fontSize: 14 });
   </script>
 </body>
 </html>

@@ -185,6 +185,13 @@ class PosController extends Controller
             return response()->json(['success' => false, 'error' => 'Checkout failed: ' . $e->getMessage()], 500);
         }
 
+        // Notify managers/admins of the completed sale
+        app(\App\Services\PushNotificationService::class)->send(
+            'New POS Sale',
+            "{$invoiceNo} — {$location}",
+            ['url' => route('admin.invoices.show.manual', $invoiceId)]
+        );
+
         return response()->json([
             'success'    => true,
             'invoice_id' => $invoiceId,

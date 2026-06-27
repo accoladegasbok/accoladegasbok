@@ -215,7 +215,7 @@
         </select>
       </div>
       <div>
-        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Bin Location</label>
+        <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Bin Location *</label>
         <input type="text" id="binLocationDisplay" readonly placeholder="Select Location, Store Room & Bin below"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-gray-50 text-gray-500 focus:outline-none">
       </div>

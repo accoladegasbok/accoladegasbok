@@ -152,11 +152,14 @@ class PartController extends Controller
     // =========================================================
     private function waNumber(string $location): string
     {
+        // Nigeria and Ghana locations share one number; all USA
+        // locations share the other. A separate WhatsApp-only
+        // complaints line (+2348067422777) is shown on the Contact
+        // page, not used for per-part enquiries.
         return match(true) {
             str_contains($location, 'Nigeria') ||
-            str_contains($location, 'Lagos')   => '2347064413764',
             str_contains($location, 'Ghana')   => '2349155688804',
-            default                            => '15125873425',
+            default                            => '16822563201',
         };
     }
 }

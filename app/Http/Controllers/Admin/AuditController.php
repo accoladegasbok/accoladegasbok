@@ -139,6 +139,16 @@ class AuditController extends Controller
             'updated_at'  => now(),
         ]);
 
+        // Flag discrepancies in real time to whoever's carrying the
+        // app, not just at the end of the session
+        if ($discrepancy !== 0) {
+            app(\App\Services\PushNotificationService::class)->send(
+                'Audit Discrepancy',
+                "{$item->part_name}: counted {$newCount}, expected {$item->expected_qty}",
+                ['url' => route('admin.audit.show', $id)]
+            );
+        }
+
         return response()->json([
             'success'      => true,
             'item_id'      => $item->id,

@@ -103,7 +103,9 @@ class HarvestController extends Controller
                 'Elkhorn WI',
                 'Ile-Ife Nigeria',
                 'Ibadan Nigeria',
-                'Oshodi Lagos',
+                'Lagos Nigeria',
+                'Abuja Nigeria',
+                'Akure Nigeria',
                 'Accra Ghana',
             ],
         ]);
@@ -375,6 +377,16 @@ class HarvestController extends Controller
             return back()->with('error', 'Please tick at least one part before saving.');
         }
 
+        // ── Bin location is now REQUIRED for every harvested part
+        // (#13) — staff select ONE bin for the whole batch (since a
+        // donor vehicle's parts are physically received together),
+        // applied to every part created in this submission.
+        $storageShelfId = $request->input('storage_shelf_id');
+        if (!$storageShelfId) {
+            return back()->with('error', 'Select a bin location for this batch before saving — bin location cannot be empty.');
+        }
+        $binLocation = DB::table('storage_shelves')->where('id', $storageShelfId)->value('full_bin_code');
+
         // ── Custom parts are admin-only, to keep naming uniform ──────────
         $customPartsInput = $request->input('custom_parts', []);
         if (!empty($customPartsInput) && Session::get('staff_role') !== 'admin') {
@@ -463,6 +475,8 @@ class HarvestController extends Controller
                     'price_local'           => $rawPrice,         // ← authoritative price, fixed currency
                     'currency_code'         => $currency['code'],
                     'location'              => $session->location,
+                    'storage_shelf_id'      => $storageShelfId,
+                    'bin_location'          => $binLocation,
                     'stock_qty'             => 1,
                     'status'                => 'Available',
                     'description'           => $partNote,
@@ -526,6 +540,8 @@ class HarvestController extends Controller
                     'price_local'           => (float) $cp['price'],
                     'currency_code'         => $currency['code'],
                     'location'              => $session->location,
+                    'storage_shelf_id'      => $storageShelfId,
+                    'bin_location'          => $binLocation,
                     'stock_qty'             => 1,
                     'status'                => 'Available',
                     'description'           => $cp['note']         ?? null,

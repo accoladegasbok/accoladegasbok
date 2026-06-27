@@ -92,6 +92,13 @@
       </div>
     </div>
 
+    <div class="px-4 py-3 border-b border-gray-100 bg-blue-50">
+      <label class="block text-xs text-blue-700 font-700 uppercase tracking-wider mb-1">⚙ Add a Real Part / Consumable (optional)</label>
+      <input type="text" id="partSearchInput" oninput="searchQuickReceiptParts()" placeholder="Search inventory by name, code, or brand..."
+        class="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+      <div id="partSearchResults" class="mt-2 space-y-1.5"></div>
+    </div>
+
     <div id="itemsContainer" class="divide-y divide-gray-100 p-4 space-y-3"></div>
 
     <div class="flex justify-end px-5 py-4 bg-gray-50 border-t border-gray-200">
@@ -122,7 +129,9 @@ const CURRENCIES = {
     'Elkhorn WI':    { code: 'USD', symbol: '$' },
     'Ile-Ife Nigeria':{ code: 'NGN', symbol: '₦' },
     'Ibadan Nigeria':{ code: 'NGN', symbol: '₦' },
-    'Oshodi Lagos':  { code: 'NGN', symbol: '₦' },
+    'Lagos Nigeria':  { code: 'NGN', symbol: '₦' },
+    'Abuja Nigeria':  { code: 'NGN', symbol: '₦' },
+    'Akure Nigeria':  { code: 'NGN', symbol: '₦' },
     'Accra Ghana':   { code: 'GHS', symbol: 'GH₵' },
 };
 
@@ -153,6 +162,8 @@ function addItem() {
             <span class="text-xs font-display font-700 text-navy uppercase">Item #${i}</span>
             <button type="button" onclick="removeItem(${i})" class="text-red-400 hover:text-red-600 text-xs">✕ Remove</button>
         </div>
+        <input type="hidden" name="items[${i}][item_type]" id="item-type-${i}" value="service">
+        <input type="hidden" name="items[${i}][part_id]" id="item-partid-${i}" value="">
         <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
             <div class="sm:col-span-2">
                 <label class="block text-xs text-gray-400 mb-1">Fixed-Rate Service (optional)</label>
@@ -182,6 +193,53 @@ function addItem() {
         </div>
     `;
     container.appendChild(row);
+    return i;
+}
+
+// ── #16 — Search & add real Parts/Consumables alongside services ──
+let partSearchTimer = null;
+function searchQuickReceiptParts() {
+    clearTimeout(partSearchTimer);
+    partSearchTimer = setTimeout(doQuickReceiptPartSearch, 300);
+}
+
+async function doQuickReceiptPartSearch() {
+    const q = document.getElementById('partSearchInput').value;
+    const loc = document.getElementById('locationSelect')?.value || '';
+    const box = document.getElementById('partSearchResults');
+    if (!q) { box.innerHTML = ''; return; }
+
+    box.innerHTML = '<div class="text-xs text-gray-400">Searching...</div>';
+    try {
+        const res = await fetch(`{{ route('admin.invoices.service.search-parts') }}?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}`);
+        const data = await res.json();
+        if (!data.parts || data.parts.length === 0) {
+            box.innerHTML = '<div class="text-xs text-gray-400">No matching parts in stock.</div>';
+            return;
+        }
+        box.innerHTML = data.parts.map(p => {
+            const priceLocal = p.price_local ?? p.price_usd;
+            return `<div onclick='addPartToReceipt(${JSON.stringify(p).replace(/'/g,"&#39;")})'
+                class="border border-gray-200 rounded-lg p-2 cursor-pointer hover:border-gold transition-colors text-xs">
+                <strong class="text-navy">${p.part_name}</strong> — ${p.part_code} · Stock: ${p.stock_qty} · ${priceLocal}
+            </div>`;
+        }).join('');
+    } catch (e) {
+        box.innerHTML = '<div class="text-xs text-red-500">Search failed.</div>';
+    }
+}
+
+function addPartToReceipt(part) {
+    const i = addItem();
+    document.getElementById('item-type-' + i).value = 'part';
+    document.getElementById('item-partid-' + i).value = part.id;
+    document.getElementById('item-name-' + i).value = part.part_name + ' (' + part.part_code + ')';
+    document.getElementById('item-name-' + i).readOnly = true;
+    document.getElementById('item-price-' + i).value = part.price_local ?? part.price_usd;
+    document.getElementById('item-qty-' + i).max = part.stock_qty;
+    document.getElementById('partSearchInput').value = '';
+    document.getElementById('partSearchResults').innerHTML = '';
+    updateTotal();
 }
 
 function applyPreset(i, sel) {

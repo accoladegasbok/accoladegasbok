@@ -17,12 +17,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
+use App\Http\Controllers\Admin\InvoiceController;
 
 class AdminOrderController extends Controller
 {
     const LOCATIONS = [
         'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
-        'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Oshodi Lagos', 'Accra Ghana',
+        'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
     ];
 
     private function liveRates(): array
@@ -74,9 +75,34 @@ class AdminOrderController extends Controller
                                   'condition_grade', 'location', 'price_local', 'currency_code', 'price_usd', 'stock_qty')
             ->orderBy('part_name')
             ->limit(50)
-            ->get();
+            ->get()
+            ->map(fn($p) => (array) $p + ['item_type' => 'part']);
 
-        return response()->json(['parts' => $parts]);
+        // ── #16 — Place Order should also support Quick Service /
+        // Service Rates / Consumables, not just parts. Services have
+        // no location-specific stock, so they're always shown
+        // regardless of the selected location (currency display
+        // matches whatever location is currently selected).
+        $servicesQuery = DB::table('service_rates')->where('is_active', true);
+        if ($q !== '') {
+            $servicesQuery->where(function ($sq) use ($q) {
+                $sq->where('name', 'like', "%{$q}%")
+                   ->orWhere('service_code', 'like', "%{$q}%")
+                   ->orWhere('category', 'like', "%{$q}%");
+            });
+        }
+        $currencyForLoc = InvoiceController::currencyForLocation($loc ?: 'Waxahachie TX');
+        $services = $servicesQuery->select('id', 'service_code', 'name', 'category', 'default_price')
+            ->orderBy('name')->limit(30)->get()
+            ->map(fn($s) => [
+                'id' => $s->id, 'part_code' => $s->service_code, 'part_name' => $s->name,
+                'brand' => $s->category, 'model' => null, 'year_from' => null, 'year_to' => null,
+                'condition_grade' => null, 'location' => $loc, 'price_local' => $s->default_price,
+                'currency_code' => $currencyForLoc['code'], 'price_usd' => null, 'stock_qty' => null,
+                'item_type' => 'service',
+            ]);
+
+        return response()->json(['parts' => $parts->concat($services)->values()]);
     }
 
     // =========================================================
@@ -91,17 +117,26 @@ class AdminOrderController extends Controller
             'payment_method'   => 'required|string',
             'payment_received' => 'nullable|boolean',
             'items'            => 'required|array|min:1',
-            'items.*.part_id'  => 'required|exists:parts_inventory,id',
+            'items.*.item_type'=> 'required|in:part,service',
+            'items.*.id'       => 'required|integer',
             'items.*.qty'      => 'required|integer|min:1',
         ]);
 
-        // ── STOCK ENFORCEMENT — same principle as the manual invoice
-        // tool: never reserve more than what's genuinely available,
-        // re-checked authoritatively here server-side.
+        // ── STOCK ENFORCEMENT for parts; services have no stock to
+        // check (#16 — services can now be added alongside parts).
         $stockErrors = [];
-        $parts = [];
+        $lineItems = []; // unified: each entry tagged 'part' or 'service'
+        $firstPartLocation = null;
+
         foreach ($request->items as $item) {
-            $part = DB::table('parts_inventory')->where('id', $item['part_id'])->first();
+            if ($item['item_type'] === 'service') {
+                $service = DB::table('service_rates')->where('id', $item['id'])->where('is_active', true)->first();
+                if (!$service) { $stockErrors[] = "A selected service no longer exists."; continue; }
+                $lineItems[] = ['type' => 'service', 'service' => $service, 'qty' => (int) $item['qty']];
+                continue;
+            }
+
+            $part = DB::table('parts_inventory')->where('id', $item['id'])->first();
             $qty  = (int) $item['qty'];
 
             if (!$part) { $stockErrors[] = "A selected part no longer exists."; continue; }
@@ -113,26 +148,36 @@ class AdminOrderController extends Controller
                 $stockErrors[] = "{$part->part_code}: requested {$qty}, only {$part->stock_qty} in stock.";
                 continue;
             }
-            $parts[] = ['part' => $part, 'qty' => $qty];
+            $lineItems[] = ['type' => 'part', 'part' => $part, 'qty' => $qty];
+            $firstPartLocation = $firstPartLocation ?: $part->location;
         }
 
         if (!empty($stockErrors)) {
             return back()->withInput()->with('error', 'Cannot place this order — ' . implode(' | ', $stockErrors));
         }
+        if (empty($lineItems)) {
+            return back()->withInput()->with('error', 'No valid items to order.');
+        }
 
-        // ── Totals — each part's price_local is already fixed/correct
-        // for its own location. Sum in whatever currency the parts are
-        // actually in; convert to NGN/USD display fields using a live
-        // rate ONLY for the secondary informational figure, matching
-        // how the orders table has always stored both currencies.
+        // ── Totals — services priced in the same currency as wherever
+        // the order's primary location ends up being (derived below).
         $rates = $this->liveRates();
         $totalUsd = 0;
         $totalNgn = 0;
 
-        foreach ($parts as $p) {
-            $priceLocal = $p['part']->price_local ?? $p['part']->price_usd;
-            $currencyCode = $p['part']->currency_code ?? 'USD';
-            $lineLocal = $priceLocal * $p['qty'];
+        // Location for currency purposes: first part's location, or
+        // fall back to the location explicitly passed (service-only orders).
+        $primaryLocation = $firstPartLocation ?: $request->get('location', 'Waxahachie TX');
+
+        foreach ($lineItems as $li) {
+            if ($li['type'] === 'part') {
+                $priceLocal = $li['part']->price_local ?? $li['part']->price_usd;
+                $currencyCode = $li['part']->currency_code ?? 'USD';
+            } else {
+                $priceLocal = $li['service']->default_price ?? 0;
+                $currencyCode = InvoiceController::currencyForLocation($primaryLocation)['code'];
+            }
+            $lineLocal = $priceLocal * $li['qty'];
 
             if ($currencyCode === 'NGN') {
                 $totalNgn += $lineLocal;
@@ -140,7 +185,7 @@ class AdminOrderController extends Controller
             } elseif ($currencyCode === 'GHS') {
                 $totalUsd += $lineLocal / $rates['GHS'];
                 $totalNgn += ($lineLocal / $rates['GHS']) * $rates['NGN'];
-            } else { // USD
+            } else {
                 $totalUsd += $lineLocal;
                 $totalNgn += $lineLocal * $rates['NGN'];
             }
@@ -152,15 +197,9 @@ class AdminOrderController extends Controller
 
         $paymentReceived = $request->boolean('payment_received');
 
-        // ── customer_country is a required column on `orders` (used
-        // by the online checkout flow for shipping). For walk-in/phone
-        // sales there's no real "country" the customer entered, so we
-        // derive a sensible value from where the parts themselves are
-        // located — this is never null and always a legitimate value.
-        $firstPartLocation = $parts[0]['part']->location ?? '';
         $derivedCountry = match(true) {
-            str_contains($firstPartLocation, 'Nigeria') => 'Nigeria',
-            str_contains($firstPartLocation, 'Ghana')   => 'Ghana',
+            str_contains($primaryLocation, 'Nigeria') => 'Nigeria',
+            str_contains($primaryLocation, 'Ghana')   => 'Ghana',
             default                                      => 'USA',
         };
 
@@ -191,43 +230,76 @@ class AdminOrderController extends Controller
                 'updated_at'          => now(),
             ]);
 
-            foreach ($parts as $p) {
-                $part = $p['part'];
-                $priceLocal = $part->price_local ?? $part->price_usd;
-                $currencyCode = $part->currency_code ?? 'USD';
+            foreach ($lineItems as $li) {
+                if ($li['type'] === 'part') {
+                    $part = $li['part'];
+                    $priceLocal = $part->price_local ?? $part->price_usd;
+                    $currencyCode = $part->currency_code ?? 'USD';
 
-                $unitNgn = $currencyCode === 'NGN' ? $priceLocal : ($currencyCode === 'GHS'
-                    ? ($priceLocal / $rates['GHS']) * $rates['NGN']
-                    : $priceLocal * $rates['NGN']);
-                $unitUsd = $currencyCode === 'USD' ? $priceLocal : ($currencyCode === 'GHS'
-                    ? $priceLocal / $rates['GHS']
-                    : $priceLocal / $rates['NGN']);
+                    $unitNgn = $currencyCode === 'NGN' ? $priceLocal : ($currencyCode === 'GHS'
+                        ? ($priceLocal / $rates['GHS']) * $rates['NGN']
+                        : $priceLocal * $rates['NGN']);
+                    $unitUsd = $currencyCode === 'USD' ? $priceLocal : ($currencyCode === 'GHS'
+                        ? $priceLocal / $rates['GHS']
+                        : $priceLocal / $rates['NGN']);
 
-                DB::table('order_items')->insert([
-                    'order_id'        => $orderId,
-                    'part_id'         => $part->id,
-                    'part_name'       => $part->part_name,
-                    'part_code'       => $part->part_code,
-                    'brand'           => $part->brand,
-                    'model'           => $part->model,
-                    'year_from'       => $part->year_from,
-                    'year_to'         => $part->year_to,
-                    'condition_grade' => $part->condition_grade,
-                    'location'        => $part->location,
-                    'unit_price_ngn'  => round($unitNgn),
-                    'unit_price_usd'  => round($unitUsd, 2),
-                    'subtotal_ngn'    => round($unitNgn * $p['qty']),
-                    'created_at'      => now(),
-                    'updated_at'      => now(),
-                ]);
+                    DB::table('order_items')->insert([
+                        'order_id'        => $orderId,
+                        'item_type'       => 'part',
+                        'part_id'         => $part->id,
+                        'service_id'      => null,
+                        'part_name'       => $part->part_name,
+                        'part_code'       => $part->part_code,
+                        'brand'           => $part->brand,
+                        'model'           => $part->model,
+                        'year_from'       => $part->year_from,
+                        'year_to'         => $part->year_to,
+                        'condition_grade' => $part->condition_grade,
+                        'location'        => $part->location,
+                        'unit_price_ngn'  => round($unitNgn),
+                        'unit_price_usd'  => round($unitUsd, 2),
+                        'subtotal_ngn'    => round($unitNgn * $li['qty']),
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
 
-                // Reserve the part — same convention as the online
-                // checkout flow (Reserved -> Sold on completion, or
-                // released back to Available on cancellation).
-                DB::table('parts_inventory')->where('id', $part->id)->update([
-                    'status'     => 'Reserved',
-                    'updated_at' => now(),
-                ]);
+                    DB::table('parts_inventory')->where('id', $part->id)->update([
+                        'status'     => 'Reserved',
+                        'updated_at' => now(),
+                    ]);
+                } else {
+                    $service = $li['service'];
+                    $priceLocal = $service->default_price ?? 0;
+                    $currencyCode = InvoiceController::currencyForLocation($primaryLocation)['code'];
+
+                    $unitNgn = $currencyCode === 'NGN' ? $priceLocal : ($currencyCode === 'GHS'
+                        ? ($priceLocal / $rates['GHS']) * $rates['NGN']
+                        : $priceLocal * $rates['NGN']);
+                    $unitUsd = $currencyCode === 'USD' ? $priceLocal : ($currencyCode === 'GHS'
+                        ? $priceLocal / $rates['GHS']
+                        : $priceLocal / $rates['NGN']);
+
+                    DB::table('order_items')->insert([
+                        'order_id'        => $orderId,
+                        'item_type'       => 'service',
+                        'part_id'         => null,
+                        'service_id'      => $service->id,
+                        'part_name'       => $service->name,
+                        'part_code'       => $service->service_code,
+                        'brand'           => $service->category,
+                        'model'           => null,
+                        'year_from'       => null,
+                        'year_to'         => null,
+                        'condition_grade' => null,
+                        'location'        => $primaryLocation,
+                        'unit_price_ngn'  => round($unitNgn),
+                        'unit_price_usd'  => round($unitUsd, 2),
+                        'subtotal_ngn'    => round($unitNgn * $li['qty']),
+                        'created_at'      => now(),
+                        'updated_at'      => now(),
+                    ]);
+                    // No inventory to reserve for a service
+                }
             }
 
             DB::commit();

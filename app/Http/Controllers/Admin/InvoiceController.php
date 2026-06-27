@@ -377,7 +377,9 @@ class InvoiceController extends Controller
             'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
             'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
             'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
-            'Oshodi Lagos'     => 'Oshodi Lagos, Nigeria — NGN (₦)',
+            'Lagos Nigeria'     => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'     => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'     => 'Akure, Nigeria — NGN (₦)',
             'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
         ];
 
@@ -388,9 +390,14 @@ class InvoiceController extends Controller
         $staffDiscountCapFixed   = $currentStaff->discount_cap_fixed ?? null;
         $staffDiscountCapPercent = $currentStaff->discount_cap_percent ?? null;
 
+        // #18 — Manual Invoice should be able to add Service Rates
+        // alongside parts, not just inventory items.
+        $serviceRates = DB::table('service_rates')->where('is_active', true)
+            ->orderBy('category')->orderBy('name')->get();
+
         return view('admin.invoices.manual', compact(
             'parts', 'locations', 'staffLocation', 'isAdmin',
-            'staffDiscountCapFixed', 'staffDiscountCapPercent'
+            'staffDiscountCapFixed', 'staffDiscountCapPercent', 'serviceRates'
         ));
     }
     // =========================================================
@@ -419,7 +426,9 @@ class InvoiceController extends Controller
             'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
             'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
             'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
-            'Oshodi Lagos'     => 'Oshodi Lagos, Nigeria — NGN (₦)',
+            'Lagos Nigeria'     => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'     => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'     => 'Akure, Nigeria — NGN (₦)',
             'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
         ];
 
@@ -847,11 +856,40 @@ class InvoiceController extends Controller
             'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
             'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
             'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
-            'Oshodi Lagos'     => 'Oshodi Lagos, Nigeria — NGN (₦)',
+            'Lagos Nigeria'     => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'     => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'     => 'Akure, Nigeria — NGN (₦)',
             'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
         ];
 
         return view('admin.invoices.service', compact('serviceRates', 'locations'));
+    }
+
+    // =========================================================
+    // AJAX: GET /admin/invoices/service/search-parts?q=&location=
+    // Lets Quick Receipt add real Parts/Consumables alongside
+    // Quick Service entries (#16).
+    // =========================================================
+    public function serviceSearchParts(Request $request)
+    {
+        $q   = trim($request->get('q', ''));
+        $loc = $request->get('location', '');
+
+        $query = DB::table('parts_inventory')->where('status', 'Available')->where('stock_qty', '>', 0);
+        if ($loc) $query->where('location', $loc);
+        if ($q !== '') {
+            $query->where(function ($sq) use ($q) {
+                $sq->where('part_name', 'like', "%{$q}%")
+                   ->orWhere('part_code', 'like', "%{$q}%")
+                   ->orWhere('brand', 'like', "%{$q}%");
+            });
+        }
+
+        $parts = $query->select('id', 'part_code', 'part_name', 'brand', 'model', 'condition_grade',
+                                  'location', 'price_local', 'currency_code', 'price_usd', 'stock_qty')
+            ->orderBy('part_name')->limit(30)->get();
+
+        return response()->json(['parts' => $parts]);
     }
 
     // =========================================================
@@ -866,9 +904,11 @@ class InvoiceController extends Controller
             'customer_name'    => 'required|string|max:120',
             'location'         => 'required|string',
             'items'            => 'required|array|min:1',
-            'items.*.name'     => 'required|string',
+            'items.*.item_type'=> 'required|in:service,part',
+            'items.*.name'     => 'required_if:items.*.item_type,service|nullable|string',
             'items.*.price'    => 'required|numeric|min:0',
             'items.*.qty'      => 'required|integer|min:1',
+            'items.*.part_id'  => 'required_if:items.*.item_type,part|nullable|integer',
         ]);
 
         $saleLocation = $request->location;
@@ -876,18 +916,39 @@ class InvoiceController extends Controller
         $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($saleLocation);
 
-        $lineItems = collect($request->items)->map(function ($item) use ($currencyCode) {
+        // ── #16 — Quick Receipt now supports adding real Parts /
+        // Consumables alongside Quick Service entries, in one ticket.
+        // Parts get the same stock-enforcement as Manual Invoice.
+        $stockErrors = [];
+        $resolvedParts = [];
+        foreach ($request->items as $i => $item) {
+            if (($item['item_type'] ?? 'service') === 'part') {
+                $part = DB::table('parts_inventory')->where('id', $item['part_id'])->first();
+                $qty  = (int) $item['qty'];
+                if (!$part) { $stockErrors[] = "A selected part no longer exists."; continue; }
+                if ($part->status !== 'Available') { $stockErrors[] = "{$part->part_code} is no longer Available."; continue; }
+                if ($qty > $part->stock_qty) { $stockErrors[] = "{$part->part_code}: only {$part->stock_qty} in stock."; continue; }
+                $resolvedParts[$i] = $part;
+            }
+        }
+        if (!empty($stockErrors)) {
+            return back()->withInput()->with('error', implode(' | ', $stockErrors));
+        }
+
+        $lineItems = collect($request->items)->map(function ($item, $i) use ($currencyCode, $resolvedParts) {
+            $isPart     = ($item['item_type'] ?? 'service') === 'part';
             $priceLocal = (float) $item['price'];
             $qty        = (int) $item['qty'];
             $lineLocal  = $priceLocal * $qty;
+            $part       = $resolvedParts[$i] ?? null;
 
             return (object)[
-                'part_id'          => null, // services never link to inventory
-                'part_name'        => $item['name'],
-                'part_code'        => 'SERVICE',
-                'brand'            => '',
-                'model'            => '',
-                'condition_grade'  => 'N/A',
+                'part_id'          => $part?->id,
+                'part_name'        => $isPart ? $part->part_name : $item['name'],
+                'part_code'        => $isPart ? $part->part_code : 'SERVICE',
+                'brand'            => $isPart ? $part->brand : '',
+                'model'            => $isPart ? $part->model : '',
+                'condition_grade'  => $isPart ? $part->condition_grade : 'N/A',
                 'qty'              => $qty,
                 'unit_price_local' => $priceLocal,
                 'unit_price_fmt'   => self::formatLocal($priceLocal, $currencyCode),
@@ -912,39 +973,58 @@ class InvoiceController extends Controller
         $copyKey       = 'customer';
         $subtotalUsd   = $subtotalLocal; // kept for template compatibility
 
-        $invoiceId = DB::table('invoices')->insertGetId([
-            'invoice_no'        => $invoiceNo,
-            'invoice_type'      => 'service',
-            'customer_name'     => $customerInfo->name,
-            'customer_phone'    => $customerInfo->phone,
-            'customer_email'    => $customerInfo->email,
-            'customer_address'  => $customerInfo->address,
-            'location'          => $saleLocation,
-            'currency_code'     => $currencyCode,
-            'subtotal_local'    => $subtotalLocal,
-            'subtotal_usd'      => $subtotalLocal, // kept for template compatibility
-            'payment_method'    => $paymentMethod,
-            'created_by'        => Session::get('staff_name') ?? 'Admin',
-            'notes'             => $request->notes ?? null,
-            'created_at'        => $createdAt,
-            'updated_at'        => $createdAt,
-        ]);
-
-        foreach ($lineItems as $li) {
-            DB::table('invoice_items')->insert([
-                'invoice_id'       => $invoiceId,
-                'part_id'          => null,
-                'part_name'        => $li->part_name,
-                'part_code'        => $li->part_code,
-                'brand'            => '',
-                'model'            => '',
-                'condition_grade'  => 'N/A',
-                'qty'              => $li->qty,
-                'unit_price_local' => $li->unit_price_local,
-                'unit_price_usd'   => $li->unit_price_local, // kept for template compatibility
-                'created_at'       => $createdAt,
-                'updated_at'       => $createdAt,
+        DB::beginTransaction();
+        try {
+            $invoiceId = DB::table('invoices')->insertGetId([
+                'invoice_no'        => $invoiceNo,
+                'invoice_type'      => 'service', // kept as 'service' even with mixed items — this is still the Quick Receipt flow
+                'customer_name'     => $customerInfo->name,
+                'customer_phone'    => $customerInfo->phone,
+                'customer_email'    => $customerInfo->email,
+                'customer_address'  => $customerInfo->address,
+                'location'          => $saleLocation,
+                'currency_code'     => $currencyCode,
+                'subtotal_local'    => $subtotalLocal,
+                'subtotal_usd'      => $subtotalLocal, // kept for template compatibility
+                'payment_method'    => $paymentMethod,
+                'created_by'        => Session::get('staff_name') ?? 'Admin',
+                'notes'             => $request->notes ?? null,
+                'created_at'        => $createdAt,
+                'updated_at'        => $createdAt,
             ]);
+
+            foreach ($lineItems as $li) {
+                DB::table('invoice_items')->insert([
+                    'invoice_id'       => $invoiceId,
+                    'part_id'          => $li->part_id,
+                    'part_name'        => $li->part_name,
+                    'part_code'        => $li->part_code,
+                    'brand'            => $li->brand,
+                    'model'            => $li->model,
+                    'condition_grade'  => $li->condition_grade,
+                    'qty'              => $li->qty,
+                    'unit_price_local' => $li->unit_price_local,
+                    'unit_price_usd'   => $li->unit_price_local, // kept for template compatibility
+                    'created_at'       => $createdAt,
+                    'updated_at'       => $createdAt,
+                ]);
+
+                // Deduct stock for real parts, same as Manual Invoice
+                if ($li->part_id) {
+                    $locked = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
+                    $newQty = max(0, $locked->stock_qty - $li->qty);
+                    DB::table('parts_inventory')->where('id', $li->part_id)->update([
+                        'stock_qty'  => $newQty,
+                        'status'     => $newQty <= 0 ? 'Sold' : 'Available',
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withInput()->with('error', 'Could not save receipt: ' . $e->getMessage());
         }
 
         $location = $saleLocation;
@@ -979,6 +1059,7 @@ class InvoiceController extends Controller
                 'type'          => $r->invoice_type ?? 'parts',
                 'payment_method'=> $r->payment_method,
                 'staff'         => $r->created_by,
+                'doc_label'     => 'Receipt', // manual/POS sales are paid at the point of sale by definition
                 'created_at'    => $r->created_at,
                 'url'           => route('admin.invoices.show.manual', $r->id),
             ]);
@@ -990,7 +1071,7 @@ class InvoiceController extends Controller
         $orderRows = DB::table('orders')
             ->select('id', 'order_ref as ref', 'customer_name', 'customer_phone',
                      'total_amount_ngn as amount_local', 'customer_country',
-                     'payment_method', 'channel', 'created_at')
+                     'payment_method', 'channel', 'payment_status', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
                 'id'            => $r->id,
@@ -1008,11 +1089,43 @@ class InvoiceController extends Controller
                 'type'          => 'order',
                 'payment_method'=> $r->payment_method,
                 'staff'         => in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Staff' : 'Customer (online)',
+                // Once payment is confirmed, this is now a RECEIPT,
+                // not just an invoice — reflects what's actually true:
+                // money has changed hands.
+                'doc_label'     => in_array($r->payment_status, ['confirmed', 'paid', 'completed']) ? 'Receipt' : 'Invoice',
                 'created_at'    => $r->created_at,
                 'url'           => route('admin.invoices.show', $r->id),
             ]);
 
-        $all = $invoiceRows->concat($orderRows)->sortByDesc('created_at')->values();
+        $all = $invoiceRows->concat($orderRows)->values();
+
+        // ── Search: ref/order#, customer name, phone ──────────────
+        if ($q = trim($request->get('q', ''))) {
+            $all = $all->filter(function ($r) use ($q) {
+                return str_contains(strtolower($r->ref ?? ''), strtolower($q))
+                    || str_contains(strtolower($r->customer_name ?? ''), strtolower($q))
+                    || str_contains(strtolower($r->customer_phone ?? ''), strtolower($q));
+            })->values();
+        }
+
+        // ── Date range filter ──────────────────────────────────────
+        if ($from = $request->get('date_from')) {
+            $all = $all->filter(fn($r) => \Carbon\Carbon::parse($r->created_at)->gte(\Carbon\Carbon::parse($from)->startOfDay()))->values();
+        }
+        if ($to = $request->get('date_to')) {
+            $all = $all->filter(fn($r) => \Carbon\Carbon::parse($r->created_at)->lte(\Carbon\Carbon::parse($to)->endOfDay()))->values();
+        }
+
+        // ── Sort ─────────────────────────────────────────────────
+        $sort = $request->get('sort', 'date_desc');
+        $all = match($sort) {
+            'date_asc'    => $all->sortBy('created_at')->values(),
+            'name_asc'    => $all->sortBy(fn($r) => strtolower($r->customer_name ?? ''))->values(),
+            'name_desc'   => $all->sortByDesc(fn($r) => strtolower($r->customer_name ?? ''))->values(),
+            'amount_desc' => $all->sortByDesc('amount_local')->values(),
+            'amount_asc'  => $all->sortBy('amount_local')->values(),
+            default       => $all->sortByDesc('created_at')->values(), // date_desc
+        };
 
         // Manual pagination since this is a merged in-memory collection
         $perPage = 20;

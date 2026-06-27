@@ -167,6 +167,10 @@ class InventoryController extends Controller
             'oem_part_number'     => 'nullable|string|max:80',
             'mileage'             => 'nullable|integer|min:0',
             'colour'              => 'nullable|string|max:50',
+            // Bin location is now REQUIRED (#13) — every part must
+            // have a real physical bin assigned at the moment it's
+            // entered into inventory, no exceptions.
+            'storage_shelf_id'    => 'required|exists:storage_shelves,id',
             'bin_location'        => 'nullable|string|max:20',
             'engine_code_oem'     => 'nullable|string|max:30',
             'transmission_code_oem'=> 'nullable|string|max:30',
@@ -369,6 +373,7 @@ class InventoryController extends Controller
             'price_usd'          => 'required|numeric|min:0',
             'condition_grade'    => 'required|in:A,B,C,New',
             'location'           => 'required|string',
+            'storage_shelf_id'   => 'required|exists:storage_shelves,id', // #13 — bin location cannot be empty
             'stock_qty'          => 'nullable|integer|min:1',
         ]);
 

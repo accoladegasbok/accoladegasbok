@@ -80,6 +80,30 @@
 <form method="POST" action="{{ route('admin.harvest.saveParts', $session->id) }}" id="harvestForm">
     @csrf
 
+    {{-- ── BIN LOCATION FOR THIS BATCH — required, applies to every
+         part saved from this harvest session (#13) ─────────────────── --}}
+    <div class="mb-6 border-2 border-[#C8960C] rounded-xl p-4 bg-[#1e293b]">
+        <h2 class="text-white font-semibold text-sm mb-1">📦 Bin Location for This Batch *</h2>
+        <p class="text-xs text-slate-400 mb-3">Required — every part saved from this harvest needs a real bin assigned.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-1">Store Room</label>
+                <select id="harvestRoomSelect" onchange="loadHarvestBins()"
+                    class="w-full bg-[#0f172a] border border-[#334155] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#C8960C]">
+                    <option value="">Select Store Room...</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-1">Bin</label>
+                <select id="harvestBinSelect" onchange="document.getElementById('storageShelfIdInput').value = this.value"
+                    class="w-full bg-[#0f172a] border border-[#334155] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#C8960C]">
+                    <option value="">Select Store Room first</option>
+                </select>
+            </div>
+        </div>
+        <input type="hidden" name="storage_shelf_id" id="storageShelfIdInput" required>
+    </div>
+
     @foreach($partsByCategory as $category => $parts)
     @php $catSlug = Str::slug($category); @endphp
 
@@ -420,5 +444,50 @@ document.querySelectorAll('[id^="cnt-"]').forEach(el => {
     updateCatCount(el.id.replace('cnt-', ''));
 });
 updateTotal();
+
+// ── Bin location selector (#13) ────────────────────────────────────
+const HARVEST_LOCATION = "{{ $harvestLocation }}";
+
+async function loadHarvestRooms() {
+    const roomSelect = document.getElementById('harvestRoomSelect');
+    try {
+        const res = await fetch(`/admin/storage/rooms-for-location?location=${encodeURIComponent(HARVEST_LOCATION)}`);
+        const data = await res.json();
+        roomSelect.innerHTML = '<option value="">Select Store Room...</option>' +
+            (data.rooms || []).map(r => `<option value="${r.id}">${r.name} (${r.code})</option>`).join('');
+    } catch (e) {
+        roomSelect.innerHTML = '<option value="">Could not load rooms</option>';
+    }
+}
+
+async function loadHarvestBins() {
+    const roomId = document.getElementById('harvestRoomSelect').value;
+    const binSelect = document.getElementById('harvestBinSelect');
+    if (!roomId) { binSelect.innerHTML = '<option value="">Select Store Room first</option>'; return; }
+
+    binSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+        const res = await fetch(`/admin/storage/shelves-for-room?room_id=${roomId}`);
+        const data = await res.json();
+        if (!data.shelves || data.shelves.length === 0) {
+            binSelect.innerHTML = '<option value="">No bins set up for this room yet</option>';
+            return;
+        }
+        binSelect.innerHTML = '<option value="">Select Bin...</option>' +
+            data.shelves.map(s => `<option value="${s.id}">${s.full_bin_code}</option>`).join('');
+    } catch (e) {
+        binSelect.innerHTML = '<option value="">Could not load bins</option>';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadHarvestRooms);
+loadHarvestRooms();
+
+document.getElementById('harvestForm').addEventListener('submit', function(e) {
+    if (!document.getElementById('storageShelfIdInput').value) {
+        e.preventDefault();
+        alert('Select a bin location for this batch before saving.');
+    }
+});
 </script>
 @endpush

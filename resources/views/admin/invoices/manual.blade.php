@@ -85,6 +85,12 @@
       </div>
       <div class="flex items-center gap-2">
         <span id="currencyDisplay" class="text-gold font-mono font-700 text-sm">USD ($)</span>
+        <select id="serviceRatePicker" onchange="addServiceFromPicker(this)" class="border border-blue-200 rounded-xl text-xs px-2 py-2 bg-blue-50 text-blue-700 focus:outline-none">
+          <option value="">⚙ + Add Service Rate...</option>
+          @foreach($serviceRates as $sr)
+          <option value="{{ $sr->id }}" data-name="{{ $sr->name }}" data-price="{{ $sr->default_price }}">{{ $sr->name }}{{ $sr->category ? ' ('.$sr->category.')' : '' }}</option>
+          @endforeach
+        </select>
         <button type="button" onclick="addItem()"
           class="bg-gold text-navy font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-yellow-400 transition-colors flex items-center gap-1">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -306,7 +312,23 @@ function addItem() {
         </div>
     `;
     container.appendChild(row);
+    return i;
 }
+
+// #18 — Add a Service Rate as a manual-style line item (no part_id,
+// same as any free-typed item — storeManual already supports this).
+function addServiceFromPicker(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt.value) return;
+    const i = addItem();
+    document.getElementById('item-name-' + i).value = opt.dataset.name;
+    document.getElementById('item-pid-' + i).value = ''; // no inventory link — it's a service
+    const priceInput = document.querySelector(`input[name="items[${i}][price]"]`) || document.getElementById('item-price-' + i);
+    if (priceInput && opt.dataset.price) priceInput.value = opt.dataset.price;
+    sel.value = '';
+    updateTotal();
+}
+
 function removeItem(i) {
     document.getElementById('item-row-' + i)?.remove();
     updateTotal();
