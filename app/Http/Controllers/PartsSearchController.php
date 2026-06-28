@@ -65,7 +65,8 @@ class PartsSearchController extends Controller
         // don't actually track yet. Framed as "still growing" rather
         // than a fixed/static-feeling number.
         $totalOrdersEver = DB::table('orders')->count() + DB::table('invoices')->count();
-        $totalCustomersServed = DB::table('customers')->count();
+        $totalCustomersServed = DB::table('orders')->distinct('customer_phone')->count('customer_phone')
+            + DB::table('invoices')->distinct('customer_phone')->count('customer_phone');
 
         return view('parts.search', compact(
             'makes','years','categories','parts','rates','currency',

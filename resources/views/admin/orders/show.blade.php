@@ -73,8 +73,11 @@
             </div>
           </div>
           <div class="text-right flex-shrink-0">
-            <div class="font-display font-700 text-navy text-base">₦{{ number_format($item->unit_price_ngn) }}</div>
-            <div class="text-xs text-gray-400">${{ number_format($item->unit_price_usd, 2) }}</div>
+            @if(str_contains($item->location ?? '', 'Nigeria'))
+              <div class="font-display font-700 text-navy text-base">₦{{ number_format($item->unit_price_ngn) }}</div>
+            @else
+              <div class="font-display font-700 text-navy text-base">${{ number_format($item->unit_price_usd, 2) }}</div>
+            @endif
           </div>
         </div>
         @endforeach
@@ -213,14 +216,17 @@
             {{ str_replace('_',' ',$order->payment_status) }}
           </span>
         </div>
+        @if(str_contains($order->customer_country ?? '', 'Nigeria'))
         <div class="flex justify-between">
-          <span class="text-gray-400">Amount (₦)</span>
+          <span class="text-gray-400">Amount</span>
           <span class="font-display font-700 text-navy text-sm">₦{{ number_format($order->total_amount_ngn) }}</span>
         </div>
+        @else
         <div class="flex justify-between">
-          <span class="text-gray-400">Amount (USD)</span>
-          <span class="font-500">${{ number_format($order->total_amount_usd, 2) }}</span>
+          <span class="text-gray-400">Amount</span>
+          <span class="font-display font-700 text-navy text-sm">${{ number_format($order->total_amount_usd, 2) }}</span>
         </div>
+        @endif
         <div class="flex justify-between">
           <span class="text-gray-400">Rate used</span>
           <span class="font-500 font-mono">{{ number_format($order->exchange_rate) }}</span>
