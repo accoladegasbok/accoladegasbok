@@ -167,6 +167,106 @@
       </div>
     </div>
 
+    {{-- ── Payments — partial/multiple payments, proof upload, balance tracking ── --}}
+    @php
+        $paySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
+    @endphp
+    <div class="stat-card">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-4">Payments</h2>
+
+      <div class="grid grid-cols-3 gap-3 mb-4 text-center">
+        <div class="bg-gray-50 rounded-xl p-3">
+          <div class="text-xs text-gray-400 uppercase tracking-wider">Order Total</div>
+          <div class="font-display font-700 text-navy text-lg">₦{{ number_format($order->total_amount_ngn) }}</div>
+        </div>
+        <div class="bg-green-50 rounded-xl p-3">
+          <div class="text-xs text-gray-400 uppercase tracking-wider">Paid (Confirmed)</div>
+          <div class="font-display font-700 text-green-600 text-lg">₦{{ number_format($paySummary['confirmedPaid']) }}</div>
+        </div>
+        <div class="{{ $paySummary['balanceDue'] > 0 ? 'bg-red-50' : 'bg-green-50' }} rounded-xl p-3">
+          <div class="text-xs text-gray-400 uppercase tracking-wider">Balance Due</div>
+          <div class="font-display font-700 {{ $paySummary['balanceDue'] > 0 ? 'text-red-600' : 'text-green-600' }} text-lg">₦{{ number_format($paySummary['balanceDue']) }}</div>
+        </div>
+      </div>
+
+      @if($paySummary['balanceDue'] > 0)
+      <form method="POST" action="{{ route('admin.orders.send-reminder', $order->id) }}" onsubmit="return confirm('Send a payment reminder by SMS and email?')" class="mb-4">
+        @csrf
+        <button type="submit" class="w-full border border-amber-300 bg-amber-50 text-amber-700 font-body font-500 text-xs py-2.5 rounded-xl hover:bg-amber-100 transition-colors">
+          📩 Send Payment Reminder (SMS + Email)
+        </button>
+      </form>
+      @endif
+
+      {{-- Payment history --}}
+      @if($paySummary['payments']->count())
+      <div class="border border-gray-200 rounded-xl overflow-hidden mb-4">
+        <table class="w-full text-xs font-body">
+          <thead><tr class="bg-gray-50 text-gray-400 uppercase tracking-wider"><th class="px-3 py-2 text-left">Amount</th><th class="px-3 py-2 text-left">Method</th><th class="px-3 py-2 text-left">Proof</th><th class="px-3 py-2 text-left">Status</th><th class="px-3 py-2"></th></tr></thead>
+          <tbody>
+            @foreach($paySummary['payments'] as $p)
+            <tr class="border-t border-gray-100">
+              <td class="px-3 py-2 font-700 text-navy">₦{{ number_format($p->amount_ngn) }}</td>
+              <td class="px-3 py-2 text-gray-600">{{ $p->payment_method }}</td>
+              <td class="px-3 py-2">
+                @if($p->proof_path)<a href="{{ asset('storage/' . $p->proof_path) }}" target="_blank" class="text-gold hover:text-yellow-600">View →</a>@else <span class="text-gray-300">—</span>@endif
+              </td>
+              <td class="px-3 py-2">
+                <span class="badge {{ $p->status==='confirmed' ? 'badge-green' : ($p->status==='rejected' ? 'badge-red' : 'badge-amber') }}">{{ ucfirst($p->status) }}</span>
+              </td>
+              <td class="px-3 py-2 text-right">
+                @if($p->status === 'pending')
+                <form method="POST" action="{{ route('admin.orders.payments.confirm', [$order->id, $p->id]) }}" class="inline">@csrf<button class="text-green-600 hover:text-green-800 mr-2">✓ Confirm</button></form>
+                <form method="POST" action="{{ route('admin.orders.payments.reject', [$order->id, $p->id]) }}" class="inline" onsubmit="return confirm('Reject this payment record?')">@csrf<button class="text-red-500 hover:text-red-700">✕ Reject</button></form>
+                @endif
+              </td>
+            </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+      @endif
+
+      {{-- Record a new payment --}}
+      @if($paySummary['balanceDue'] > 0)
+      <form method="POST" action="{{ route('admin.orders.payments.add', $order->id) }}" enctype="multipart/form-data" class="border-2 border-gold rounded-xl p-4">
+        @csrf
+        <div class="text-xs font-body font-700 text-navy uppercase tracking-wide mb-3">Record a Payment (Full or Partial)</div>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Amount (₦) *</label>
+            <input type="number" name="amount_ngn" step="0.01" min="0.01" max="{{ $paySummary['balanceDue'] }}" required placeholder="{{ $paySummary['balanceDue'] }}"
+              class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Payment Method *</label>
+            <select name="payment_method" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Card">Card</option>
+              <option value="POS">POS</option>
+              <option value="Mobile Money">Mobile Money</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Proof of Payment (receipt/screenshot — optional but recommended)</label>
+          <input type="file" name="proof" accept="image/*,application/pdf" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+        </div>
+        <div class="mb-3">
+          <input type="text" name="notes" placeholder="Notes (optional)" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
+        </div>
+        <button type="submit" class="w-full bg-gold hover:bg-yellow-500 text-navy font-display font-700 text-sm py-2.5 rounded-xl transition-colors">
+          Record Payment
+        </button>
+        <p class="text-[10px] text-gray-400 mt-2">Payment is recorded as "Pending" until a staff member confirms it — this is what actually reduces the balance due.</p>
+      </form>
+      @else
+      <div class="text-center text-green-600 font-body font-500 text-sm py-3">✓ Fully paid</div>
+      @endif
+    </div>
+
   </div>
 
   {{-- ════════════════════════════════════════════════════════════════

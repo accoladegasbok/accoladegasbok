@@ -209,4 +209,133 @@ class OrderAdminController extends Controller
             $id
         );
     }
+
+    // =========================================================
+    // PARTIAL / MULTIPLE PAYMENTS — an order can be paid off across
+    // several payments, each with its own method and an optional
+    // uploaded proof (bank transfer screenshot, receipt, etc).
+    // Confirmed payments accumulate against the order total; the
+    // remaining balance is always order.total_amount_ngn minus the
+    // sum of CONFIRMED payments only (pending ones don't count yet).
+    // =========================================================
+
+    // GET /admin/orders/{id} already shows the order — this just
+    // recalculates the running balance, used by the show() view.
+    public static function paymentSummary(int $orderId): array
+    {
+        $order = DB::table('orders')->where('id', $orderId)->first();
+        $payments = DB::table('order_payments')->where('order_id', $orderId)->orderByDesc('created_at')->get();
+
+        $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_ngn');
+        $pendingTotal  = $payments->where('status', 'pending')->sum('amount_ngn');
+        $balanceDue    = max(0, ($order->total_amount_ngn ?? 0) - $confirmedPaid);
+
+        return [
+            'payments'      => $payments,
+            'confirmedPaid' => $confirmedPaid,
+            'pendingTotal'  => $pendingTotal,
+            'balanceDue'    => $balanceDue,
+        ];
+    }
+
+    // POST /admin/orders/{id}/payments — record a new (partial or full) payment
+    public function addPayment(Request $request, int $id)
+    {
+        $request->validate([
+            'amount_ngn'     => 'required|numeric|min:0.01',
+            'payment_method' => 'required|string|max:50',
+            'proof'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:8192',
+            'notes'          => 'nullable|string|max:500',
+        ]);
+
+        $order = DB::table('orders')->where('id', $id)->first();
+        abort_if(!$order, 404);
+
+        $proofPath = null;
+        if ($request->hasFile('proof')) {
+            $proofPath = $request->file('proof')->store("order-payments/{$id}", 'public');
+        }
+
+        DB::table('order_payments')->insert([
+            'order_id'       => $id,
+            'amount_ngn'     => $request->amount_ngn,
+            'payment_method' => $request->payment_method,
+            'proof_path'     => $proofPath,
+            'status'         => 'pending', // requires staff confirmation before it counts toward balance
+            'notes'          => $request->notes,
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
+
+        return back()->with('success', 'Payment recorded — pending confirmation.');
+    }
+
+    // POST /admin/orders/{id}/payments/{paymentId}/confirm — staff
+    // verifies the proof and confirms the payment actually came in.
+    // This is what actually reduces the outstanding balance.
+    public function confirmPaymentRecord(Request $request, int $id, int $paymentId)
+    {
+        DB::table('order_payments')->where('id', $paymentId)->where('order_id', $id)->update([
+            'status'                 => 'confirmed',
+            'confirmed_by_staff_id'  => Session::get('staff_id'),
+            'confirmed_at'           => now(),
+            'updated_at'             => now(),
+        ]);
+
+        $summary = self::paymentSummary($id);
+        $newStatus = $summary['balanceDue'] <= 0 ? 'confirmed' : ($summary['confirmedPaid'] > 0 ? 'partial' : 'awaiting_payment');
+
+        DB::table('orders')->where('id', $id)->update([
+            'payment_status' => $newStatus,
+            'order_status'   => $newStatus === 'confirmed' ? 'confirmed' : DB::raw('order_status'),
+            'updated_at'     => now(),
+        ]);
+
+        return back()->with('success', 'Payment confirmed. ' . ($summary['balanceDue'] <= 0 ? 'Order is now fully paid.' : 'Balance updated.'));
+    }
+
+    public function rejectPayment(int $id, int $paymentId)
+    {
+        DB::table('order_payments')->where('id', $paymentId)->where('order_id', $id)->update([
+            'status' => 'rejected', 'updated_at' => now(),
+        ]);
+        return back()->with('success', 'Payment marked as rejected.');
+    }
+
+    // POST /admin/orders/{id}/send-reminder — SMS + email reminder
+    // for the outstanding balance. Logged so staff can see reminder
+    // history and avoid spamming the same customer repeatedly.
+    public function sendReminder(int $id)
+    {
+        $order = DB::table('orders')->where('id', $id)->first();
+        abort_if(!$order, 404);
+
+        $summary = self::paymentSummary($id);
+        if ($summary['balanceDue'] <= 0) {
+            return back()->with('error', 'This order has no outstanding balance.');
+        }
+
+        $balanceFmt = '₦' . number_format($summary['balanceDue']);
+        $message = "Hi {$order->customer_name}, this is Auto Zenith Parts. Your order {$order->order_ref} has an outstanding balance of {$balanceFmt}. Please complete payment at your earliest convenience.";
+
+        if ($order->customer_phone) {
+            app(\App\Services\SmsService::class)->send($order->customer_phone, $message);
+            DB::table('payment_reminders')->insert([
+                'order_id' => $id, 'channel' => 'sms',
+                'sent_by_staff_id' => Session::get('staff_id'), 'created_at' => now(),
+            ]);
+        }
+
+        if ($order->customer_email) {
+            try {
+                Mail::to($order->customer_email)->send(new \App\Mail\PaymentReminderMail($order, $summary['balanceDue']));
+                DB::table('payment_reminders')->insert([
+                    'order_id' => $id, 'channel' => 'email',
+                    'sent_by_staff_id' => Session::get('staff_id'), 'created_at' => now(),
+                ]);
+            } catch (\Exception $e) { /* logged by mail config */ }
+        }
+
+        return back()->with('success', 'Payment reminder sent.');
+    }
 }

@@ -836,7 +836,7 @@ class InvoiceController extends Controller
 
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
-            'invoiceNo', 'businessInfo', 'saleLocation', 'location',
+            'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
         ));
     }
@@ -1034,7 +1034,7 @@ class InvoiceController extends Controller
 
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
-            'invoiceNo', 'businessInfo', 'saleLocation', 'location',
+            'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
         ));
     }
@@ -1221,5 +1221,122 @@ class InvoiceController extends Controller
         ]);
 
         return redirect()->route('admin.invoices.index')->with('success', 'Invoice/receipt deleted.');
+    }
+
+    // =========================================================
+    // PARTIAL / MULTIPLE PAYMENTS — same pattern as orders. Covers
+    // Manual Invoice, Quick Receipt, and any invoice created from
+    // closing an Open Tab, since they all share the invoices table.
+    //
+    // NOTE: existing invoices created before this feature have NO
+    // payment records yet, so they'll show as "fully unpaid" here
+    // even if they were genuinely paid in full at the till. Use
+    // "Record a Payment" once to log that — it's a one-click backfill,
+    // not an assumption this system makes automatically (we never
+    // guess financial data on your behalf).
+    // =========================================================
+
+    public static function invoicePaymentSummary(int $invoiceId): array
+    {
+        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        $payments = DB::table('invoice_payments')->where('invoice_id', $invoiceId)->orderByDesc('created_at')->get();
+
+        $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_local');
+        $total = $invoice->subtotal_local ?? $invoice->subtotal_usd ?? 0;
+        $balanceDue = max(0, $total - $confirmedPaid);
+
+        return [
+            'payments'      => $payments,
+            'confirmedPaid' => $confirmedPaid,
+            'balanceDue'    => $balanceDue,
+            'total'         => $total,
+        ];
+    }
+
+    public function addInvoicePayment(Request $request, int $id)
+    {
+        $request->validate([
+            'amount_local'   => 'required|numeric|min:0.01',
+            'payment_method' => 'required|string|max:50',
+            'proof'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:8192',
+            'notes'          => 'nullable|string|max:500',
+        ]);
+
+        $invoice = DB::table('invoices')->where('id', $id)->first();
+        abort_if(!$invoice, 404);
+
+        $proofPath = null;
+        if ($request->hasFile('proof')) {
+            $proofPath = $request->file('proof')->store("invoice-payments/{$id}", 'public');
+        }
+
+        DB::table('invoice_payments')->insert([
+            'invoice_id'     => $id,
+            'amount_local'   => $request->amount_local,
+            'payment_method' => $request->payment_method,
+            'proof_path'     => $proofPath,
+            'status'         => 'pending',
+            'notes'          => $request->notes,
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
+
+        return back()->with('success', 'Payment recorded — pending confirmation.');
+    }
+
+    public function confirmInvoicePayment(int $id, int $paymentId)
+    {
+        DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $id)->update([
+            'status'                => 'confirmed',
+            'confirmed_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'),
+            'confirmed_at'          => now(),
+            'updated_at'            => now(),
+        ]);
+
+        return back()->with('success', 'Payment confirmed.');
+    }
+
+    public function rejectInvoicePayment(int $id, int $paymentId)
+    {
+        DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $id)->update([
+            'status' => 'rejected', 'updated_at' => now(),
+        ]);
+        return back()->with('success', 'Payment marked as rejected.');
+    }
+
+    public function sendInvoiceReminder(int $id)
+    {
+        $invoice = DB::table('invoices')->where('id', $id)->first();
+        abort_if(!$invoice, 404);
+
+        $summary = self::invoicePaymentSummary($id);
+        if ($summary['balanceDue'] <= 0) {
+            return back()->with('error', 'This invoice has no outstanding balance.');
+        }
+
+        $currencyCode = $invoice->currency_code ?? 'NGN';
+        $balanceFmt = self::formatLocal($summary['balanceDue'], $currencyCode);
+        $message = "Hi {$invoice->customer_name}, this is Auto Zenith Parts. Your invoice {$invoice->invoice_no} has an outstanding balance of {$balanceFmt}. Please complete payment at your earliest convenience.";
+
+        if ($invoice->customer_phone) {
+            app(\App\Services\SmsService::class)->send($invoice->customer_phone, $message);
+            DB::table('invoice_payment_reminders')->insert([
+                'invoice_id' => $id, 'channel' => 'sms',
+                'sent_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'), 'created_at' => now(),
+            ]);
+        }
+
+        if ($invoice->customer_email) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($invoice->customer_email)
+                    ->send(new \App\Mail\InvoicePaymentReminderMail($invoice, $summary['balanceDue'], $balanceFmt));
+                DB::table('invoice_payment_reminders')->insert([
+                    'invoice_id' => $id, 'channel' => 'email',
+                    'sent_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'), 'created_at' => now(),
+                ]);
+            } catch (\Exception $e) { /* logged by mail config */ }
+        }
+
+        return back()->with('success', 'Payment reminder sent.');
     }
 }

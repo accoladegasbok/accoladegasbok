@@ -204,6 +204,91 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
     <a href="{{ url()->previous() }}" style="color:#aaa;font-size:11px;text-decoration:none;">← Back</a>
 </div>
 
+{{-- ── Payments — partial/multiple payments, proof upload, balance ──
+     Hidden when printing (.print-controls is already display:none in
+     @media print, and this panel reuses that same class so it never
+     shows up on a printed/saved copy). ── --}}
+@php
+    $resolvedInvoiceId = $invoice->id ?? $invoiceId ?? null;
+    $paySummary = $resolvedInvoiceId ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
+@endphp
+@if($resolvedInvoiceId && $paySummary)
+<div class="print-controls" style="display:block; max-width: 520px; margin: 0 auto 20px;">
+    <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px;">
+        <div style="flex:1; background:#f5f5f5; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:10px; color:#999; text-transform:uppercase;">Total</div>
+            <div style="font-size:16px; font-weight:700; color:#0d1b2a;">{{ $subtotalFmt }}</div>
+        </div>
+        <div style="flex:1; background:#e8f7ee; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:10px; color:#999; text-transform:uppercase;">Paid</div>
+            <div style="font-size:16px; font-weight:700; color:#1b9e5c;">{{ $currency['symbol'] }}{{ number_format($paySummary['confirmedPaid']) }}</div>
+        </div>
+        <div style="flex:1; background:{{ $paySummary['balanceDue'] > 0 ? '#fdecec' : '#e8f7ee' }}; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:10px; color:#999; text-transform:uppercase;">Balance</div>
+            <div style="font-size:16px; font-weight:700; color:{{ $paySummary['balanceDue'] > 0 ? '#c0392b' : '#1b9e5c' }};">{{ $currency['symbol'] }}{{ number_format($paySummary['balanceDue']) }}</div>
+        </div>
+    </div>
+
+    @if($paySummary['balanceDue'] > 0)
+    <form method="POST" action="{{ route('admin.invoices.send-reminder', $resolvedInvoiceId) }}" onsubmit="return confirm('Send a payment reminder by SMS and email?')" style="margin-bottom:12px;">
+        @csrf
+        <button type="submit" style="width:100%; background:#fff8e6; border:1px solid #e6c656; color:#8a6d1f; font-size:11px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">
+            📩 Send Payment Reminder (SMS + Email)
+        </button>
+    </form>
+    @endif
+
+    @if($paySummary['payments']->count())
+    <table style="width:100%; font-size:11px; margin-bottom:12px; border-collapse:collapse;">
+        <thead><tr style="background:#f5f5f5; color:#999; text-transform:uppercase;"><th style="padding:6px; text-align:left;">Amount</th><th style="padding:6px; text-align:left;">Method</th><th style="padding:6px; text-align:left;">Proof</th><th style="padding:6px; text-align:left;">Status</th><th></th></tr></thead>
+        <tbody>
+        @foreach($paySummary['payments'] as $p)
+        <tr style="border-top:1px solid #eee;">
+            <td style="padding:6px; font-weight:700;">{{ $currency['symbol'] }}{{ number_format($p->amount_local) }}</td>
+            <td style="padding:6px;">{{ $p->payment_method }}</td>
+            <td style="padding:6px;">@if($p->proof_path)<a href="{{ asset('storage/' . $p->proof_path) }}" target="_blank" style="color:#c9a84c;">View →</a>@else —@endif</td>
+            <td style="padding:6px;">
+                <span style="padding:2px 6px; border-radius:4px; font-size:10px; background:{{ $p->status==='confirmed' ? '#e8f7ee' : ($p->status==='rejected' ? '#fdecec' : '#fff8e6') }}; color:{{ $p->status==='confirmed' ? '#1b9e5c' : ($p->status==='rejected' ? '#c0392b' : '#8a6d1f') }};">{{ ucfirst($p->status) }}</span>
+            </td>
+            <td style="padding:6px; text-align:right;">
+                @if($p->status === 'pending')
+                <form method="POST" action="{{ route('admin.invoices.payments.confirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;">@csrf<button style="color:#1b9e5c; border:none; background:none; cursor:pointer; font-size:11px;">✓</button></form>
+                <form method="POST" action="{{ route('admin.invoices.payments.reject', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Reject this payment?')">@csrf<button style="color:#c0392b; border:none; background:none; cursor:pointer; font-size:11px;">✕</button></form>
+                @endif
+            </td>
+        </tr>
+        @endforeach
+        </tbody>
+    </table>
+    @endif
+
+    @if($paySummary['balanceDue'] > 0)
+    <form method="POST" action="{{ route('admin.invoices.payments.add', $resolvedInvoiceId) }}" enctype="multipart/form-data" style="border:2px solid #c9a84c; border-radius:8px; padding:12px;">
+        @csrf
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:8px; color:#0d1b2a;">Record a Payment (Full or Partial)</div>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <input type="number" name="amount_local" step="0.01" min="0.01" max="{{ $paySummary['balanceDue'] }}" required placeholder="Amount ({{ $currency['code'] }})"
+                style="flex:1; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:12px;">
+            <select name="payment_method" required style="flex:1; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:12px;">
+                <option value="Cash">Cash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Card">Card</option>
+                <option value="POS">POS</option>
+                <option value="Mobile Money">Mobile Money</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
+        <input type="file" name="proof" accept="image/*,application/pdf" style="width:100%; margin-bottom:8px; font-size:11px;">
+        <input type="text" name="notes" placeholder="Notes (optional)" style="width:100%; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:12px; margin-bottom:8px;">
+        <button type="submit" style="width:100%; background:#c9a84c; color:#0d1b2a; font-weight:700; font-size:12px; padding:8px; border:none; border-radius:6px; cursor:pointer;">Record Payment</button>
+        <p style="font-size:10px; color:#999; margin-top:6px;">Recorded as "Pending" until a staff member confirms it — that's what actually reduces the balance.</p>
+    </form>
+    @else
+    <div style="text-align:center; color:#1b9e5c; font-weight:700; font-size:12px; padding:10px;">✓ Fully paid</div>
+    @endif
+</div>
+@endif
+
 {{-- ── Invoice Pages ────────────────────────────────────── --}}
 <div class="invoice-pages">
 

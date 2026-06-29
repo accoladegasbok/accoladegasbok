@@ -69,6 +69,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/{id}',                  [OrderAdminController::class, 'show'])->name('show');
             Route::get('/{id}/print',             [OrderAdminController::class, 'printAdmin'])->name('print');
             Route::post('/{id}/confirm-payment', [OrderAdminController::class, 'confirmPayment'])->name('confirm-payment');
+            Route::post('/{id}/payments', [OrderAdminController::class, 'addPayment'])->name('payments.add');
+            Route::post('/{id}/payments/{paymentId}/confirm', [OrderAdminController::class, 'confirmPaymentRecord'])->name('payments.confirm');
+            Route::post('/{id}/payments/{paymentId}/reject', [OrderAdminController::class, 'rejectPayment'])->name('payments.reject');
+            Route::post('/{id}/send-reminder', [OrderAdminController::class, 'sendReminder'])->name('send-reminder');
             Route::post('/{id}/cancel',          [OrderAdminController::class, 'cancel'])->name('cancel');
             Route::post('/{id}/status',          [OrderAdminController::class, 'updateStatus'])->name('status');
             Route::post('/{id}/email-receipt',   [OrderAdminController::class, 'emailReceipt'])->name('email-receipt');
@@ -226,6 +230,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('/manual/{id}', [InvoiceController::class, 'updateManual'])->name('manual.update');
             Route::get('/order/{id}', [InvoiceController::class, 'show'])->name('show');
             Route::delete('/{id}', [InvoiceController::class, 'destroy'])->name('destroy');
+            Route::post('/{id}/payments', [InvoiceController::class, 'addInvoicePayment'])->name('payments.add');
+            Route::post('/{id}/payments/{paymentId}/confirm', [InvoiceController::class, 'confirmInvoicePayment'])->name('payments.confirm');
+            Route::post('/{id}/payments/{paymentId}/reject', [InvoiceController::class, 'rejectInvoicePayment'])->name('payments.reject');
+            Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendInvoiceReminder'])->name('send-reminder');
 
             // Quick Receipt — services/labor/misc, never touches inventory
             Route::get('/service/create', [InvoiceController::class, 'createService'])->name('service.create');
