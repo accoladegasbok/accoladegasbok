@@ -124,6 +124,20 @@
           <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pendingReturns }}</span>
         @endif
       </a>
+      <a href="{{ route('admin.tabs.index') }}" class="sidebar-link {{ request()->routeIs('admin.tabs*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Open Tabs
+      </a>
+      <a href="{{ route('admin.tickets.index') }}" class="sidebar-link {{ request()->routeIs('admin.tickets*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"/></svg>
+        Tickets
+        @if(in_array(session('staff_role'), ['admin','manager']))
+          @php $pendingTickets = \Illuminate\Support\Facades\DB::table('staff_tickets')->where('status','pending')->count(); @endphp
+          @if($pendingTickets > 0)
+            <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pendingTickets }}</span>
+          @endif
+        @endif
+      </a>
       <a href="{{ route('admin.assets.index') }}" class="sidebar-link {{ request()->routeIs('admin.assets*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l3 3m0 0l-3 3m3-3h-7.5M6 7.5h3v3H6v-3z"/></svg>
         Assets & Equipment

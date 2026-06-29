@@ -445,6 +445,9 @@ class InventoryController extends Controller
             'price_usd'      => 'required|numeric|min:0',
             'condition_grade'=> 'required|in:A,B,C,New',
             'location'       => 'required|string',
+            'photos'         => 'required|array|min:1',
+            'photos.*'       => 'image|max:8192',
+            'video'          => 'nullable|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
         ];
 
         if ($isConsumable) {
@@ -485,7 +488,7 @@ class InventoryController extends Controller
         $yearFrom = $isConsumable ? 1990 : $request->year_from;
         $yearTo   = $isConsumable ? 2030 : $request->year_to;
 
-        DB::table('parts_inventory')->insert([
+        $partId = DB::table('parts_inventory')->insertGetId([
             'part_code'              => $partCode,
             'brand'                  => $request->brand,
             'model'                  => $isConsumable ? ($request->model ?: 'Universal') : $request->model,
@@ -526,10 +529,110 @@ class InventoryController extends Controller
             'updated_at'             => now(),
         ]);
 
+        // ── Photo upload — multiple photos allowed, stored in the
+        // existing photos JSON column. First photo uploaded becomes
+        // primary by default (shown in search/cards).
+        if ($request->hasFile('photos')) {
+            $this->storePartPhotos($partId, $request->file('photos'));
+        }
+
+        // ── Optional single video per part ──
+        if ($request->hasFile('video')) {
+            $videoPath = $request->file('video')->store("parts/{$partId}/video", 'public');
+            DB::table('parts_inventory')->where('id', $partId)->update(['video_path' => $videoPath]);
+        }
+
         $msg = $isConsumable
             ? "Consumable item {$partCode} added to inventory."
             : "Part {$partCode} added to inventory.";
 
         return redirect()->route('admin.inventory.index')->with('success', $msg);
+    }
+
+    // =========================================================
+    // Shared helper — saves uploaded photo files for a part into
+    // storage/app/public/parts/{id}/ and appends them to the
+    // existing photos JSON column (array of relative paths,
+    // first entry treated as primary/display photo).
+    // =========================================================
+    private function storePartPhotos(int $partId, array $files): void
+    {
+        $part = DB::table('parts_inventory')->where('id', $partId)->first();
+        $existing = json_decode($part->photos ?? '[]', true) ?: [];
+
+        foreach ($files as $file) {
+            if (!$file->isValid()) continue;
+            $path = $file->store("parts/{$partId}", 'public');
+            $existing[] = $path;
+        }
+
+        DB::table('parts_inventory')->where('id', $partId)->update([
+            'photos'     => json_encode($existing),
+            'updated_at' => now(),
+        ]);
+    }
+
+    // =========================================================
+    // POST /admin/inventory/{id}/photos — add more photos to an
+    // already-existing part (used from the Edit page)
+    // =========================================================
+    public function addPhotos(Request $request, int $id)
+    {
+        $request->validate([
+            'photos'   => 'required|array',
+            'photos.*' => 'image|max:8192', // 8MB per photo
+        ]);
+
+        $this->storePartPhotos($id, $request->file('photos'));
+
+        return back()->with('success', 'Photo(s) uploaded.');
+    }
+
+    // POST /admin/inventory/{id}/video — add or replace this part's single video
+    public function addVideo(Request $request, int $id)
+    {
+        $request->validate([
+            'video' => 'required|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
+        ]);
+
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        if (!empty($part->video_path)) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($part->video_path);
+        }
+
+        $videoPath = $request->file('video')->store("parts/{$id}/video", 'public');
+        DB::table('parts_inventory')->where('id', $id)->update(['video_path' => $videoPath, 'updated_at' => now()]);
+
+        return back()->with('success', 'Video uploaded.');
+    }
+
+    public function deleteVideo(int $id)
+    {
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        if (!empty($part->video_path)) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($part->video_path);
+        }
+        DB::table('parts_inventory')->where('id', $id)->update(['video_path' => null, 'updated_at' => now()]);
+        return back()->with('success', 'Video removed.');
+    }
+
+    // POST /admin/inventory/{id}/photos/delete — remove one photo,
+    // and re-promote the next one to primary if the deleted one was first
+    public function deletePhoto(Request $request, int $id)
+    {
+        $request->validate(['path' => 'required|string']);
+
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        $photos = json_decode($part->photos ?? '[]', true) ?: [];
+        $photos = array_values(array_filter($photos, fn($p) => $p !== $request->path));
+
+        \Illuminate\Support\Facades\Storage::disk('public')->delete($request->path);
+
+        DB::table('parts_inventory')->where('id', $id)->update([
+            'photos'     => json_encode($photos),
+            'updated_at' => now(),
+        ]);
+
+        return back()->with('success', 'Photo removed.');
     }
 }

@@ -150,7 +150,22 @@ class StockTransferController extends Controller
         $createdBy  = $transfer->created_by_staff_id ? DB::table('staff')->where('id', $transfer->created_by_staff_id)->value('name') : null;
         $receivedBy = $transfer->received_by_staff_id ? DB::table('staff')->where('id', $transfer->received_by_staff_id)->value('name') : null;
 
-        return view('admin.transfers.show', compact('transfer', 'items', 'createdBy', 'receivedBy'));
+        // ── #12 — full room address shown for both origin and
+        // destination, so the receiving agent can positively confirm
+        // this is the right place before accepting.
+        $fromRooms = DB::table('storage_rooms')->where('location', $transfer->from_location)->get();
+        $toRooms   = DB::table('storage_rooms')->where('location', $transfer->to_location)->get();
+
+        // Destination bins available for picking, if not yet received
+        $toBins = $transfer->status === 'in_transit'
+            ? DB::table('storage_shelves as s')
+                ->join('storage_rooms as r', 'r.id', '=', 's.storage_room_id')
+                ->where('r.location', $transfer->to_location)
+                ->select('s.id', 's.full_bin_code', 'r.name as room_name')
+                ->orderBy('r.name')->orderBy('s.full_bin_code')->get()
+            : collect();
+
+        return view('admin.transfers.show', compact('transfer', 'items', 'createdBy', 'receivedBy', 'fromRooms', 'toRooms', 'toBins'));
     }
 
     // Printable, price-free waybill
@@ -160,7 +175,10 @@ class StockTransferController extends Controller
         abort_if(!$transfer, 404);
         $items = DB::table('stock_transfer_items')->where('transfer_id', $id)->get();
 
-        return view('admin.transfers.waybill', compact('transfer', 'items'));
+        $fromRooms = DB::table('storage_rooms')->where('location', $transfer->from_location)->get();
+        $toRooms   = DB::table('storage_rooms')->where('location', $transfer->to_location)->get();
+
+        return view('admin.transfers.waybill', compact('transfer', 'items', 'fromRooms', 'toRooms'));
     }
 
     public function receive(Request $request, int $id)
@@ -174,13 +192,33 @@ class StockTransferController extends Controller
 
         $items = DB::table('stock_transfer_items')->where('transfer_id', $id)->get();
 
+        // ── #12 — destination bin is now REQUIRED per item to accept
+        // a transfer, not optional. Staff must positively place every
+        // incoming part into a real bin at the destination before the
+        // transfer can be marked received.
+        $destBins = $request->input('dest_bins', []);
+        $missing = [];
+        foreach ($items as $item) {
+            if (empty($destBins[$item->id])) {
+                $missing[] = $item->part_name;
+            }
+        }
+        if (!empty($missing)) {
+            return back()->with('error', 'Select a destination bin for every item before accepting — missing for: ' . implode(', ', $missing));
+        }
+
+        $binCodesById = DB::table('storage_shelves')->whereIn('id', array_values($destBins))->pluck('full_bin_code', 'id');
+
         DB::beginTransaction();
         try {
             foreach ($items as $item) {
+                $shelfId = $destBins[$item->id];
                 DB::table('parts_inventory')->where('id', $item->part_id)->update([
-                    'status'     => 'Available',
-                    'location'   => $transfer->to_location,
-                    'updated_at' => now(),
+                    'status'           => 'Available',
+                    'location'         => $transfer->to_location,
+                    'storage_shelf_id' => $shelfId,
+                    'bin_location'     => $binCodesById[$shelfId] ?? null,
+                    'updated_at'       => now(),
                 ]);
             }
 

@@ -79,6 +79,7 @@ class StorageController extends Controller
             'name'        => 'required|string|max:80',
             'code'        => 'required|string|max:20',
             'description' => 'nullable|string|max:500',
+            'address'     => 'nullable|string|max:255',
         ]);
 
         // Changing the code does NOT retroactively rename existing bin
@@ -91,6 +92,7 @@ class StorageController extends Controller
             'name'        => $request->name,
             'code'        => $request->code,
             'description' => $request->description,
+            'address'     => $request->address,
             'updated_at'  => now(),
         ]);
 
@@ -274,6 +276,27 @@ class StorageController extends Controller
         $shelf = DB::table('storage_shelves')->where('id', $shelfId)->first();
         abort_if(!$shelf, 404);
         return view('admin.storage.bin-barcode', compact('shelf'));
+    }
+
+    // =========================================================
+    // AJAX: GET /admin/storage/all-bins-for-location?location=X
+    // Returns every bin across every room at one location, with the
+    // room name included — used for per-item bin pickers (e.g. the
+    // harvest checklist) where a two-step room-then-bin cascade per
+    // row would be too slow/cluttered for dozens of items at once.
+    // =========================================================
+    public function allBinsForLocation(Request $request)
+    {
+        $location = $request->get('location', '');
+
+        $bins = DB::table('storage_shelves as s')
+            ->join('storage_rooms as r', 'r.id', '=', 's.storage_room_id')
+            ->where('r.location', $location)
+            ->select('s.id', 's.full_bin_code', 'r.name as room_name', 'r.code as room_code')
+            ->orderBy('r.name')->orderBy('s.full_bin_code')
+            ->get();
+
+        return response()->json(['bins' => $bins]);
     }
 
     // =========================================================

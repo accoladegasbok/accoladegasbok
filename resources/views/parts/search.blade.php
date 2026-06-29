@@ -55,7 +55,21 @@
             </div>
         </div>
 
-        {{-- ── VIN Result Banner (hidden until decoded) ────────────────────── --}}
+        {{-- ── Special Order Notice — for parts not currently in stock ──── --}}
+        <div class="max-w-3xl mx-auto mb-6">
+            <div class="bg-gold bg-opacity-10 border border-gold border-opacity-40 rounded-2xl px-5 py-4 flex flex-col sm:flex-row items-center gap-3 text-center sm:text-left">
+                <div class="text-2xl">📦</div>
+                <div class="flex-1">
+                    <div class="font-display font-700 text-white text-sm">Can't find your part?</div>
+                    <div class="text-xs text-gray-300 font-body mt-0.5">We can special-order it from the USA — typical delivery to Nigeria or Ghana is 30–60 days. Send us a message and we'll confirm availability and pricing.</div>
+                </div>
+                <button type="button" onclick="openWaPicker()" class="bg-gold text-navy font-display font-700 text-xs px-5 py-2.5 rounded-xl hover:bg-yellow-400 transition-colors whitespace-nowrap">
+                    Send Us a Message
+                </button>
+            </div>
+        </div>
+
+
 <div id="vinResultBanner" class="max-w-3xl mx-auto hidden">
   <div class="border border-white border-opacity-20 rounded-2xl overflow-hidden">
 
@@ -411,7 +425,7 @@
                             {{-- Photo --}}
                             <a href="{{ route('parts.show', $part->id) }}" class="block relative bg-gray-100 aspect-[4/3] overflow-hidden">
                                 @if($thumb)
-                                    <img src="{{ $thumb }}" alt="{{ $part->part_name }}"
+                                    <img src="{{ asset('storage/' . $thumb) }}" alt="{{ $part->part_name }}"
                                         class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                                         loading="lazy">
                                 @else
@@ -535,7 +549,7 @@
                             {{-- Thumb --}}
                             <a href="{{ route('parts.show', $part->id) }}" class="w-24 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                                 @if($thumb)
-                                    <img src="{{ $thumb }}" alt="{{ $part->part_name }}" class="w-full h-full object-cover">
+                                    <img src="{{ asset('storage/' . $thumb) }}" alt="{{ $part->part_name }}" class="w-full h-full object-cover">
                                 @else
                                     <div class="w-full h-full flex items-center justify-center text-gray-300">
                                         <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>

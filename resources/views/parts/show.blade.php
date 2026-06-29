@@ -61,6 +61,13 @@
         @endforeach
       </div>
       @endif
+      @if(!empty($part->video_path))
+      <div class="mt-3">
+        <video controls class="w-full rounded-2xl border border-gray-200">
+          <source src="{{ asset('storage/' . $part->video_path) }}">
+        </video>
+      </div>
+      @endif
       <div class="flex items-center justify-between mt-3 text-xs font-body text-gray-400">
         <span>Code: <span class="font-mono font-500 text-gray-600">{{ $part->part_code }}</span></span>
         <button onclick="shareUrl()" class="hover:text-navy transition-colors flex items-center gap-1">

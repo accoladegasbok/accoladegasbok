@@ -1046,6 +1046,7 @@ class InvoiceController extends Controller
     {
         // ── Manual + service invoices (in-store / phone sales) ──────
         $invoiceRows = DB::table('invoices')
+            ->whereNull('deleted_at')
             ->select('id', 'invoice_no as ref', 'customer_name', 'customer_phone',
                      'subtotal_local as amount_local', 'currency_code', 'location',
                      'invoice_type', 'payment_method', 'created_by', 'created_at')
@@ -1201,5 +1202,24 @@ class InvoiceController extends Controller
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
         ));
+    }
+
+    // =========================================================
+    // DELETE /admin/invoices/{id} — Admin only. Soft-delete, kept
+    // for audit purposes (#14) — hidden from normal lists, never
+    // fully erased, and the deleting admin is recorded.
+    // =========================================================
+    public function destroy(int $id)
+    {
+        if (\Illuminate\Support\Facades\Session::get('staff_role') !== 'admin') {
+            return back()->with('error', 'Only an admin can delete an invoice/receipt.');
+        }
+
+        DB::table('invoices')->where('id', $id)->update([
+            'deleted_at'           => now(),
+            'deleted_by_staff_id'  => \Illuminate\Support\Facades\Session::get('staff_id'),
+        ]);
+
+        return redirect()->route('admin.invoices.index')->with('success', 'Invoice/receipt deleted.');
     }
 }

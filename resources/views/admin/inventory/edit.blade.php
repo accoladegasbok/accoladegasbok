@@ -6,6 +6,71 @@
 
 @section('content')
 <div class="max-w-3xl">
+
+  {{-- ── Photos — separate mini-form, uploads immediately on submit ── --}}
+  <div class="stat-card mb-4">
+    <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Photos</h2>
+    <p class="text-xs text-gray-400 font-body mb-3">Customers see these on the parts search page. First photo shown is the main display photo.</p>
+
+    @php $photos = json_decode($part->photos ?? '[]', true) ?: []; @endphp
+
+    @if(count($photos))
+    <div class="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
+      @foreach($photos as $i => $photo)
+      <div class="relative group">
+        <img src="{{ asset('storage/' . $photo) }}" class="w-full h-24 object-cover rounded-lg border border-gray-200">
+        @if($i === 0)<span class="absolute top-1 left-1 bg-gold text-navy text-[10px] font-700 px-1.5 py-0.5 rounded">Main</span>@endif
+        <form method="POST" action="{{ route('admin.inventory.photos.delete', $part->id) }}" class="absolute top-1 right-1" onsubmit="return confirm('Remove this photo?')">
+          @csrf
+          <input type="hidden" name="path" value="{{ $photo }}">
+          <button type="submit" class="bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+        </form>
+      </div>
+      @endforeach
+    </div>
+    @else
+    <p class="text-xs text-gray-400 font-body mb-3">No photos yet.</p>
+    @endif
+
+    <form method="POST" action="{{ route('admin.inventory.photos.add', $part->id) }}" enctype="multipart/form-data" class="flex gap-2">
+      @csrf
+      <input type="file" name="photos[]" multiple accept="image/*" required
+        class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+      <button type="submit" class="bg-gold text-navy font-display font-700 text-sm px-4 py-2 rounded-lg hover:bg-yellow-400 transition-colors whitespace-nowrap">
+        + Add Photos
+      </button>
+    </form>
+  </div>
+
+  {{-- ── Video — optional, one per part ── --}}
+  <div class="stat-card mb-4">
+    <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Video</h2>
+    <p class="text-xs text-gray-400 font-body mb-3">One short video per part — MP4, MOV, AVI or WEBM, max 50MB.</p>
+
+    @if(!empty($part->video_path))
+    <div class="mb-3">
+      <video controls class="w-full max-w-sm rounded-lg border border-gray-200">
+        <source src="{{ asset('storage/' . $part->video_path) }}">
+      </video>
+      <form method="POST" action="{{ route('admin.inventory.video.delete', $part->id) }}" onsubmit="return confirm('Remove this video?')" class="mt-2">
+        @csrf
+        <button type="submit" class="text-xs font-body text-red-500 hover:text-red-700">✕ Remove Video</button>
+      </form>
+    </div>
+    @else
+    <p class="text-xs text-gray-400 font-body mb-3">No video yet.</p>
+    @endif
+
+    <form method="POST" action="{{ route('admin.inventory.video.add', $part->id) }}" enctype="multipart/form-data" class="flex gap-2">
+      @csrf
+      <input type="file" name="video" accept="video/*" required
+        class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold">
+      <button type="submit" class="bg-gold text-navy font-display font-700 text-sm px-4 py-2 rounded-lg hover:bg-yellow-400 transition-colors whitespace-nowrap">
+        {{ !empty($part->video_path) ? 'Replace Video' : '+ Add Video' }}
+      </button>
+    </form>
+  </div>
+
   <form method="POST" action="{{ route('admin.inventory.update', $part->id) }}">
     @csrf @method('PUT')
 
@@ -511,7 +576,7 @@ async function loadBinsForRoom(isInitialLoad = false) {
 
     binSelect.innerHTML = '<option value="">Loading...</option>';
     try {
-        const res  = await fetch(`/admin/storage/shelves-for-room?room_id=${encodeURIComponent(roomId)}`);
+        const res  = await fetch(`/admin/storage/shelves-for-room?room_id=${encodeURIComponent(roomId)}&keep_part_id={{ $part->id }}`);
         const data = await res.json();
         if (!data.shelves || data.shelves.length === 0) {
             binSelect.innerHTML = '<option value="">No bins set up for this room yet</option>';

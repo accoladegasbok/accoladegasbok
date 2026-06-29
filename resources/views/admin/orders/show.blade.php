@@ -1,7 +1,7 @@
 {{-- FILE: resources/views/admin/orders/show.blade.php --}}
 @extends('admin.layouts.admin')
-@section('title', 'Order ' . $order->order_ref)
-@section('page-title', $order->order_ref)
+@section('title', (in_array($order->payment_status, ['confirmed','paid','completed']) ? 'Receipt ' : 'Order ') . $order->order_ref)
+@section('page-title', (in_array($order->payment_status, ['confirmed','paid','completed']) ? '🧾 Receipt — ' : 'Order — ') . $order->order_ref)
 @section('page-sub', 'Order detail · ' . $order->customer_name . ' · ' . \Carbon\Carbon::parse($order->created_at)->format('d M Y, H:i'))
 
 @section('header-actions')
@@ -211,9 +211,9 @@
           <span class="badge
             @if($order->payment_status==='confirmed') badge-green
             @elseif($order->payment_status==='transfer_sent') badge-blue
-            @elseif($order->payment_status==='pending') badge-amber
+            @elseif(in_array($order->payment_status, ['pending','awaiting_payment','payment_pending_confirmation'])) badge-amber
             @else badge-gray @endif">
-            {{ str_replace('_',' ',$order->payment_status) }}
+            {{ $order->payment_status === 'confirmed' ? 'Paid / Receipt Issued' : str_replace('_',' ',$order->payment_status) }}
           </span>
         </div>
         @if(str_contains($order->customer_country ?? '', 'Nigeria'))

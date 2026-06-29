@@ -45,6 +45,12 @@
       <input type="text" name="description" value="{{ old('description', $room->description) }}"
         class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
     </div>
+    <div class="sm:col-span-4">
+      <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Full Street Address</label>
+      <input type="text" name="address" value="{{ old('address', $room->address) }}" placeholder="e.g. 3230 S Hwy 77, Suite 303, Waxahachie TX 75165"
+        class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+      <p class="text-xs text-gray-400 mt-1">Required for Stock Transfers — shown to the receiving agent to confirm the correct destination before accepting.</p>
+    </div>
     <div class="sm:col-span-4 flex items-center justify-between">
       <button type="submit" class="bg-gold text-navy font-display font-700 text-sm px-6 py-2.5 rounded-xl hover:bg-yellow-500 transition-colors">
         Save Changes

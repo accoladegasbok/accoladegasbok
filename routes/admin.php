@@ -52,6 +52,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/{id}/edit',    [InventoryController::class, 'edit'])->name('edit');
             Route::put('/{id}',         [InventoryController::class, 'update'])->name('update');
             Route::post('/{id}/status', [InventoryController::class, 'updateStatus'])->name('status');
+            Route::post('/{id}/photos', [InventoryController::class, 'addPhotos'])->name('photos.add');
+            Route::post('/{id}/photos/delete', [InventoryController::class, 'deletePhoto'])->name('photos.delete');
+            Route::post('/{id}/video', [InventoryController::class, 'addVideo'])->name('video.add');
+            Route::post('/{id}/video/delete', [InventoryController::class, 'deleteVideo'])->name('video.delete');
             Route::delete('/{id}',      [InventoryController::class, 'destroy'])->name('destroy');
             
         });
@@ -100,6 +104,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/',                          [\App\Http\Controllers\Admin\StorageController::class, 'index'])->name('index');
             Route::get('/rooms-for-location',         [\App\Http\Controllers\Admin\StorageController::class, 'roomsForLocation'])->name('rooms-for-location');
             Route::get('/shelves-for-room',          [\App\Http\Controllers\Admin\StorageController::class, 'shelvesForRoom'])->name('shelves-for-room');
+            Route::get('/all-bins-for-location',     [\App\Http\Controllers\Admin\StorageController::class, 'allBinsForLocation'])->name('all-bins-for-location');
             Route::post('/',                         [\App\Http\Controllers\Admin\StorageController::class, 'store'])->name('store');
             Route::put('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'update'])->name('update');
             Route::get('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'show'])->name('show');
@@ -127,6 +132,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/',             [\App\Http\Controllers\Admin\PartNameManagerController::class, 'index'])->name('index');
             Route::post('/merge',       [\App\Http\Controllers\Admin\PartNameManagerController::class, 'merge'])->name('merge');
             Route::post('/rename-one',  [\App\Http\Controllers\Admin\PartNameManagerController::class, 'renameOne'])->name('rename-one');
+        });
+
+        // Open Tab (#17) - running tab per customer, closes into one invoice
+        Route::prefix('tabs')->name('tabs.')->group(function () {
+            Route::get('/',                [\App\Http\Controllers\Admin\OpenTabController::class, 'index'])->name('index');
+            Route::get('/create',          [\App\Http\Controllers\Admin\OpenTabController::class, 'create'])->name('create');
+            Route::post('/',               [\App\Http\Controllers\Admin\OpenTabController::class, 'store'])->name('store');
+            Route::get('/{id}',            [\App\Http\Controllers\Admin\OpenTabController::class, 'show'])->name('show');
+            Route::get('/{id}/search',     [\App\Http\Controllers\Admin\OpenTabController::class, 'searchItems'])->name('search');
+            Route::post('/{id}/items',     [\App\Http\Controllers\Admin\OpenTabController::class, 'addItem'])->name('items.add');
+            Route::delete('/{id}/items/{itemId}', [\App\Http\Controllers\Admin\OpenTabController::class, 'removeItem'])->name('items.remove');
+            Route::post('/{id}/close',     [\App\Http\Controllers\Admin\OpenTabController::class, 'close'])->name('close');
+            Route::post('/{id}/cancel',    [\App\Http\Controllers\Admin\OpenTabController::class, 'cancel'])->name('cancel');
+        });
+
+        // Staff tickets/requests - raise issues for admin/manager attention
+        Route::prefix('tickets')->name('tickets.')->group(function () {
+            Route::get('/',           [\App\Http\Controllers\Admin\StaffTicketController::class, 'index'])->name('index');
+            Route::get('/create',     [\App\Http\Controllers\Admin\StaffTicketController::class, 'create'])->name('create');
+            Route::post('/',          [\App\Http\Controllers\Admin\StaffTicketController::class, 'store'])->name('store');
+            Route::get('/{id}',       [\App\Http\Controllers\Admin\StaffTicketController::class, 'show'])->name('show');
+            Route::post('/{id}/resolve', [\App\Http\Controllers\Admin\StaffTicketController::class, 'resolve'])->name('resolve');
         });
 
         // Override PIN system (#2/#14/#15)
@@ -198,6 +225,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/manual/{id}/edit', [InvoiceController::class, 'editManual'])->name('manual.edit');
             Route::put('/manual/{id}', [InvoiceController::class, 'updateManual'])->name('manual.update');
             Route::get('/order/{id}', [InvoiceController::class, 'show'])->name('show');
+            Route::delete('/{id}', [InvoiceController::class, 'destroy'])->name('destroy');
 
             // Quick Receipt — services/labor/misc, never touches inventory
             Route::get('/service/create', [InvoiceController::class, 'createService'])->name('service.create');

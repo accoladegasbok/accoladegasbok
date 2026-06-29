@@ -77,32 +77,8 @@
 </div>
 
 {{-- ── MAIN FORM ───────────────────────────────────────────────────── --}}
-<form method="POST" action="{{ route('admin.harvest.saveParts', $session->id) }}" id="harvestForm">
+<form method="POST" action="{{ route('admin.harvest.saveParts', $session->id) }}" id="harvestForm" enctype="multipart/form-data">
     @csrf
-
-    {{-- ── BIN LOCATION FOR THIS BATCH — required, applies to every
-         part saved from this harvest session (#13) ─────────────────── --}}
-    <div class="mb-6 border-2 border-[#C8960C] rounded-xl p-4 bg-[#1e293b]">
-        <h2 class="text-white font-semibold text-sm mb-1">📦 Bin Location for This Batch *</h2>
-        <p class="text-xs text-slate-400 mb-3">Required — every part saved from this harvest needs a real bin assigned.</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-1">Store Room</label>
-                <select id="harvestRoomSelect" onchange="loadHarvestBins()"
-                    class="w-full bg-[#0f172a] border border-[#334155] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#C8960C]">
-                    <option value="">Select Store Room...</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-slate-400 uppercase tracking-wider mb-1">Bin</label>
-                <select id="harvestBinSelect" onchange="document.getElementById('storageShelfIdInput').value = this.value"
-                    class="w-full bg-[#0f172a] border border-[#334155] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#C8960C]">
-                    <option value="">Select Store Room first</option>
-                </select>
-            </div>
-        </div>
-        <input type="hidden" name="storage_shelf_id" id="storageShelfIdInput" required>
-    </div>
 
     @foreach($partsByCategory as $category => $parts)
     @php $catSlug = Str::slug($category); @endphp
@@ -219,6 +195,36 @@
                 </div>
                 @endif
 
+                {{-- Bin Location — per item (#A) --}}
+                <div class="min-w-[180px]">
+                    <select name="bins[{{ $part['key'] }}]"
+                            class="harvest-bin-select bg-[#1e293b] border border-[#C8960C] rounded-lg px-2 py-1.5 text-xs text-white
+                                   focus:outline-none focus:border-[#C8960C] w-full"
+                            {{ $alreadyHarvested ? 'disabled' : 'required' }}>
+                        <option value="">Select bin...</option>
+                    </select>
+                </div>
+
+                {{-- Photo — required (at least 1), shown to customers --}}
+                <div class="min-w-[140px]">
+                    <input type="file"
+                           name="photos[{{ $part['key'] }}][]"
+                           class="harvest-photo-input text-xs text-slate-400 w-full file:bg-[#1e293b] file:border file:border-[#334155] file:rounded file:px-2 file:py-1 file:text-slate-300 file:text-xs"
+                           data-part-key="{{ $part['key'] }}"
+                           multiple accept="image/*"
+                           {{ $alreadyHarvested ? 'disabled' : '' }}>
+                    <div class="text-[10px] text-red-400 mt-0.5 harvest-photo-warning hidden">At least 1 photo required</div>
+                </div>
+
+                {{-- Video — optional, one per part --}}
+                <div class="min-w-[140px]">
+                    <input type="file"
+                           name="video[{{ $part['key'] }}]"
+                           accept="video/*"
+                           class="text-xs text-slate-400 w-full file:bg-[#1e293b] file:border file:border-[#334155] file:rounded file:px-2 file:py-1 file:text-slate-300 file:text-xs"
+                           {{ $alreadyHarvested ? 'disabled' : '' }}>
+                </div>
+
                 {{-- Notes --}}
                 <div class="w-full mt-1 pl-7">
                     <input type="text"
@@ -236,10 +242,10 @@
     @endforeach
 
     {{-- ── CUSTOM PARTS — admin only, to keep naming uniform ───────── --}}
-    @if(session('staff_role') === 'admin')
+    @if(in_array(session('staff_role'), ['admin', 'manager']))
     <div class="mb-4 border border-[#334155] rounded-xl overflow-hidden">
         <div class="bg-[#1e293b] px-4 py-3 flex items-center justify-between">
-            <span class="text-white font-semibold text-sm">➕ Additional / Custom Parts <span class="text-xs text-[#C8960C] font-normal">(admin only)</span></span>
+            <span class="text-white font-semibold text-sm">➕ Additional / Custom Parts <span class="text-xs text-[#C8960C] font-normal">(admin/manager only)</span></span>
             <button type="button" onclick="addCustomRow()"
                 class="text-xs px-3 py-1.5 rounded-lg bg-[#C8960C]/20 text-[#C8960C] border border-[#C8960C]/30 hover:bg-[#C8960C]/30 transition">
                 + Add Row
@@ -252,7 +258,7 @@
     @else
     <div class="mb-4 border border-[#334155] rounded-xl overflow-hidden">
         <div class="bg-[#1e293b] px-4 py-3">
-            <span class="text-slate-400 text-sm">Don't see a part on the list? Ask an admin to add it — only admin can add custom part names, to keep naming uniform across the system.</span>
+            <span class="text-slate-400 text-sm">Don't see a part on the list? Ask an admin or manager to add it — only they can add custom part names, to keep naming uniform across the system.</span>
         </div>
     </div>
     @endif
@@ -423,6 +429,21 @@ function addCustomRow() {
             <option value="A">A</option><option value="B" selected>B</option>
             <option value="C">C</option><option value="D">D</option>
         </select>
+        <select name="custom_parts[${i}][bin_id]" required
+                class="harvest-bin-select bg-[#1e293b] border border-[#C8960C] rounded-lg px-2 py-1.5 text-xs text-white
+                       focus:outline-none focus:border-[#C8960C] min-w-[160px]">
+            <option value="">Select bin...</option>
+        </select>
+        <div class="min-w-[140px]">
+            <input type="file" name="custom_parts[${i}][photos][]" class="custom-photo-input text-xs text-slate-400 w-full
+                   file:bg-[#1e293b] file:border file:border-[#334155] file:rounded file:px-2 file:py-1 file:text-slate-300 file:text-xs"
+                   data-custom-idx="${i}" multiple accept="image/*">
+            <div class="text-[10px] text-red-400 mt-0.5 custom-photo-warning hidden">At least 1 photo required</div>
+        </div>
+        <div class="min-w-[140px]">
+            <input type="file" name="custom_parts[${i}][video]" accept="video/*" class="text-xs text-slate-400 w-full
+                   file:bg-[#1e293b] file:border file:border-[#334155] file:rounded file:px-2 file:py-1 file:text-slate-300 file:text-xs">
+        </div>
         <input type="text" name="custom_parts[${i}][note]" placeholder="Notes"
                class="flex-1 min-w-[120px] bg-transparent border-b border-[#334155] px-1 py-1 text-xs
                       text-slate-500 focus:outline-none focus:border-[#C8960C] placeholder-slate-700">
@@ -430,6 +451,7 @@ function addCustomRow() {
                 class="text-red-400 hover:text-red-300 text-lg leading-none">×</button>
     `;
     document.getElementById('customPartsContainer').appendChild(row);
+    loadHarvestRooms(); // populate the new row's bin dropdown too
 }
 
 // ── Price input listener ──────────────────────────────────────────
@@ -445,38 +467,31 @@ document.querySelectorAll('[id^="cnt-"]').forEach(el => {
 });
 updateTotal();
 
-// ── Bin location selector (#13) ────────────────────────────────────
+// ── Bin location selector — per item (#A) ──────────────────────────
 const HARVEST_LOCATION = "{{ $harvestLocation }}";
 
 async function loadHarvestRooms() {
-    const roomSelect = document.getElementById('harvestRoomSelect');
     try {
-        const res = await fetch(`/admin/storage/rooms-for-location?location=${encodeURIComponent(HARVEST_LOCATION)}`);
+        const res = await fetch(`/admin/storage/all-bins-for-location?location=${encodeURIComponent(HARVEST_LOCATION)}`);
         const data = await res.json();
-        roomSelect.innerHTML = '<option value="">Select Store Room...</option>' +
-            (data.rooms || []).map(r => `<option value="${r.id}">${r.name} (${r.code})</option>`).join('');
-    } catch (e) {
-        roomSelect.innerHTML = '<option value="">Could not load rooms</option>';
-    }
-}
+        const bins = data.bins || [];
 
-async function loadHarvestBins() {
-    const roomId = document.getElementById('harvestRoomSelect').value;
-    const binSelect = document.getElementById('harvestBinSelect');
-    if (!roomId) { binSelect.innerHTML = '<option value="">Select Store Room first</option>'; return; }
+        const optionsHtml = '<option value="">Select bin...</option>' +
+            bins.map(b => `<option value="${b.id}">${b.room_name} — ${b.full_bin_code}</option>`).join('');
 
-    binSelect.innerHTML = '<option value="">Loading...</option>';
-    try {
-        const res = await fetch(`/admin/storage/shelves-for-room?room_id=${roomId}`);
-        const data = await res.json();
-        if (!data.shelves || data.shelves.length === 0) {
-            binSelect.innerHTML = '<option value="">No bins set up for this room yet</option>';
-            return;
+        document.querySelectorAll('.harvest-bin-select').forEach(sel => {
+            sel.innerHTML = optionsHtml;
+        });
+
+        if (bins.length === 0) {
+            document.querySelectorAll('.harvest-bin-select').forEach(sel => {
+                sel.innerHTML = '<option value="">No bins set up for this location yet</option>';
+            });
         }
-        binSelect.innerHTML = '<option value="">Select Bin...</option>' +
-            data.shelves.map(s => `<option value="${s.id}">${s.full_bin_code}</option>`).join('');
     } catch (e) {
-        binSelect.innerHTML = '<option value="">Could not load bins</option>';
+        document.querySelectorAll('.harvest-bin-select').forEach(sel => {
+            sel.innerHTML = '<option value="">Could not load bins</option>';
+        });
     }
 }
 
@@ -484,9 +499,47 @@ document.addEventListener('DOMContentLoaded', loadHarvestRooms);
 loadHarvestRooms();
 
 document.getElementById('harvestForm').addEventListener('submit', function(e) {
-    if (!document.getElementById('storageShelfIdInput').value) {
+    // Only checked (ticked) rows need a bin and photos — unticked rows aren't being saved.
+    let missingBin = false;
+    let missingPhotos = [];
+
+    document.querySelectorAll('.part-checkbox:checked:not(:disabled)').forEach(chk => {
+        const key = chk.dataset.key;
+
+        const binSelect = document.querySelector(`select[name="bins[${key}]"]`);
+        if (binSelect && !binSelect.value) missingBin = true;
+
+        const photoInput = document.querySelector(`.harvest-photo-input[data-part-key="${key}"]`);
+        const warning = photoInput ? photoInput.parentElement.querySelector('.harvest-photo-warning') : null;
+        const count = photoInput ? photoInput.files.length : 0;
+        if (photoInput && count < 1) {
+            missingPhotos.push(key);
+            if (warning) warning.classList.remove('hidden');
+        } else if (warning) {
+            warning.classList.add('hidden');
+        }
+    });
+
+    // Custom parts rows — at least 1 photo
+    document.querySelectorAll('.custom-photo-input').forEach(input => {
+        const warning = input.parentElement.querySelector('.custom-photo-warning');
+        const count = input.files.length;
+        if (count < 1) {
+            missingPhotos.push('custom-' + input.dataset.customIdx);
+            if (warning) warning.classList.remove('hidden');
+        } else if (warning) {
+            warning.classList.add('hidden');
+        }
+    });
+
+    if (missingBin) {
         e.preventDefault();
-        alert('Select a bin location for this batch before saving.');
+        alert('Select a bin location for every ticked part before saving.');
+        return;
+    }
+    if (missingPhotos.length > 0) {
+        e.preventDefault();
+        alert(`Every part needs at least 1 photo before saving — check ${missingPhotos.length} item(s) highlighted in red.`);
     }
 });
 </script>

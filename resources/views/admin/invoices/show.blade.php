@@ -263,10 +263,10 @@ $qrUrl = isset($invoice)
             <div class="info-box">
                 <h4>Bill To</h4>
                 <p>
-                    <strong>{{ $order->customer_name ?? 'Walk-in Customer' }}</strong><br>
-                    @if(!empty($order->customer_phone)) 📞 {{ $order->customer_phone }}<br>@endif
-                    @if(!empty($order->customer_email)) ✉ {{ $order->customer_email }}<br>@endif
-                    @if(!empty($order->customer_address)) {{ $order->customer_address }}@endif
+                    <strong>{{ $customerInfo->name ?? $order->customer_name ?? 'Walk-in Customer' }}</strong><br>
+                    @if(!empty($customerInfo->phone ?? $order->customer_phone ?? null)) 📞 {{ $customerInfo->phone ?? $order->customer_phone }}<br>@endif
+                    @if(!empty($customerInfo->email ?? $order->customer_email ?? null)) ✉ {{ $customerInfo->email ?? $order->customer_email }}<br>@endif
+                    @if(!empty($customerInfo->address ?? $order->customer_address ?? null)) {{ $customerInfo->address ?? $order->customer_address }}@endif
                 </p>
             </div>
             <div class="info-box">

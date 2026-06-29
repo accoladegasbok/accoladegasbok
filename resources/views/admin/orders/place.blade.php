@@ -110,7 +110,7 @@
           <option value="">All Locations</option>
           @foreach($locations as $loc)<option value="{{ $loc }}">{{ $loc }}</option>@endforeach
         </select>
-        <input type="text" id="searchQueryInput" placeholder="Search part name, code, brand, model..." oninput="searchParts()"
+        <input type="text" id="searchQueryInput" placeholder="Search parts, consumables, or services — name, code, brand..." oninput="searchParts()"
           class="sm:col-span-2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
       </div>
       <div id="searchResults" class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto"></div>

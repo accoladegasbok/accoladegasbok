@@ -222,6 +222,24 @@
     </div>
   </div>
 
+  {{-- ── Photos — customers will see these, so use clear, well-lit photos ── --}}
+  <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+    <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-1">Photos * <span class="text-red-500 font-normal text-xs">(at least 1 required)</span></h2>
+    <p class="text-xs text-gray-400 font-body mb-3">Customers see the first photo on the search page, and all photos once they click in for details. Add as many as you like — more angles helps build trust.</p>
+    <input type="file" name="photos[]" id="photosInput" multiple accept="image/*" required
+      onchange="validatePhotoCount(this)"
+      class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold">
+    <div id="photoCountWarning" class="text-xs text-red-500 font-body mt-1 hidden"></div>
+  </div>
+
+  {{-- ── Video — optional, one per part ── --}}
+  <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+    <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-1">Video (optional)</h2>
+    <p class="text-xs text-gray-400 font-body mb-3">One short video showing the part working/condition — MP4, MOV, AVI or WEBM, max 50MB.</p>
+    <input type="file" name="video" accept="video/*"
+      class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold">
+  </div>
+
   {{-- ── Location & Stock ─────────────────────────────────────────── --}}
   <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
     <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-4">Location & Stock</h2>
@@ -229,7 +247,7 @@
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Warehouse Location *</label>
         <select name="location" id="locationSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-gold">
-          @foreach(['Waxahachie TX','Elkhorn WI','Ile-Ife Nigeria','Ibadan Nigeria','Lagos Nigeria','Accra Ghana'] as $loc)
+          @foreach(['Waxahachie TX','Kennedale TX','Elkhorn WI','Ile-Ife Nigeria','Ibadan Nigeria','Lagos Nigeria','Abuja Nigeria','Akure Nigeria','Accra Ghana'] as $loc)
             <option value="{{ $loc }}">{{ $loc }}</option>
           @endforeach
         </select>
@@ -474,6 +492,23 @@ document.getElementById('binSelect').addEventListener('change', function() {
     document.getElementById('storageShelfIdInput').value = this.value;
     document.getElementById('binLocationInput').value = code || '';
     document.getElementById('binLocationDisplay').value = code || '';
+});
+
+// ── At least 1 photo required ──────────────────────────────────────
+function validatePhotoCount(input) {
+    const warning = document.getElementById('photoCountWarning');
+    warning.classList.add('hidden');
+}
+
+document.querySelector('form').addEventListener('submit', function(e) {
+    const photosInput = document.getElementById('photosInput');
+    if (photosInput.files.length < 1) {
+        e.preventDefault();
+        document.getElementById('photoCountWarning').textContent = 'Please select at least 1 photo.';
+        document.getElementById('photoCountWarning').classList.remove('hidden');
+        photosInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        alert('Please select at least 1 photo before saving.');
+    }
 });
 </script>
 

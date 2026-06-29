@@ -268,6 +268,36 @@ class HarvestController extends Controller
             $vin = 'MAN' . now()->format('ymdHis') . strtoupper(substr(uniqid(), -2));
         }
 
+        // ── Graceful duplicate-VIN handling instead of crashing with
+        // a raw DB constraint error. A real VIN should normally only
+        // be entered once — if it already exists, send staff straight
+        // to that donor's existing (or most recent) harvest session
+        // rather than failing.
+        $existingDonor = DB::table('donor_vehicles')->where('vin', $vin)->first();
+        if ($existingDonor) {
+            $existingSession = DB::table('harvest_sessions')
+                ->where('donor_vehicle_id', $existingDonor->id)
+                ->orderByDesc('created_at')
+                ->first();
+
+            if ($existingSession) {
+                return redirect()->route('admin.harvest.checklist', $existingSession->id)
+                    ->with('success', "This VIN was already registered as a donor vehicle ({$existingDonor->year} {$existingDonor->make} {$existingDonor->model}) — continuing its existing harvest session instead of creating a duplicate.");
+            }
+
+            // Donor exists but somehow has no session yet — create one now.
+            $sessionId = DB::table('harvest_sessions')->insertGetId([
+                'donor_vehicle_id' => $existingDonor->id,
+                'staff_id'         => Session::get('staff_id'),
+                'location'         => $request->location,
+                'status'           => 'in_progress',
+                'created_at'       => now(),
+                'updated_at'       => now(),
+            ]);
+            return redirect()->route('admin.harvest.checklist', $sessionId)
+                ->with('success', 'This VIN was already registered — starting a new harvest session for it.');
+        }
+
         $dvId = DB::table('donor_vehicles')->insertGetId([
             'vin'             => $vin,
             'year'            => $request->year,
@@ -377,21 +407,60 @@ class HarvestController extends Controller
             return back()->with('error', 'Please tick at least one part before saving.');
         }
 
-        // ── Bin location is now REQUIRED for every harvested part
-        // (#13) — staff select ONE bin for the whole batch (since a
-        // donor vehicle's parts are physically received together),
-        // applied to every part created in this submission.
-        $storageShelfId = $request->input('storage_shelf_id');
-        if (!$storageShelfId) {
-            return back()->with('error', 'Select a bin location for this batch before saving — bin location cannot be empty.');
-        }
-        $binLocation = DB::table('storage_shelves')->where('id', $storageShelfId)->value('full_bin_code');
-
         // ── Custom parts are admin-only, to keep naming uniform ──────────
         $customPartsInput = $request->input('custom_parts', []);
-        if (!empty($customPartsInput) && Session::get('staff_role') !== 'admin') {
-            return back()->with('error', 'Only admin can add custom part names. Please select a part from the standard list, or ask an admin to add it.');
+        if (!empty($customPartsInput) && !in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            return back()->with('error', 'Only admin or manager can add custom part names. Please select a part from the standard list, or ask them to add it.');
         }
+        // Custom parts also each need their own bin (#A) and at least 1 photo
+        foreach ($customPartsInput as $idx => $cp) {
+            if (empty($cp['bin_id'])) {
+                return back()->with('error', 'Every custom part needs a bin selected before saving.');
+            }
+            $cpPhotoFiles = $request->file("custom_parts.{$idx}.photos") ?? [];
+            $cpValidCount = count(array_filter($cpPhotoFiles, fn($f) => $f && $f->isValid()));
+            if ($cpValidCount < 1) {
+                return back()->with('error', 'Every custom part needs at least 1 photo before saving.');
+            }
+        }
+
+        // ── Bin location is REQUIRED per individual item (#A — not
+        // one shared bin for the whole batch, since two parts off the
+        // same car can end up in different bins). Build a lookup of
+        // part-key => storage_shelf_id from the per-row selects.
+        $binsInput = $request->input('bins', []);
+        $missingBins = [];
+        foreach ($parts as $partKey) {
+            if (empty($binsInput[$partKey])) {
+                $missingBins[] = $partKey;
+            }
+        }
+        if (!empty($missingBins)) {
+            return back()->with('error', 'Every ticked part needs a bin selected before saving — missing for: ' . implode(', ', $missingBins));
+        }
+
+        // ── At least 1 photo required per ticked part — server-side too.
+        $missingPhotos = [];
+        foreach ($parts as $partKey) {
+            $photoFiles = $request->file("photos.{$partKey}") ?? [];
+            $validCount = count(array_filter($photoFiles, fn($f) => $f && $f->isValid()));
+            if ($validCount < 1) {
+                $missingPhotos[] = $partKey;
+            }
+        }
+        if (!empty($missingPhotos)) {
+            return back()->with('error', 'Every ticked part needs at least 1 photo before saving — missing for: ' . implode(', ', $missingPhotos));
+        }
+
+        // Preload all referenced bins' full_bin_code in one query
+        // (covers both regular ticked parts and custom parts' bins).
+        $allReferencedBinIds = array_values($binsInput);
+        foreach ($customPartsInput as $cp) {
+            if (!empty($cp['bin_id'])) $allReferencedBinIds[] = $cp['bin_id'];
+        }
+        $binCodesById = DB::table('storage_shelves')
+            ->whereIn('id', array_unique($allReferencedBinIds))
+            ->pluck('full_bin_code', 'id');
         // ──────────────────────────────────────────────────────────────────
 
         $created      = 0;
@@ -415,6 +484,10 @@ class HarvestController extends Controller
 
                 $grade    = $grades[$key] ?? 'B';
                 $partNote = $notes[$key]  ?? null;
+
+                // Per-item bin location (#A)
+                $itemShelfId = $binsInput[$key] ?? null;
+                $itemBinCode = $itemShelfId ? ($binCodesById[$itemShelfId] ?? null) : null;
 
                 $engineCode = null;
                 $transCode  = null;
@@ -475,8 +548,8 @@ class HarvestController extends Controller
                     'price_local'           => $rawPrice,         // ← authoritative price, fixed currency
                     'currency_code'         => $currency['code'],
                     'location'              => $session->location,
-                    'storage_shelf_id'      => $storageShelfId,
-                    'bin_location'          => $binLocation,
+                    'storage_shelf_id'      => $itemShelfId,
+                    'bin_location'          => $itemBinCode,
                     'stock_qty'             => 1,
                     'status'                => 'Available',
                     'description'           => $partNote,
@@ -496,12 +569,34 @@ class HarvestController extends Controller
                     $interchange->assignPartToGroup($newPartId, $matchedGroup->id);
                 }
 
+                // ── Photo upload — required, per item (shown to customers) ──
+                if ($request->hasFile("photos.{$key}")) {
+                    $uploaded = [];
+                    foreach ($request->file("photos.{$key}") as $photoFile) {
+                        if ($photoFile->isValid()) {
+                            $uploaded[] = $photoFile->store("parts/{$newPartId}", 'public');
+                        }
+                    }
+                    if (!empty($uploaded)) {
+                        DB::table('parts_inventory')->where('id', $newPartId)->update(['photos' => json_encode($uploaded)]);
+                    }
+                }
+
+                // ── Video upload — optional, one per item ──
+                if ($request->hasFile("video.{$key}")) {
+                    $videoFile = $request->file("video.{$key}");
+                    if ($videoFile->isValid()) {
+                        $videoPath = $videoFile->store("parts/{$newPartId}/video", 'public');
+                        DB::table('parts_inventory')->where('id', $newPartId)->update(['video_path' => $videoPath]);
+                    }
+                }
+
                 $created++;
             }
 
             // ── Custom / extra parts ─────────────────────────────
             $customParts = $request->input('custom_parts', []);
-            foreach ($customParts as $cp) {
+            foreach ($customParts as $cpIdx => $cp) {
                 if (empty($cp['name']) || empty($cp['price'])) continue;
 
                 // Custom part price is entered in LOCAL currency — that's the
@@ -540,8 +635,8 @@ class HarvestController extends Controller
                     'price_local'           => (float) $cp['price'],
                     'currency_code'         => $currency['code'],
                     'location'              => $session->location,
-                    'storage_shelf_id'      => $storageShelfId,
-                    'bin_location'          => $binLocation,
+                    'storage_shelf_id'      => $cp['bin_id'] ?? null,
+                    'bin_location'          => !empty($cp['bin_id']) ? ($binCodesById[$cp['bin_id']] ?? null) : null,
                     'stock_qty'             => 1,
                     'status'                => 'Available',
                     'description'           => $cp['note']         ?? null,
@@ -553,6 +648,28 @@ class HarvestController extends Controller
                 $matchedGroupCp = $interchange->findGroupByVehicle($cp['name'], $session->make, $session->model, (int) $session->year);
                 if ($matchedGroupCp) {
                     $interchange->assignPartToGroup($newCpId, $matchedGroupCp->id);
+                }
+
+                // ── Photo upload — required 3-10, per custom item ──
+                if ($request->hasFile("custom_parts.{$cpIdx}.photos")) {
+                    $cpUploaded = [];
+                    foreach ($request->file("custom_parts.{$cpIdx}.photos") as $photoFile) {
+                        if ($photoFile->isValid()) {
+                            $cpUploaded[] = $photoFile->store("parts/{$newCpId}", 'public');
+                        }
+                    }
+                    if (!empty($cpUploaded)) {
+                        DB::table('parts_inventory')->where('id', $newCpId)->update(['photos' => json_encode($cpUploaded)]);
+                    }
+                }
+
+                // ── Video upload — optional, one per custom item ──
+                if ($request->hasFile("custom_parts.{$cpIdx}.video")) {
+                    $cpVideoFile = $request->file("custom_parts.{$cpIdx}.video");
+                    if ($cpVideoFile->isValid()) {
+                        $cpVideoPath = $cpVideoFile->store("parts/{$newCpId}/video", 'public');
+                        DB::table('parts_inventory')->where('id', $newCpId)->update(['video_path' => $cpVideoPath]);
+                    }
                 }
 
                 $created++;

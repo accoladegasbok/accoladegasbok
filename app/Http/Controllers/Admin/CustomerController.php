@@ -240,6 +240,19 @@ class CustomerController extends Controller
 
         $totalSpent = $orders->sum('total_amount_usd') + $invoices->sum('subtotal_usd');
 
+        return view('admin.customers.show', [
+            'phone'      => $normalizedPhone,
+            'name'       => $latest->customer_name ?? 'Unknown',
+            'email'      => $orders->pluck('customer_email')->filter()->first()
+                              ?? $invoices->pluck('customer_email')->filter()->first(),
+            'orders'     => $orders,
+            'invoices'   => $invoices,
+            'topItems'   => $topItems,
+            'totalSpent' => $totalSpent,
+            'totalCount' => $orders->count() + $invoices->count(),
+        ]);
+    }
+
     // =========================================================
     // Manual contacts — freelancers, contractors, delivery
     // personnel, jobbers, or any phone-book entry that isn't

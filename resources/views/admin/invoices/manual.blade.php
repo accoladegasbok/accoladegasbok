@@ -507,10 +507,14 @@ function checkDiscountCap(discountLocal, discountPercent) {
     }
 }
 
-// Close suggestions on click outside
+// Close suggestions on click outside (but not on the input that opens it —
+// without this exclusion, the SAME click that focuses the input also
+// bubbles to this listener and closes the box it just opened)
 document.addEventListener('click', function(e) {
     document.querySelectorAll('[id^="suggestions-"]').forEach(el => {
-        if (!el.contains(e.target)) el.classList.add('hidden');
+        const idx = el.id.replace('suggestions-', '');
+        const ownInput = document.getElementById('item-name-' + idx);
+        if (!el.contains(e.target) && e.target !== ownInput) el.classList.add('hidden');
     });
 });
 

@@ -152,11 +152,28 @@ class OrderAdminController extends Controller
             'order_status' => 'required|in:confirmed,processing,ready_for_collection,shipped,completed,cancelled',
         ]);
 
-        DB::table('orders')->where('id', $id)->update([
+        $order = DB::table('orders')->where('id', $id)->first();
+
+        $updateData = [
             'order_status' => $request->order_status,
             'staff_notes'  => $request->staff_notes,
             'updated_at'   => now(),
-        ]);
+        ];
+
+        // ── Any forward progress past "awaiting payment" implies
+        // payment was actually received — fixes payment_status
+        // getting permanently stuck at "awaiting_payment" even after
+        // an order is marked completed, which is what was happening
+        // before this fix (staff could advance order_status without
+        // ever explicitly confirming payment first).
+        if ($request->order_status !== 'cancelled'
+            && in_array($order->payment_status, ['awaiting_payment', 'pending', 'transfer_sent', 'payment_pending_confirmation'])) {
+            $updateData['payment_status'] = 'confirmed';
+            $updateData['payment_confirmed_at'] = now();
+            $updateData['confirmed_by'] = Session::get('staff_name') ?? 'Admin';
+        }
+
+        DB::table('orders')->where('id', $id)->update($updateData);
 
         // If cancelled — release reserved parts back to Available
         if ($request->order_status === 'cancelled') {
