@@ -255,7 +255,7 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
         <tr style="border-top:1px solid #eee;">
             <td style="padding:6px; font-weight:700;">{{ $currency['symbol'] }}{{ number_format($p->amount_local) }}</td>
             <td style="padding:6px;">{{ $p->payment_method }}</td>
-            <td style="padding:6px;">@if($p->proof_path)<a href="{{ asset('storage/' . $p->proof_path) }}" target="_blank" style="color:#c9a84c;">View →</a>@else —@endif</td>
+            <td style="padding:6px;">@if($p->proof_path)<a href="{{ asset(config('media.prefix') . '/' . $p->proof_path) }}" target="_blank" style="color:#c9a84c;">View →</a>@else —@endif</td>
             <td style="padding:6px;">
                 <span style="padding:2px 6px; border-radius:4px; font-size:10px; background:{{ $p->status==='confirmed' ? '#e8f7ee' : ($p->status==='rejected' ? '#fdecec' : '#fff8e6') }}; color:{{ $p->status==='confirmed' ? '#1b9e5c' : ($p->status==='rejected' ? '#c0392b' : '#8a6d1f') }};">{{ ucfirst($p->status) }}</span>
             </td>
@@ -456,6 +456,38 @@ $qrUrl = isset($invoice)
                 </table>
             </div>
         </div>
+
+        {{-- ── Payment breakdown — printed on every copy. Shows each
+             confirmed payment subtracted from the total, and the real
+             outstanding balance, so a partial-payment customer has
+             this in writing on the physical receipt, not just visible
+             to staff on-screen. ── --}}
+        @php
+            $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
+            $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
+        @endphp
+        @if($printPaySummary && $printPaySummary['payments']->count())
+        <div class="inv-totals" style="margin-top: -6px;">
+            <div class="totals-box" style="border-top: 1px dashed #ccc; padding-top: 8px;">
+                <table>
+                    @foreach($printPaySummary['payments']->where('status', 'confirmed') as $p)
+                    <tr style="font-size: 11px; color: #555;">
+                        <td>Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
+                        <td>– {{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($p->amount_local) : number_format($p->amount_local, 2) }}</td>
+                    </tr>
+                    @endforeach
+                    <tr class="total-row" style="{{ $printPaySummary['balanceDue'] > 0 ? 'color:#c0392b;' : 'color:#1b9e5c;' }}">
+                        <td><strong>{{ $printPaySummary['balanceDue'] > 0 ? 'BALANCE DUE:' : 'STATUS:' }}</strong></td>
+                        <td><strong>
+                            {{ $printPaySummary['balanceDue'] > 0
+                                ? $currency['symbol'] . ($currency['code'] === 'NGN' ? number_format($printPaySummary['balanceDue']) : number_format($printPaySummary['balanceDue'], 2))
+                                : 'PAID IN FULL' }}
+                        </strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        @endif
 
         {{-- Warranty --}}
         <div class="inv-warranty">

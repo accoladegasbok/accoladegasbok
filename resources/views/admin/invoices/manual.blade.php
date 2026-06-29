@@ -88,7 +88,9 @@
         <select id="serviceRatePicker" onchange="addServiceFromPicker(this)" class="border border-blue-200 rounded-xl text-xs px-2 py-2 bg-blue-50 text-blue-700 focus:outline-none">
           <option value="">⚙ + Add Service Rate...</option>
           @foreach($serviceRates as $sr)
-          <option value="{{ $sr->id }}" data-name="{{ $sr->name }}" data-price="{{ $sr->default_price }}">{{ $sr->name }}{{ $sr->category ? ' ('.$sr->category.')' : '' }}</option>
+          <option value="{{ $sr->id }}" data-name="{{ $sr->name }}"
+                  data-prices="{{ json_encode(($servicePricesByLocation[$sr->id] ?? collect())->toArray()) }}"
+                  data-default-price="{{ $sr->default_price }}">{{ $sr->name }}{{ $sr->category ? ' ('.$sr->category.')' : '' }}</option>
           @endforeach
         </select>
         <button type="button" onclick="addItem()"
@@ -323,8 +325,19 @@ function addServiceFromPicker(sel) {
     const i = addItem();
     document.getElementById('item-name-' + i).value = opt.dataset.name;
     document.getElementById('item-pid-' + i).value = ''; // no inventory link — it's a service
+
+    const loc = document.getElementById('locationSelect')?.value;
+    let prices = {};
+    try { prices = JSON.parse(opt.dataset.prices || '{}'); } catch (e) {}
+    const priceForLoc = prices[loc];
+    const priceToUse = priceForLoc !== undefined ? priceForLoc : opt.dataset.defaultPrice;
+
+    if (priceForLoc === undefined) {
+        alert('No price has been set for this service at this location yet — using a fallback number. Please verify before saving, or ask admin to set the real price under Service Rates.');
+    }
+
     const priceInput = document.querySelector(`input[name="items[${i}][price]"]`) || document.getElementById('item-price-' + i);
-    if (priceInput && opt.dataset.price) priceInput.value = opt.dataset.price;
+    if (priceInput && priceToUse) priceInput.value = priceToUse;
     sel.value = '';
     updateTotal();
 }

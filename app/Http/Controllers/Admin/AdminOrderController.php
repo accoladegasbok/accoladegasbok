@@ -91,16 +91,20 @@ class AdminOrderController extends Controller
                    ->orWhere('category', 'like', "%{$q}%");
             });
         }
-        $currencyForLoc = InvoiceController::currencyForLocation($loc ?: 'Waxahachie TX');
+        $resolvedLoc = $loc ?: 'Waxahachie TX';
+        $currencyForLoc = InvoiceController::currencyForLocation($resolvedLoc);
         $services = $servicesQuery->select('id', 'service_code', 'name', 'category', 'default_price')
             ->orderBy('name')->limit(30)->get()
-            ->map(fn($s) => [
-                'id' => $s->id, 'part_code' => $s->service_code, 'part_name' => $s->name,
-                'brand' => $s->category, 'model' => null, 'year_from' => null, 'year_to' => null,
-                'condition_grade' => null, 'location' => $loc, 'price_local' => $s->default_price,
-                'currency_code' => $currencyForLoc['code'], 'price_usd' => null, 'stock_qty' => null,
-                'item_type' => 'service',
-            ]);
+            ->map(function ($s) use ($resolvedLoc, $currencyForLoc) {
+                $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($s->id, $resolvedLoc);
+                return [
+                    'id' => $s->id, 'part_code' => $s->service_code, 'part_name' => $s->name,
+                    'brand' => $s->category, 'model' => null, 'year_from' => null, 'year_to' => null,
+                    'condition_grade' => null, 'location' => $resolvedLoc, 'price_local' => $priced['price'],
+                    'currency_code' => $priced['currency_code'], 'price_usd' => null, 'stock_qty' => null,
+                    'item_type' => 'service', 'price_not_set' => !$priced['is_set'],
+                ];
+            });
 
         return response()->json(['parts' => $parts->concat($services)->values()]);
     }
@@ -159,36 +163,22 @@ class AdminOrderController extends Controller
             return back()->withInput()->with('error', 'No valid items to order.');
         }
 
-        // ── Totals — services priced in the same currency as wherever
-        // the order's primary location ends up being (derived below).
-        $rates = $this->liveRates();
-        $totalUsd = 0;
-        $totalNgn = 0;
-
-        // Location for currency purposes: first part's location, or
-        // fall back to the location explicitly passed (service-only orders).
+        // ── Totals — NO conversion, ever. Every item already has its
+        // own real, fixed price_local in its own real currency (set
+        // once at harvest/entry time). An order has ONE location, so
+        // ONE real currency — we just sum the real numbers directly.
         $primaryLocation = $firstPartLocation ?: $request->get('location', 'Waxahachie TX');
+        $orderCurrencyCode = InvoiceController::currencyForLocation($primaryLocation)['code'];
+        $totalLocal = 0;
 
         foreach ($lineItems as $li) {
             if ($li['type'] === 'part') {
                 $priceLocal = $li['part']->price_local ?? $li['part']->price_usd;
-                $currencyCode = $li['part']->currency_code ?? 'USD';
             } else {
-                $priceLocal = $li['service']->default_price ?? 0;
-                $currencyCode = InvoiceController::currencyForLocation($primaryLocation)['code'];
+                $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($li['service']->id, $primaryLocation);
+                $priceLocal = $priced['price'];
             }
-            $lineLocal = $priceLocal * $li['qty'];
-
-            if ($currencyCode === 'NGN') {
-                $totalNgn += $lineLocal;
-                $totalUsd += $lineLocal / $rates['NGN'];
-            } elseif ($currencyCode === 'GHS') {
-                $totalUsd += $lineLocal / $rates['GHS'];
-                $totalNgn += ($lineLocal / $rates['GHS']) * $rates['NGN'];
-            } else {
-                $totalUsd += $lineLocal;
-                $totalNgn += $lineLocal * $rates['NGN'];
-            }
+            $totalLocal += $priceLocal * $li['qty'];
         }
 
         $year = date('Y');
@@ -221,9 +211,15 @@ class AdminOrderController extends Controller
                 'order_status'        => $paymentReceived ? 'confirmed' : 'awaiting_payment',
                 'payment_confirmed_at'=> $paymentReceived ? now() : null,
                 'confirmed_by'        => $paymentReceived ? (Session::get('staff_name') ?? 'Admin') : null,
-                'total_amount_ngn'    => round($totalNgn),
-                'total_amount_usd'    => round($totalUsd, 2),
-                'exchange_rate'       => $rates['NGN'],
+                // ── Fixed currency — no conversion, ever. The order has
+                // ONE real total in ONE real currency, matching wherever
+                // the parts/services actually are. No fabricated NGN
+                // figure for a USA order, no fabricated USD figure for
+                // a Nigeria order.
+                'total_amount_local'  => round($totalLocal, 2),
+                'currency_code'       => $orderCurrencyCode,
+                'total_amount_ngn'    => $orderCurrencyCode === 'NGN' ? round($totalLocal) : null,
+                'total_amount_usd'    => $orderCurrencyCode === 'USD' ? round($totalLocal, 2) : null,
                 'notes'               => $request->notes,
                 'staff_notes'         => 'Placed in-person/by-phone by ' . (Session::get('staff_name') ?? 'Admin'),
                 'created_at'          => now(),
@@ -234,14 +230,7 @@ class AdminOrderController extends Controller
                 if ($li['type'] === 'part') {
                     $part = $li['part'];
                     $priceLocal = $part->price_local ?? $part->price_usd;
-                    $currencyCode = $part->currency_code ?? 'USD';
-
-                    $unitNgn = $currencyCode === 'NGN' ? $priceLocal : ($currencyCode === 'GHS'
-                        ? ($priceLocal / $rates['GHS']) * $rates['NGN']
-                        : $priceLocal * $rates['NGN']);
-                    $unitUsd = $currencyCode === 'USD' ? $priceLocal : ($currencyCode === 'GHS'
-                        ? $priceLocal / $rates['GHS']
-                        : $priceLocal / $rates['NGN']);
+                    $itemCurrency = $part->currency_code ?? 'USD';
 
                     DB::table('order_items')->insert([
                         'order_id'        => $orderId,
@@ -256,9 +245,13 @@ class AdminOrderController extends Controller
                         'year_to'         => $part->year_to,
                         'condition_grade' => $part->condition_grade,
                         'location'        => $part->location,
-                        'unit_price_ngn'  => round($unitNgn),
-                        'unit_price_usd'  => round($unitUsd, 2),
-                        'subtotal_ngn'    => round($unitNgn * $li['qty']),
+                        // No conversion — store the part's own real price,
+                        // in its own real currency, in the matching column.
+                        'unit_price_local'=> $priceLocal,
+                        'subtotal_local'  => round($priceLocal * $li['qty'], 2),
+                        'unit_price_ngn'  => $itemCurrency === 'NGN' ? round($priceLocal) : null,
+                        'unit_price_usd'  => $itemCurrency === 'USD' ? round($priceLocal, 2) : null,
+                        'subtotal_ngn'    => $itemCurrency === 'NGN' ? round($priceLocal * $li['qty']) : null,
                         'created_at'      => now(),
                         'updated_at'      => now(),
                     ]);
@@ -269,15 +262,9 @@ class AdminOrderController extends Controller
                     ]);
                 } else {
                     $service = $li['service'];
-                    $priceLocal = $service->default_price ?? 0;
-                    $currencyCode = InvoiceController::currencyForLocation($primaryLocation)['code'];
-
-                    $unitNgn = $currencyCode === 'NGN' ? $priceLocal : ($currencyCode === 'GHS'
-                        ? ($priceLocal / $rates['GHS']) * $rates['NGN']
-                        : $priceLocal * $rates['NGN']);
-                    $unitUsd = $currencyCode === 'USD' ? $priceLocal : ($currencyCode === 'GHS'
-                        ? $priceLocal / $rates['GHS']
-                        : $priceLocal / $rates['NGN']);
+                    $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($service->id, $primaryLocation);
+                    $priceLocal = $priced['price'];
+                    $itemCurrency = $priced['currency_code'];
 
                     DB::table('order_items')->insert([
                         'order_id'        => $orderId,
@@ -292,9 +279,11 @@ class AdminOrderController extends Controller
                         'year_to'         => null,
                         'condition_grade' => null,
                         'location'        => $primaryLocation,
-                        'unit_price_ngn'  => round($unitNgn),
-                        'unit_price_usd'  => round($unitUsd, 2),
-                        'subtotal_ngn'    => round($unitNgn * $li['qty']),
+                        'unit_price_local'=> $priceLocal,
+                        'subtotal_local'  => round($priceLocal * $li['qty'], 2),
+                        'unit_price_ngn'  => $itemCurrency === 'NGN' ? round($priceLocal) : null,
+                        'unit_price_usd'  => $itemCurrency === 'USD' ? round($priceLocal, 2) : null,
+                        'subtotal_ngn'    => $itemCurrency === 'NGN' ? round($priceLocal * $li['qty']) : null,
                         'created_at'      => now(),
                         'updated_at'      => now(),
                     ]);

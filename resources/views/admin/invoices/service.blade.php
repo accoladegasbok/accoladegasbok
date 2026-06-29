@@ -123,6 +123,7 @@
 
 <script>
 const SERVICE_RATES = {!! json_encode($serviceRates) !!};
+const SERVICE_PRICES_BY_LOCATION = {!! json_encode($servicePricesByLocation ?? []) !!}; // {service_id: {location: price}}
 const CURRENCIES = {
     'Waxahachie TX': { code: 'USD', symbol: '$' },
     'Kennedale TX':  { code: 'USD', symbol: '$' },
@@ -156,7 +157,14 @@ function addItem() {
     const row = document.createElement('div');
     row.id = 'item-row-' + i;
     row.className = 'bg-gray-50 rounded-xl p-3 border border-gray-200';
-    const options = SERVICE_RATES.map(s => `<option value="${s.id}" data-price="${s.default_price ?? ''}">${s.name}${s.category ? ' ('+s.category+')' : ''}</option>`).join('');
+    const loc = document.getElementById('locationSelect').value;
+    const options = SERVICE_RATES.map(s => {
+        const locPrices = SERVICE_PRICES_BY_LOCATION[s.id] || {};
+        const priceForLoc = locPrices[loc];
+        const noPriceSet = priceForLoc === undefined;
+        const label = noPriceSet ? `⚠ ${s.name}` : s.name;
+        return `<option value="${s.id}" data-price="${priceForLoc ?? s.default_price ?? ''}" data-price-set="${!noPriceSet}" data-clean-name="${s.name}">${label}${s.category ? ' ('+s.category+')' : ''}</option>`;
+    }).join('');
     row.innerHTML = `
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-display font-700 text-navy uppercase">Item #${i}</span>
@@ -245,9 +253,12 @@ function addPartToReceipt(part) {
 function applyPreset(i, sel) {
     const opt = sel.options[sel.selectedIndex];
     if (!opt.value) return;
-    document.getElementById('item-name-' + i).value = opt.textContent.replace(/\s*\(.*\)$/, '');
+    document.getElementById('item-name-' + i).value = opt.dataset.cleanName || opt.textContent.replace(/\s*\(.*\)$/, '').replace(/^⚠\s*/, '');
     if (opt.dataset.price) {
         document.getElementById('item-price-' + i).value = opt.dataset.price;
+    }
+    if (opt.dataset.priceSet === 'false') {
+        alert('No price has been set for this service at this location yet — showing a fallback number. Please verify before saving, or ask admin to set the real price under Service Rates.');
     }
     updateTotal();
 }

@@ -59,10 +59,10 @@
             </div>
           </div>
 
-          {{-- Price + Remove --}}
+          {{-- Price + Remove — real currency, no FX equivalent shown --}}
+          @php $itemSym = $currencySymbols[$item['currency_code'] ?? 'USD'] ?? '$'; @endphp
           <div class="text-right flex-shrink-0">
-            <div class="font-display font-800 text-navy text-lg">₦{{ number_format($item['unit_price_ngn']) }}</div>
-            <div class="text-xs text-gray-400 font-body">${{ number_format($item['unit_price_usd'], 2) }}</div>
+            <div class="font-display font-800 text-navy text-lg">{{ $itemSym }}{{ ($item['currency_code'] ?? 'USD') === 'NGN' ? number_format($item['unit_price_local']) : number_format($item['unit_price_local'], 2) }}</div>
             <button class="remove-item mt-2 text-xs text-red-400 hover:text-red-600 font-body underline" data-part-id="{{ $item['part_id'] }}">Remove</button>
           </div>
         </div>
@@ -77,17 +77,23 @@
           <div class="space-y-2 mb-4 text-sm font-body">
             <div class="flex justify-between text-gray-500">
               <span>{{ count($items) }} part{{ count($items)>1?'s':'' }}</span>
-              <span>${{ number_format($totalUsd, 2) }}</span>
             </div>
-            <div class="flex justify-between text-gray-500">
-              <span>Rate (₦/$)</span>
-              <span>{{ number_format($rate) }}</span>
+            {{-- One Total row per currency — never blended into one number --}}
+            @foreach($totalsByCurrency as $code => $total)
+            <div class="border-t border-gray-100 pt-2 flex justify-between font-500 text-navy" id="cartTotalRow-{{ $code }}">
+              <span>Total ({{ $code }})</span>
+              <span class="cart-total font-display font-700 text-xl" data-currency="{{ $code }}">
+                {{ $currencySymbols[$code] ?? '$' }}{{ $code === 'NGN' ? number_format($total) : number_format($total, 2) }}
+              </span>
             </div>
-            <div class="border-t border-gray-100 pt-2 flex justify-between font-500 text-navy">
-              <span>Total (Naira)</span>
-              <span id="cartTotal" class="font-display font-700 text-xl">₦{{ number_format($totalNgn) }}</span>
-            </div>
+            @endforeach
           </div>
+
+          @if($isMixedCurrency)
+          <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs font-body text-red-700 leading-relaxed">
+            <strong>Heads up:</strong> your cart has parts priced in different currencies ({{ $totalsByCurrency->keys()->implode(', ') }}). Prices are never converted between currencies — please check out one currency/location at a time. Remove items from one currency to proceed.
+          </div>
+          @endif
 
           {{-- Payment note --}}
           <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs font-body text-amber-800 leading-relaxed">
@@ -96,9 +102,15 @@
             <div>• POS payment at any of our offices</div>
           </div>
 
+          @if($isMixedCurrency)
+          <button disabled class="block w-full bg-gray-300 text-gray-500 text-center font-display font-700 text-sm py-3.5 rounded-xl tracking-wide cursor-not-allowed">
+            RESOLVE CURRENCIES TO CHECK OUT
+          </button>
+          @else
           <a href="{{ route('checkout.index') }}" class="block w-full bg-navy hover:bg-navy-dark text-white text-center font-display font-700 text-sm py-3.5 rounded-xl transition-colors tracking-wide">
             PROCEED TO CHECKOUT →
           </a>
+          @endif
           <a href="{{ route('parts.search') }}" class="block w-full text-center text-xs font-body text-gray-400 hover:text-navy mt-3 transition-colors">
             ← Continue shopping
           </a>
@@ -129,10 +141,13 @@ document.querySelectorAll('.remove-item').forEach(btn => {
 
     if (data.success) {
       itemRow?.remove();
-      document.getElementById('cartTotal').textContent = '₦' + data.totalNgn;
-      // Update nav badge
+      // Per-currency totals can change which currencies are even
+      // present (e.g. removing the only NGN item) — simplest correct
+      // approach is a reload rather than trying to patch DOM rows
+      // for currencies that may now need to appear/disappear entirely.
       document.querySelectorAll('.cart-badge').forEach(b => b.textContent = data.count);
-      if (data.count === 0) location.reload();
+      if (data.count === 0) { location.reload(); return; }
+      location.reload();
     }
   });
 });

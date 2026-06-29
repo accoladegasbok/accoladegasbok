@@ -439,6 +439,24 @@ class HarvestController extends Controller
             return back()->with('error', 'Every ticked part needs a bin selected before saving — missing for: ' . implode(', ', $missingBins));
         }
 
+        // ── A bin can only go to ONE item per submission — the
+        // database-level exclusivity check (occupied bins disappearing
+        // from selection) only knows about parts already saved in a
+        // PREVIOUS request. It has no way to know two rows in THIS
+        // same unsaved batch are both trying to claim the same bin.
+        // Empty selections (unticked rows left blank) must be filtered
+        // out first — otherwise multiple blank values look like
+        // "duplicates" of each other and falsely trigger this error.
+        $allBinIdsThisBatch = array_values(array_filter($binsInput, fn($v) => !empty($v)));
+        foreach ($customPartsInput as $cp) {
+            if (!empty($cp['bin_id'])) $allBinIdsThisBatch[] = $cp['bin_id'];
+        }
+        $duplicateBins = array_diff_assoc($allBinIdsThisBatch, array_unique($allBinIdsThisBatch));
+        if (!empty($duplicateBins)) {
+            $dupeBinCodes = DB::table('storage_shelves')->whereIn('id', array_unique($duplicateBins))->pluck('full_bin_code')->implode(', ');
+            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part. Please choose a different bin for one of them.");
+        }
+
         // ── At least 1 photo required per ticked part — server-side too.
         $missingPhotos = [];
         foreach ($parts as $partKey) {

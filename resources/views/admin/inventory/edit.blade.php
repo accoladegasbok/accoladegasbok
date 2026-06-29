@@ -18,7 +18,7 @@
     <div class="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
       @foreach($photos as $i => $photo)
       <div class="relative group">
-        <img src="{{ asset('storage/' . $photo) }}" class="w-full h-24 object-cover rounded-lg border border-gray-200">
+        <img src="{{ asset(config('media.prefix') . '/' . $photo) }}" class="w-full h-24 object-cover rounded-lg border border-gray-200">
         @if($i === 0)<span class="absolute top-1 left-1 bg-gold text-navy text-[10px] font-700 px-1.5 py-0.5 rounded">Main</span>@endif
         <form method="POST" action="{{ route('admin.inventory.photos.delete', $part->id) }}" class="absolute top-1 right-1" onsubmit="return confirm('Remove this photo?')">
           @csrf
@@ -50,7 +50,7 @@
     @if(!empty($part->video_path))
     <div class="mb-3">
       <video controls class="w-full max-w-sm rounded-lg border border-gray-200">
-        <source src="{{ asset('storage/' . $part->video_path) }}">
+        <source src="{{ asset(config('media.prefix') . '/' . $part->video_path) }}">
       </video>
       <form method="POST" action="{{ route('admin.inventory.video.delete', $part->id) }}" onsubmit="return confirm('Remove this video?')" class="mt-2">
         @csrf

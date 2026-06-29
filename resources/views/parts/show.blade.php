@@ -64,7 +64,7 @@
       @if(!empty($part->video_path))
       <div class="mt-3">
         <video controls class="w-full rounded-2xl border border-gray-200">
-          <source src="{{ asset('storage/' . $part->video_path) }}">
+          <source src="{{ asset(config('media.prefix') . '/' . $part->video_path) }}">
         </video>
       </div>
       @endif

@@ -1,11 +1,16 @@
 <?php
 // FILE: app/Http/Controllers/CartController.php
+//
+// FIXED-CURRENCY REWRITE — no live FX conversion anywhere. Same
+// philosophy as CheckoutController: a part's price_local + currency_code
+// (set once at harvest/entry time) is the only real number. The cart
+// can hold items from different currencies, but shows them grouped by
+// currency rather than blending them into one fake Naira number.
 
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class CartController extends Controller
@@ -16,11 +21,7 @@ class CartController extends Controller
     const ACCOUNT_NO   = '8012345678'; // ← replace with real account
     const BANK_CODE    = '50515';      // Moniepoint CBN code
 
-    // ── Exchange rate fallback ─────────────────────────────────
-    private function getNgnRate(): float
-    {
-        return Cache::get('exchange_rates.NGN', 1600.0);
-    }
+    const CURRENCY_SYMBOLS = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
 
     // =========================================================
     // GET /cart  — view cart page
@@ -29,19 +30,27 @@ class CartController extends Controller
     {
         $cart  = $this->getCart($request);
         $items = $this->hydrateCartItems($cart);
-        $rate  = $this->getNgnRate();
 
-        $totalUsd = collect($items)->sum(fn($i) => $i['unit_price_usd'] * $i['quantity']);
-        $totalNgn = round($totalUsd * $rate);
+        // ── Group totals by currency — never blended into one number.
+        // Most carts will have exactly one currency in practice (a
+        // customer browsing parts is usually shopping one location at
+        // a time), but if they somehow have mixed-currency items, show
+        // each currency's real subtotal separately rather than
+        // inventing a converted blended total.
+        $totalsByCurrency = collect($items)
+            ->groupBy('currency_code')
+            ->map(fn($group) => $group->sum('unit_price_local'));
+
+        $isMixedCurrency = $totalsByCurrency->count() > 1;
 
         return view('checkout.cart', [
-            'items'    => $items,
-            'totalUsd' => $totalUsd,
-            'totalNgn' => $totalNgn,
-            'rate'     => $rate,
-            'bankName'    => self::BANK_NAME,
-            'accountName' => self::ACCOUNT_NAME,
-            'accountNo'   => self::ACCOUNT_NO,
+            'items'             => $items,
+            'totalsByCurrency'  => $totalsByCurrency,
+            'isMixedCurrency'   => $isMixedCurrency,
+            'currencySymbols'   => self::CURRENCY_SYMBOLS,
+            'bankName'          => self::BANK_NAME,
+            'accountName'       => self::ACCOUNT_NAME,
+            'accountNo'         => self::ACCOUNT_NO,
         ]);
     }
 
@@ -56,7 +65,7 @@ class CartController extends Controller
             ->where('id', $request->part_id)
             ->where('status', 'Available')
             ->select('id','part_code','part_name','brand','model','year_from','year_to',
-                     'condition_grade','price_usd','location','photos','stock_qty')
+                     'condition_grade','price_local','price_usd','currency_code','location','photos','stock_qty')
             ->first();
 
         if (!$part) {
@@ -76,23 +85,24 @@ class CartController extends Controller
             }
         }
 
-        $rate   = $this->getNgnRate();
         $photos = json_decode($part->photos ?? '[]', true);
 
+        // ── No FX conversion — store the part's own real price, in
+        // its own real currency. Never converted to anything else.
         $items[] = [
-            'part_id'        => $part->id,
-            'part_code'      => $part->part_code,
-            'part_name'      => $part->part_name,
-            'brand'          => $part->brand,
-            'model'          => $part->model,
-            'year_from'      => $part->year_from,
-            'year_to'        => $part->year_to,
-            'condition_grade'=> $part->condition_grade,
-            'unit_price_usd' => (float) $part->price_usd,
-            'unit_price_ngn' => round($part->price_usd * $rate),
-            'location'       => $part->location,
-            'thumb'          => $photos[0] ?? null,
-            'quantity'       => 1,
+            'part_id'         => $part->id,
+            'part_code'       => $part->part_code,
+            'part_name'       => $part->part_name,
+            'brand'           => $part->brand,
+            'model'           => $part->model,
+            'year_from'       => $part->year_from,
+            'year_to'         => $part->year_to,
+            'condition_grade' => $part->condition_grade,
+            'unit_price_local'=> (float) ($part->price_local ?? $part->price_usd ?? 0),
+            'currency_code'   => $part->currency_code ?? 'USD',
+            'location'        => $part->location,
+            'thumb'           => $photos[0] ?? null,
+            'quantity'        => 1,
         ];
 
         $this->saveCart($request, array_merge($cart, ['items' => $items]));
@@ -119,13 +129,23 @@ class CartController extends Controller
 
         $this->saveCart($request, array_merge($cart, ['items' => $items]));
 
-        $rate     = $this->getNgnRate();
-        $totalNgn = round(collect($items)->sum(fn($i) => $i['unit_price_usd']) * $rate);
+        // Recompute per-currency totals — never blended.
+        $totalsByCurrency = collect($items)
+            ->groupBy('currency_code')
+            ->map(fn($group) => $group->sum('unit_price_local'));
+
+        $formatted = $totalsByCurrency->map(function ($total, $code) {
+            $sym = self::CURRENCY_SYMBOLS[$code] ?? '$';
+            return $sym . ($code === 'NGN' ? number_format($total) : number_format($total, 2));
+        });
 
         return response()->json([
-            'success'  => true,
-            'count'    => count($items),
-            'totalNgn' => number_format($totalNgn),
+            'success'           => true,
+            'count'             => count($items),
+            'totalsByCurrency'  => $formatted,
+            // First currency's formatted total, for pages that only
+            // show a single running total badge.
+            'primaryTotalFmt'   => $formatted->first() ?? ($this::CURRENCY_SYMBOLS['USD'] . '0.00'),
         ]);
     }
 
@@ -178,22 +198,24 @@ class CartController extends Controller
         cookie()->queue(cookie('az_cart_key', $key, 60 * 24 * 7)); // 7 days
     }
 
+    // Re-reads each part's REAL current price_local/currency_code from
+    // the database (prevents stale cached prices) — no rate, no math.
     private function hydrateCartItems(array $cart): array
     {
-        // Re-validate prices from DB (prevent stale cached prices)
         $partIds = array_column($cart['items'] ?? [], 'part_id');
         if (empty($partIds)) return [];
 
         $live = DB::table('parts_inventory')
             ->whereIn('id', $partIds)
-            ->pluck('price_usd', 'id');
+            ->select('id', 'price_local', 'price_usd', 'currency_code')
+            ->get()->keyBy('id');
 
-        $rate = $this->getNgnRate();
-
-        return array_map(function ($item) use ($live, $rate) {
-            $livePrice = $live[$item['part_id']] ?? $item['unit_price_usd'];
-            $item['unit_price_usd'] = (float) $livePrice;
-            $item['unit_price_ngn'] = round($livePrice * $rate);
+        return array_map(function ($item) use ($live) {
+            $part = $live[$item['part_id']] ?? null;
+            if ($part) {
+                $item['unit_price_local'] = (float) ($part->price_local ?? $part->price_usd ?? 0);
+                $item['currency_code']    = $part->currency_code ?? 'USD';
+            }
             return $item;
         }, $cart['items'] ?? []);
     }

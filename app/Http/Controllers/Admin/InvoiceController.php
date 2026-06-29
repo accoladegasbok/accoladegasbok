@@ -229,32 +229,51 @@ class InvoiceController extends Controller
         $order = DB::table('orders')->where('id', $orderId)->first();
         if (!$order) abort(404);
 
+        $orderCurrency = $order->currency_code ?? self::currencyForLocation($order->location ?? 'Waxahachie TX')['code'];
+
         $items = DB::table('order_items as oi')
-            ->join('parts_inventory as p', 'p.id', '=', 'oi.part_id')
+            ->leftJoin('parts_inventory as p', 'p.id', '=', 'oi.part_id')
             ->where('oi.order_id', $orderId)
             ->select(
-                'oi.unit_price_usd',
+                'oi.item_type',
+                'oi.unit_price_local',
+                'oi.subtotal_local',
+                // Legacy fallback columns — orders placed BEFORE the
+                // fixed-currency fix have unit_price_local/subtotal_local
+                // as null, since those columns didn't exist yet. Without
+                // these, old orders would show $0.00 on every line item.
                 'oi.unit_price_ngn',
+                'oi.unit_price_usd',
                 'oi.subtotal_ngn',
-                'p.price_local',
-                'p.currency_code',
-                'p.part_name',
-                'p.part_code',
-                'p.brand',
-                'p.model',
-                'p.year_from',
-                'p.year_to',
-                'p.condition_grade',
-                'p.location as part_location',
+                'oi.part_name',  // read directly from order_items — set for BOTH parts and services
+                'oi.part_code',
+                'oi.brand',
+                'oi.model',
+                'oi.year_from',
+                'oi.year_to',
+                'oi.condition_grade',
+                'oi.location as part_location',
                 'p.engine_code_oem',
                 'p.part_category'
             )->get()
-            ->map(function ($item) {
-                // order_items has no qty column — each row's qty is
-                // implied by subtotal_ngn / unit_price_ngn (both exist
-                // and are always set together at order creation time).
-                $item->qty = ($item->subtotal_ngn && $item->unit_price_ngn)
-                    ? max(1, round($item->subtotal_ngn / $item->unit_price_ngn))
+            ->map(function ($item) use ($orderCurrency) {
+                // Resolve the real unit price — prefer the new fixed-
+                // currency field, fall back to whichever legacy NGN/USD
+                // field matches this order's currency for older rows.
+                if (empty($item->unit_price_local)) {
+                    $item->unit_price_local = $orderCurrency === 'NGN'
+                        ? ($item->unit_price_ngn ?? 0)
+                        : ($item->unit_price_usd ?? 0);
+                }
+                if (empty($item->subtotal_local)) {
+                    $item->subtotal_local = $orderCurrency === 'NGN' ? ($item->subtotal_ngn ?? null) : null;
+                }
+
+                // qty derived from subtotal_local / unit_price_local —
+                // works regardless of currency now (the old NGN-only
+                // hack broke for USD/GHS orders with qty > 1).
+                $item->qty = ($item->subtotal_local && $item->unit_price_local)
+                    ? max(1, round($item->subtotal_local / $item->unit_price_local))
                     : 1;
                 return $item;
             });
@@ -262,19 +281,19 @@ class InvoiceController extends Controller
         $saleLocation = $order->location
             ?? ($items->first()->part_location ?? 'Waxahachie TX');
 
-        // Use the FIXED currency already stamped on the parts themselves
-        // (they were priced once at harvest/entry time and never change).
-        $currencyCode = $items->first()->currency_code ?? self::currencyForLocation($saleLocation)['code'];
+        // The order's ONE real, fixed currency — no conversion, no
+        // guessing from individual items. Stamped once at order
+        // creation time and never recalculated.
+        $currencyCode = $order->currency_code ?? self::currencyForLocation($saleLocation)['code'];
         $businessInfo = $this->getBusinessInfo($saleLocation);
 
-        $subtotalLocal = 0;
-        $lineItems = $items->map(function ($item) use (&$subtotalLocal) {
-            $unitLocal     = $item->price_local ?? $item->unit_price_usd; // fallback for pre-migration rows
-            $lineLocal     = $unitLocal * $item->qty;
-            $subtotalLocal += $lineLocal;
+        $subtotalLocal = $order->total_amount_local ?? $items->sum('subtotal_local');
+
+        $lineItems = $items->map(function ($item) use ($currencyCode) {
+            $lineLocal = $item->subtotal_local ?? (($item->unit_price_local ?? 0) * $item->qty);
             return (object) array_merge((array) $item, [
-                'unit_price_fmt' => self::formatLocal($unitLocal, $item->currency_code ?? 'USD'),
-                'total_fmt'      => self::formatLocal($lineLocal, $item->currency_code ?? 'USD'),
+                'unit_price_fmt' => self::formatLocal($item->unit_price_local ?? 0, $currencyCode),
+                'total_fmt'      => self::formatLocal($lineLocal, $currencyCode),
             ]);
         });
 
@@ -293,7 +312,7 @@ class InvoiceController extends Controller
         $createdAt     = $order->created_at ?? now();
         $paymentMethod = $order->payment_method ?? 'Cash';
         $copyKey       = 'customer';
-        $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real USD conversion anymore
+        $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real USD conversion
 
         return view('admin.invoices.show', compact(
             'order', 'lineItems', 'currency', 'subtotalFmt',
@@ -395,9 +414,14 @@ class InvoiceController extends Controller
         $serviceRates = DB::table('service_rates')->where('is_active', true)
             ->orderBy('category')->orderBy('name')->get();
 
+        $servicePricesByLocation = DB::table('service_rate_prices')
+            ->get()
+            ->groupBy('service_rate_id')
+            ->map(fn($rows) => $rows->pluck('price_local', 'location'));
+
         return view('admin.invoices.manual', compact(
             'parts', 'locations', 'staffLocation', 'isAdmin',
-            'staffDiscountCapFixed', 'staffDiscountCapPercent', 'serviceRates'
+            'staffDiscountCapFixed', 'staffDiscountCapPercent', 'serviceRates', 'servicePricesByLocation'
         ));
     }
     // =========================================================
@@ -850,6 +874,15 @@ class InvoiceController extends Controller
         $serviceRates = DB::table('service_rates')->where('is_active', true)
             ->orderBy('category')->orderBy('name')->get();
 
+        // Per-location prices — no FX conversion, each location has its
+        // own real fixed price. Grouped as {service_id: {location: price}}
+        // so the JS can look up the right number whenever the location
+        // selector changes.
+        $servicePricesByLocation = DB::table('service_rate_prices')
+            ->get()
+            ->groupBy('service_rate_id')
+            ->map(fn($rows) => $rows->pluck('price_local', 'location'));
+
         $locations = [
             'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
             'Kennedale TX'     => 'Kennedale TX — USD ($)',
@@ -862,7 +895,7 @@ class InvoiceController extends Controller
             'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
         ];
 
-        return view('admin.invoices.service', compact('serviceRates', 'locations'));
+        return view('admin.invoices.service', compact('serviceRates', 'locations', 'servicePricesByLocation'));
     }
 
     // =========================================================
@@ -1074,16 +1107,20 @@ class InvoiceController extends Controller
         // created it. All orders populate here unconditionally.
         $orderRows = DB::table('orders')
             ->select('id', 'order_ref as ref', 'customer_name', 'customer_phone',
-                     'total_amount_ngn as amount_local', 'customer_country',
-                     'payment_method', 'channel', 'payment_status', 'created_at')
+                     'total_amount_local', 'total_amount_ngn', 'total_amount_usd', 'currency_code as order_currency_code',
+                     'customer_country', 'payment_method', 'channel', 'payment_status', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
                 'id'            => $r->id,
                 'ref'           => $r->ref,
                 'customer_name' => $r->customer_name,
                 'customer_phone'=> $r->customer_phone,
-                'amount_local'  => $r->amount_local,
-                'currency_code' => 'NGN',
+                // Real fixed-currency total — falls back to the legacy
+                // NGN/USD columns only for orders placed before that fix.
+                'amount_local'  => $r->total_amount_local
+                    ?? ($r->order_currency_code === 'NGN' ? $r->total_amount_ngn : $r->total_amount_usd)
+                    ?? $r->total_amount_ngn ?? $r->total_amount_usd ?? 0,
+                'currency_code' => $r->order_currency_code ?? ($r->total_amount_ngn ? 'NGN' : 'USD'),
                 'location'      => $r->customer_country,
                 'channel'       => match($r->channel ?? 'online') {
                     'walk-in' => 'Walk-in',

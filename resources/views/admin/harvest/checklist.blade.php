@@ -195,12 +195,15 @@
                 </div>
                 @endif
 
-                {{-- Bin Location — per item (#A) --}}
+                {{-- Bin Location — per item (#A). NOT required by the
+                     browser unconditionally — only ticked/selected parts
+                     actually need a bin, enforced by the JS submit guard
+                     below instead, which checks only checked rows. --}}
                 <div class="min-w-[180px]">
                     <select name="bins[{{ $part['key'] }}]"
                             class="harvest-bin-select bg-[#1e293b] border border-[#C8960C] rounded-lg px-2 py-1.5 text-xs text-white
                                    focus:outline-none focus:border-[#C8960C] w-full"
-                            {{ $alreadyHarvested ? 'disabled' : 'required' }}>
+                            {{ $alreadyHarvested ? 'disabled' : '' }}>
                         <option value="">Select bin...</option>
                     </select>
                 </div>
@@ -452,6 +455,7 @@ function addCustomRow() {
     `;
     document.getElementById('customPartsContainer').appendChild(row);
     loadHarvestRooms(); // populate the new row's bin dropdown too
+    setTimeout(enforceBinExclusivityAcrossRows, 800);
 }
 
 // ── Price input listener ──────────────────────────────────────────
@@ -497,6 +501,40 @@ async function loadHarvestRooms() {
 
 document.addEventListener('DOMContentLoaded', loadHarvestRooms);
 loadHarvestRooms();
+
+// ── Prevent the same bin being claimed by two rows in the same
+// unsaved batch — bin exclusivity in the database only knows about
+// ALREADY-SAVED parts, not what's still sitting unsaved in this form.
+// As soon as one row picks a bin, remove that option from every
+// other row's dropdown; restore it if deselected.
+function enforceBinExclusivityAcrossRows() {
+    const selects = document.querySelectorAll('.harvest-bin-select');
+    const chosen = new Set();
+    selects.forEach(sel => { if (sel.value) chosen.add(sel.value); });
+
+    selects.forEach(sel => {
+        const myValue = sel.value;
+        Array.from(sel.options).forEach(opt => {
+            if (!opt.value) return; // skip the placeholder
+            const takenByAnother = chosen.has(opt.value) && opt.value !== myValue;
+            opt.disabled = takenByAnother;
+            const baseLabel = opt.textContent.replace(' (already selected on this page)', '');
+            opt.textContent = baseLabel + (takenByAnother ? ' (already selected on this page)' : '');
+        });
+    });
+}
+
+document.addEventListener('change', function(e) {
+    if (e.target.classList && e.target.classList.contains('harvest-bin-select')) {
+        enforceBinExclusivityAcrossRows();
+    }
+});
+
+// Run once now that bins have loaded, and call it again every time
+// loadHarvestRooms() is re-run elsewhere (e.g. when a new custom-part
+// row is added) by piggybacking on the same call sites — simplest
+// fix is just running it shortly after each fetch completes.
+setTimeout(enforceBinExclusivityAcrossRows, 800);
 
 document.getElementById('harvestForm').addEventListener('submit', function(e) {
     // Only checked (ticked) rows need a bin and photos — unticked rows aren't being saved.

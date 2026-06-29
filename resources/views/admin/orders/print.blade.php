@@ -46,7 +46,7 @@
 <body>
 
   <div class="toolbar">
-    <button class="print-btn" onclick="window.print()">🖨 Print All 4 Copies</button>
+    <button class="print-btn" onclick="window.print()">🖨 Print Customer Receipt</button>
   </div>
 
   @php
@@ -90,18 +90,34 @@
         <tr><th>Part</th><th>Vehicle</th><th style="text-align:right;">Price</th></tr>
       </thead>
       <tbody>
+        @php $sym = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$order->currency_code ?? 'USD'] ?? '$'; @endphp
         @foreach($items as $item)
         <tr>
           <td>{{ $item->part_name }}<br><span style="font-size:10px;color:#999;">{{ $item->part_code }}</span></td>
           <td style="font-size:11px;color:#666;">{{ $item->brand }} {{ $item->model }} {{ $item->year_from }}@if($item->year_to != $item->year_from)–{{ $item->year_to }}@endif</td>
-          <td style="text-align:right;">₦{{ number_format($item->unit_price_ngn) }}</td>
+          <td style="text-align:right;">{{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($item->unit_price_local ?? $item->unit_price_ngn) : number_format($item->unit_price_local ?? $item->unit_price_usd, 2) }}</td>
         </tr>
         @endforeach
       </tbody>
     </table>
 
-    <div class="total-row">Total: ₦{{ number_format($order->total_amount_ngn) }}</div>
-    <div style="text-align:right; font-size:11px; color:#888;">(${{ number_format($order->total_amount_usd, 2) }} USD equivalent)</div>
+    <div class="total-row">Total: {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</div>
+
+    {{-- ── Payment breakdown — printed on every copy ── --}}
+    @php $printPaySummary2 = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id); @endphp
+    @if($printPaySummary2['payments']->count())
+    <table style="margin-top: -4px;">
+        @foreach($printPaySummary2['payments']->where('status', 'confirmed') as $p)
+        <tr style="font-size: 11px; color: #777;">
+            <td style="border-bottom: none;">Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
+            <td style="border-bottom: none; text-align: right;">– {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($p->amount_local ?? $p->amount_ngn) : number_format($p->amount_local ?? $p->amount_ngn, 2) }}</td>
+        </tr>
+        @endforeach
+    </table>
+    <div class="total-row" style="{{ $printPaySummary2['balanceDue'] > 0 ? 'color:#c0392b;' : 'color:#27500A;' }} font-size: 15px;">
+        {{ $printPaySummary2['balanceDue'] > 0 ? 'Balance Due: ' . $sym . (($order->currency_code ?? 'USD') === 'NGN' ? number_format($printPaySummary2['balanceDue']) : number_format($printPaySummary2['balanceDue'], 2)) : 'PAID IN FULL' }}
+    </div>
+    @endif
 
     <div class="signature-row">
       <div>Staff Signature</div>

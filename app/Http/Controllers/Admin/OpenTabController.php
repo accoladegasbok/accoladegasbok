@@ -111,9 +111,15 @@ class OpenTabController extends Controller
 
         $services = DB::table('service_rates')->where('is_active', true)
             ->when($q, fn($qq) => $qq->where('name', 'like', "%{$q}%"))
-            ->select('id', 'service_code as part_code', 'name as part_name', 'default_price as price_local')
+            ->select('id', 'service_code as part_code', 'name as part_name')
             ->limit(20)->get()
-            ->map(fn($s) => (array) $s + ['item_type' => 'service', 'currency_code' => InvoiceController::currencyForLocation($tab->location)['code'], 'stock_qty' => null]);
+            ->map(function ($s) use ($tab) {
+                $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($s->id, $tab->location);
+                return (array) $s + [
+                    'item_type' => 'service', 'price_local' => $priced['price'],
+                    'currency_code' => $priced['currency_code'], 'stock_qty' => null,
+                ];
+            });
 
         return response()->json(['items' => $parts->concat($services)->values()]);
     }
@@ -145,12 +151,12 @@ class OpenTabController extends Controller
         } else {
             $service = DB::table('service_rates')->where('id', $request->ref_id)->first();
             if (!$service) return back()->with('error', 'Service not found.');
-            $currency = InvoiceController::currencyForLocation($tab->location);
+            $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($service->id, $tab->location);
             DB::table('open_tab_items')->insert([
                 'tab_id' => $id, 'item_type' => 'service', 'service_id' => $service->id,
                 'item_name' => $service->name, 'item_code' => $service->service_code,
-                'qty' => $request->qty, 'unit_price_local' => $service->default_price ?? 0,
-                'currency_code' => $currency['code'], 'added_by_staff_id' => Session::get('staff_id'),
+                'qty' => $request->qty, 'unit_price_local' => $priced['price'],
+                'currency_code' => $priced['currency_code'], 'added_by_staff_id' => Session::get('staff_id'),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }

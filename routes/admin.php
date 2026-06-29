@@ -138,6 +138,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/rename-one',  [\App\Http\Controllers\Admin\PartNameManagerController::class, 'renameOne'])->name('rename-one');
         });
 
+        // Centralized Payments Ledger - all payments across Orders and Invoices
+        Route::get('/payments', [\App\Http\Controllers\Admin\PaymentsLedgerController::class, 'index'])->name('payments.index');
+
         // Open Tab (#17) - running tab per customer, closes into one invoice
         Route::prefix('tabs')->name('tabs.')->group(function () {
             Route::get('/',                [\App\Http\Controllers\Admin\OpenTabController::class, 'index'])->name('index');
@@ -223,6 +226,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Invoices
         Route::prefix('invoices')->name('invoices.')->group(function () {
             Route::get('/', [InvoiceController::class, 'index'])->name('index');
+            Route::get('/manual', fn() => redirect()->route('admin.invoices.manual.create'));
             Route::get('/manual/create', [InvoiceController::class, 'createManual'])->name('manual.create');
             Route::post('/manual', [InvoiceController::class, 'storeManual'])->name('manual.store');
             Route::get('/manual/{id}', [InvoiceController::class, 'showManual'])->name('show.manual');
@@ -236,6 +240,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendInvoiceReminder'])->name('send-reminder');
 
             // Quick Receipt — services/labor/misc, never touches inventory
+            Route::get('/service', fn() => redirect()->route('admin.invoices.service.create'));
             Route::get('/service/create', [InvoiceController::class, 'createService'])->name('service.create');
             Route::get('/service/search-parts', [InvoiceController::class, 'serviceSearchParts'])->name('service.search-parts');
             Route::post('/service', [InvoiceController::class, 'storeService'])->name('service.store');
@@ -248,6 +253,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('/{id}',      [\App\Http\Controllers\Admin\ServiceRateController::class, 'update'])->name('update');
             Route::delete('/{id}',   [\App\Http\Controllers\Admin\ServiceRateController::class, 'destroy'])->name('destroy');
             Route::get('/{id}/barcode', [\App\Http\Controllers\Admin\ServiceRateController::class, 'barcode'])->name('barcode');
+            Route::get('/{id}/prices', [\App\Http\Controllers\Admin\ServiceRateController::class, 'editPrices'])->name('prices.edit');
+            Route::post('/{id}/prices', [\App\Http\Controllers\Admin\ServiceRateController::class, 'updatePrices'])->name('prices.update');
         });
     }); // end admin.auth middleware
 

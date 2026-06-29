@@ -73,18 +73,17 @@
             </div>
           </div>
           <div class="text-right flex-shrink-0">
-            @if(str_contains($item->location ?? '', 'Nigeria'))
-              <div class="font-display font-700 text-navy text-base">₦{{ number_format($item->unit_price_ngn) }}</div>
-            @else
-              <div class="font-display font-700 text-navy text-base">${{ number_format($item->unit_price_usd, 2) }}</div>
-            @endif
+            @php $sym = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$order->currency_code ?? 'USD'] ?? '$'; @endphp
+            <div class="font-display font-700 text-navy text-base">
+              {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($item->unit_price_local ?? 0) : number_format($item->unit_price_local ?? 0, 2) }}
+            </div>
           </div>
         </div>
         @endforeach
 
         <div class="flex justify-between pt-2 font-display font-700 text-navy text-base">
           <span>Total</span>
-          <span>₦{{ number_format($order->total_amount_ngn) }}</span>
+          <span>{{ $sym ?? '$' }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</span>
         </div>
       </div>
     </div>
@@ -171,21 +170,26 @@
     @php
         $paySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
     @endphp
+    @php
+        $paySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
+        $paySym = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$paySummary['currencyCode']] ?? '$';
+        $fmtAmt = fn($n) => $paySummary['currencyCode'] === 'NGN' ? number_format($n) : number_format($n, 2);
+    @endphp
     <div class="stat-card">
       <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-4">Payments</h2>
 
       <div class="grid grid-cols-3 gap-3 mb-4 text-center">
         <div class="bg-gray-50 rounded-xl p-3">
           <div class="text-xs text-gray-400 uppercase tracking-wider">Order Total</div>
-          <div class="font-display font-700 text-navy text-lg">₦{{ number_format($order->total_amount_ngn) }}</div>
+          <div class="font-display font-700 text-navy text-lg">{{ $paySym }}{{ $fmtAmt($order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd) }}</div>
         </div>
         <div class="bg-green-50 rounded-xl p-3">
           <div class="text-xs text-gray-400 uppercase tracking-wider">Paid (Confirmed)</div>
-          <div class="font-display font-700 text-green-600 text-lg">₦{{ number_format($paySummary['confirmedPaid']) }}</div>
+          <div class="font-display font-700 text-green-600 text-lg">{{ $paySym }}{{ $fmtAmt($paySummary['confirmedPaid']) }}</div>
         </div>
         <div class="{{ $paySummary['balanceDue'] > 0 ? 'bg-red-50' : 'bg-green-50' }} rounded-xl p-3">
           <div class="text-xs text-gray-400 uppercase tracking-wider">Balance Due</div>
-          <div class="font-display font-700 {{ $paySummary['balanceDue'] > 0 ? 'text-red-600' : 'text-green-600' }} text-lg">₦{{ number_format($paySummary['balanceDue']) }}</div>
+          <div class="font-display font-700 {{ $paySummary['balanceDue'] > 0 ? 'text-red-600' : 'text-green-600' }} text-lg">{{ $paySym }}{{ $fmtAmt($paySummary['balanceDue']) }}</div>
         </div>
       </div>
 
@@ -206,10 +210,10 @@
           <tbody>
             @foreach($paySummary['payments'] as $p)
             <tr class="border-t border-gray-100">
-              <td class="px-3 py-2 font-700 text-navy">₦{{ number_format($p->amount_ngn) }}</td>
+              <td class="px-3 py-2 font-700 text-navy">{{ $paySym }}{{ $fmtAmt($p->amount_local ?? $p->amount_ngn) }}</td>
               <td class="px-3 py-2 text-gray-600">{{ $p->payment_method }}</td>
               <td class="px-3 py-2">
-                @if($p->proof_path)<a href="{{ asset('storage/' . $p->proof_path) }}" target="_blank" class="text-gold hover:text-yellow-600">View →</a>@else <span class="text-gray-300">—</span>@endif
+                @if($p->proof_path)<a href="{{ asset(config('media.prefix') . '/' . $p->proof_path) }}" target="_blank" class="text-gold hover:text-yellow-600">View →</a>@else <span class="text-gray-300">—</span>@endif
               </td>
               <td class="px-3 py-2">
                 <span class="badge {{ $p->status==='confirmed' ? 'badge-green' : ($p->status==='rejected' ? 'badge-red' : 'badge-amber') }}">{{ ucfirst($p->status) }}</span>
@@ -235,7 +239,7 @@
         <div class="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label class="block text-xs text-gray-500 mb-1">Amount (₦) *</label>
-            <input type="number" name="amount_ngn" step="0.01" min="0.01" max="{{ $paySummary['balanceDue'] }}" required placeholder="{{ $paySummary['balanceDue'] }}"
+            <input type="number" name="amount_local" step="0.01" min="0.01" max="{{ $paySummary['balanceDue'] }}" required placeholder="{{ $paySummary['balanceDue'] }}"
               class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
           </div>
           <div>
@@ -316,20 +320,9 @@
             {{ $order->payment_status === 'confirmed' ? 'Paid / Receipt Issued' : str_replace('_',' ',$order->payment_status) }}
           </span>
         </div>
-        @if(str_contains($order->customer_country ?? '', 'Nigeria'))
         <div class="flex justify-between">
           <span class="text-gray-400">Amount</span>
-          <span class="font-display font-700 text-navy text-sm">₦{{ number_format($order->total_amount_ngn) }}</span>
-        </div>
-        @else
-        <div class="flex justify-between">
-          <span class="text-gray-400">Amount</span>
-          <span class="font-display font-700 text-navy text-sm">${{ number_format($order->total_amount_usd, 2) }}</span>
-        </div>
-        @endif
-        <div class="flex justify-between">
-          <span class="text-gray-400">Rate used</span>
-          <span class="font-500 font-mono">{{ number_format($order->exchange_rate) }}</span>
+          <span class="font-display font-700 text-navy text-sm">{{ $paySym ?? '$' }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</span>
         </div>
         @if($order->transfer_reference)
         <div class="mt-2 bg-blue-50 border border-blue-100 rounded-lg p-2.5">

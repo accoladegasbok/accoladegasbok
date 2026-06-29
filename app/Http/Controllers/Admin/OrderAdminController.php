@@ -45,10 +45,14 @@ class OrderAdminController extends Controller
             ->groupBy('payment_status')
             ->pluck('n', 'payment_status');
 
+        // Per-currency, never blended — an order in USD and an order in
+        // NGN can't be summed into one meaningful number.
         $todayRevenue = DB::table('orders')
             ->whereDate('created_at', today())
             ->where('payment_status', 'confirmed')
-            ->sum('total_amount_ngn');
+            ->select('currency_code', DB::raw('SUM(COALESCE(total_amount_local, total_amount_ngn, total_amount_usd)) as total'))
+            ->groupBy('currency_code')
+            ->pluck('total', 'currency_code');
 
         return view('admin.orders.index', compact('orders', 'counts', 'todayRevenue'));
     }
@@ -226,15 +230,17 @@ class OrderAdminController extends Controller
         $order = DB::table('orders')->where('id', $orderId)->first();
         $payments = DB::table('order_payments')->where('order_id', $orderId)->orderByDesc('created_at')->get();
 
-        $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_ngn');
-        $pendingTotal  = $payments->where('status', 'pending')->sum('amount_ngn');
-        $balanceDue    = max(0, ($order->total_amount_ngn ?? 0) - $confirmedPaid);
+        $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_local');
+        $pendingTotal  = $payments->where('status', 'pending')->sum('amount_local');
+        $orderTotal    = $order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0;
+        $balanceDue    = max(0, $orderTotal - $confirmedPaid);
 
         return [
             'payments'      => $payments,
             'confirmedPaid' => $confirmedPaid,
             'pendingTotal'  => $pendingTotal,
             'balanceDue'    => $balanceDue,
+            'currencyCode'  => $order->currency_code ?? 'NGN',
         ];
     }
 
@@ -242,7 +248,7 @@ class OrderAdminController extends Controller
     public function addPayment(Request $request, int $id)
     {
         $request->validate([
-            'amount_ngn'     => 'required|numeric|min:0.01',
+            'amount_local'   => 'required|numeric|min:0.01',
             'payment_method' => 'required|string|max:50',
             'proof'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:8192',
             'notes'          => 'nullable|string|max:500',
@@ -256,9 +262,15 @@ class OrderAdminController extends Controller
             $proofPath = $request->file('proof')->store("order-payments/{$id}", 'public');
         }
 
+        // Payment is recorded in the ORDER's own real currency — never
+        // converted, never assumed to be NGN.
+        $currencyCode = $order->currency_code ?? 'NGN';
+
         DB::table('order_payments')->insert([
             'order_id'       => $id,
-            'amount_ngn'     => $request->amount_ngn,
+            'amount_local'   => $request->amount_local,
+            'currency_code'  => $currencyCode,
+            'amount_ngn'     => $currencyCode === 'NGN' ? $request->amount_local : null, // kept for any legacy reads
             'payment_method' => $request->payment_method,
             'proof_path'     => $proofPath,
             'status'         => 'pending', // requires staff confirmation before it counts toward balance

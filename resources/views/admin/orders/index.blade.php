@@ -7,7 +7,12 @@
 @section('header-actions')
 <div class="text-right">
   <div class="text-xs text-gray-400 font-body">Today's confirmed revenue</div>
-  <div class="font-display font-700 text-navy text-lg">₦{{ number_format($todayRevenue) }}</div>
+  @forelse($todayRevenue as $code => $total)
+    @php $sym = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$code] ?? '$'; @endphp
+    <div class="font-display font-700 text-navy text-lg">{{ $sym }}{{ $code === 'NGN' ? number_format($total) : number_format($total, 2) }}</div>
+  @empty
+    <div class="font-display font-700 text-navy text-lg">—</div>
+  @endforelse
 </div>
 @endsection
 
@@ -110,8 +115,10 @@
 
           {{-- Amount --}}
           <td class="px-4 py-3">
-            <div class="font-display font-700 text-navy">₦{{ number_format($o->total_amount_ngn) }}</div>
-            <div class="text-xs text-gray-400">${{ number_format($o->total_amount_usd, 2) }}</div>
+            @php $rowSym = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$o->currency_code ?? 'USD'] ?? '$'; @endphp
+            <div class="font-display font-700 text-navy">
+              {{ $rowSym }}{{ ($o->currency_code ?? 'USD') === 'NGN' ? number_format($o->total_amount_local ?? $o->total_amount_ngn) : number_format($o->total_amount_local ?? $o->total_amount_usd, 2) }}
+            </div>
           </td>
 
           {{-- Order status --}}
@@ -144,10 +151,11 @@
           <td class="px-4 py-3">
             <div class="flex items-center gap-2">
               {{-- Confirm payment button (only for pending/transfer_sent) --}}
+              @php $rowSym2 = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$o->currency_code ?? 'USD'] ?? '$'; @endphp
               @if(in_array($o->payment_status, ['pending','transfer_sent','payment_pending_confirmation']))
-                <button onclick="confirmPayment({{ $o->id }}, this)"
+                <button onclick="confirmPayment({{ $o->id }}, this)" data-symbol="{{ $rowSym2 }}"
                   class="bg-green-500 hover:bg-green-600 text-white text-xs font-500 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
-                  Confirm ₦
+                  Confirm {{ $rowSym2 }}
                 </button>
               @endif
 
@@ -162,7 +170,10 @@
                 $waNum = str_contains($o->customer_country ?? '', 'Nigeria') || str_contains($o->customer_country ?? '', 'Ghana')
                     ? ltrim($o->customer_whatsapp ?? $o->customer_phone, '+0')
                     : ltrim($o->customer_phone, '+0');
-                $waMsg = urlencode("Hi {$o->customer_name}, regarding your Auto Zenith order {$o->order_ref} (₦".number_format($o->total_amount_ngn).").");
+                $waAmountFmt = $rowSym2 . (($o->currency_code ?? 'USD') === 'NGN'
+                    ? number_format($o->total_amount_local ?? $o->total_amount_ngn)
+                    : number_format($o->total_amount_local ?? $o->total_amount_usd, 2));
+                $waMsg = urlencode("Hi {$o->customer_name}, regarding your Auto Zenith order {$o->order_ref} ({$waAmountFmt}).");
               @endphp
               <a href="https://wa.me/{{ $waNum }}?text={{ $waMsg }}" target="_blank"
                 class="text-green-600 hover:text-green-800 transition-colors" title="WhatsApp customer">
@@ -215,7 +226,7 @@ async function confirmPayment(orderId, btn) {
       console.error('Confirm payment failed', res.status, text);
       alert(`Server error (${res.status}). Check console for details.`);
       btn.disabled = false;
-      btn.textContent = 'Confirm ₦';
+      btn.textContent = 'Confirm ' + (btn.dataset.symbol || '$');
       return;
     }
 
@@ -231,13 +242,13 @@ async function confirmPayment(orderId, btn) {
     } else {
       alert(data.error || 'Could not confirm payment.');
       btn.disabled = false;
-      btn.textContent = 'Confirm ₦';
+      btn.textContent = 'Confirm ' + (btn.dataset.symbol || '$');
     }
   } catch (e) {
     console.error('Confirm payment network/parse error', e);
     alert('Network or response error — check console.');
     btn.disabled = false;
-    btn.textContent = 'Confirm ₦';
+    btn.textContent = 'Confirm ' + (btn.dataset.symbol || '$');
   }
 }
 
