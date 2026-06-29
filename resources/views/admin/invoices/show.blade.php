@@ -457,37 +457,42 @@ $qrUrl = isset($invoice)
             </div>
         </div>
 
-        {{-- ── Payment breakdown — printed on every copy. Shows each
-             confirmed payment subtracted from the total, and the real
-             outstanding balance, so a partial-payment customer has
-             this in writing on the physical receipt, not just visible
-             to staff on-screen. ── --}}
         @php
             $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
             $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
         @endphp
-        @if($printPaySummary && $printPaySummary['payments']->count())
         <div class="inv-totals" style="margin-top: -6px;">
             <div class="totals-box" style="border-top: 1px dashed #ccc; padding-top: 8px;">
                 <table>
+                    @if($printPaySummary && $printPaySummary['payments']->where('status', 'confirmed')->count())
                     @foreach($printPaySummary['payments']->where('status', 'confirmed') as $p)
                     <tr style="font-size: 11px; color: #555;">
                         <td>Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
                         <td>– {{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($p->amount_local) : number_format($p->amount_local, 2) }}</td>
                     </tr>
                     @endforeach
-                    <tr class="total-row" style="{{ $printPaySummary['balanceDue'] > 0 ? 'color:#c0392b;' : 'color:#1b9e5c;' }}">
-                        <td><strong>{{ $printPaySummary['balanceDue'] > 0 ? 'BALANCE DUE:' : 'STATUS:' }}</strong></td>
+                    @else
+                    {{-- No formal payment record exists — this was paid
+                         in full at the point of sale, as every Manual
+                         Invoice/Quick Receipt/Tab is by default. Shown
+                         the same uniform way as a partial-payment
+                         receipt, for consistency across every printout. --}}
+                    <tr style="font-size: 11px; color: #555;">
+                        <td>Payment Applied (Paid at point of sale)</td>
+                        <td>– {{ $subtotalFmt }}</td>
+                    </tr>
+                    @endif
+                    <tr class="total-row" style="{{ ($printPaySummary['balanceDue'] ?? 0) > 0 ? 'color:#c0392b;' : 'color:#1b9e5c;' }}">
+                        <td><strong>{{ ($printPaySummary['balanceDue'] ?? 0) > 0 ? 'BALANCE DUE:' : 'BALANCE:' }}</strong></td>
                         <td><strong>
-                            {{ $printPaySummary['balanceDue'] > 0
+                            {{ ($printPaySummary['balanceDue'] ?? 0) > 0
                                 ? $currency['symbol'] . ($currency['code'] === 'NGN' ? number_format($printPaySummary['balanceDue']) : number_format($printPaySummary['balanceDue'], 2))
-                                : 'PAID IN FULL' }}
+                                : $currency['symbol'] . '0' }}
                         </strong></td>
                     </tr>
                 </table>
             </div>
         </div>
-        @endif
 
         {{-- Warranty --}}
         <div class="inv-warranty">

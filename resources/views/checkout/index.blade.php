@@ -94,16 +94,14 @@
         </div>
 
         {{-- ═══════════════════════════════════════════════════════════
-             PAYMENT METHOD — switches between Nigeria and USA
+             PAYMENT METHOD — switches between Nigeria and USA. Every
+             amount shown here is the order's ONE real, fixed total —
+             no FX conversion, no equivalent figure shown anywhere.
         ═══════════════════════════════════════════════════════════ --}}
         <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
           <h2 class="font-display font-700 text-navy text-base tracking-wide mb-1 uppercase">Payment Method</h2>
           <p class="text-xs text-gray-500 font-body mb-4">
-            @if($isNigeria)
-              Prices in Nigerian Naira (₦). Total: <strong>₦{{ number_format($totalNgn) }}</strong>
-            @else
-              Prices in US Dollars ($). Total: <strong>${{ number_format($totalUsd, 2) }}</strong>
-            @endif
+            Total: <strong>{{ $currencySymbol }}{{ $currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2) }}</strong>
           </p>
 
           @if($isNigeria)
@@ -131,7 +129,7 @@
                   </div>
                   <div class="flex justify-between pt-2 border-t border-gray-700">
                     <span class="text-gray-400 text-xs">Amount</span>
-                    <span class="font-display font-700 text-gold text-lg">₦{{ number_format($totalNgn) }}</span>
+                    <span class="font-display font-700 text-gold text-lg">₦{{ number_format($totalLocal) }}</span>
                   </div>
                 </div>
                 <div class="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-400 font-body leading-relaxed">
@@ -186,7 +184,7 @@
               <div class="bg-navy rounded-xl p-4 text-white text-sm font-body">
                 <div class="flex justify-between mb-1"><span class="text-gray-400 text-xs">Send to number</span><span class="font-display font-700 text-gold tracking-widest">{{ $usZelleNumber }}</span></div>
                 <div class="flex justify-between"><span class="text-gray-400 text-xs">Recipient name</span><span class="font-500 text-xs">{{ $usZelleName }}</span></div>
-                <div class="flex justify-between pt-2 mt-2 border-t border-gray-700"><span class="text-gray-400 text-xs">Amount</span><span class="font-display font-700 text-gold">${{ number_format($totalUsd, 2) }}</span></div>
+                <div class="flex justify-between pt-2 mt-2 border-t border-gray-700"><span class="text-gray-400 text-xs">Amount</span><span class="font-display font-700 text-gold">${{ number_format($totalLocal, 2) }}</span></div>
               </div>
             </div>
           </label>
@@ -198,7 +196,7 @@
               <div class="font-display font-700 text-navy text-sm tracking-wide mb-2">💚 CASHAPP</div>
               <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-body">
                 <div class="flex justify-between"><span class="text-gray-500 text-xs">CashApp tag</span><span class="font-display font-700 text-navy">{{ $usCashApp }}</span></div>
-                <div class="flex justify-between mt-1"><span class="text-gray-500 text-xs">Amount</span><span class="font-display font-700 text-navy">${{ number_format($totalUsd, 2) }}</span></div>
+                <div class="flex justify-between mt-1"><span class="text-gray-500 text-xs">Amount</span><span class="font-display font-700 text-navy">${{ number_format($totalLocal, 2) }}</span></div>
               </div>
             </div>
           </label>
@@ -210,7 +208,7 @@
               <div class="font-display font-700 text-navy text-sm tracking-wide mb-2">💙 VENMO</div>
               <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-body">
                 <div class="flex justify-between"><span class="text-gray-500 text-xs">Venmo number</span><span class="font-display font-700 text-navy">{{ $usVenmo }}</span></div>
-                <div class="flex justify-between mt-1"><span class="text-gray-500 text-xs">Amount</span><span class="font-display font-700 text-navy">${{ number_format($totalUsd, 2) }}</span></div>
+                <div class="flex justify-between mt-1"><span class="text-gray-500 text-xs">Amount</span><span class="font-display font-700 text-navy">${{ number_format($totalLocal, 2) }}</span></div>
               </div>
             </div>
           </label>
@@ -258,11 +256,7 @@
                 <div class="text-xs text-gray-400 font-body">{{ $item['brand'] }} {{ $item['model'] }}</div>
               </div>
               <div class="text-right flex-shrink-0">
-                @if($isNigeria)
-                  <div class="text-xs font-body font-500 text-navy">₦{{ number_format($item['unit_price_ngn']) }}</div>
-                @else
-                  <div class="text-xs font-body font-500 text-navy">${{ number_format($item['unit_price_usd'], 2) }}</div>
-                @endif
+                <div class="text-xs font-body font-500 text-navy">{{ $currencySymbol }}{{ $currencyCode === 'NGN' ? number_format($item['unit_price_local']) : number_format($item['unit_price_local'], 2) }}</div>
               </div>
             </div>
             @endforeach
@@ -271,11 +265,7 @@
           <div class="border-t border-gray-100 pt-4 space-y-2 text-sm font-body">
             <div class="flex justify-between font-500 text-navy text-base pt-1">
               <span>Total</span>
-              @if($isNigeria)
-                <span class="font-display font-700 text-xl">₦{{ number_format($totalNgn) }}</span>
-              @else
-                <span class="font-display font-700 text-xl">${{ number_format($totalUsd, 2) }}</span>
-              @endif
+              <span class="font-display font-700 text-xl">{{ $currencySymbol }}{{ $currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2) }}</span>
             </div>
           </div>
 

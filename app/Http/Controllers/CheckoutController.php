@@ -137,8 +137,7 @@ class CheckoutController extends Controller
 
         DB::beginTransaction();
         try {
-            $lastId = DB::table('orders')->max('id') ?? 0;
-            $ref    = 'AZ-' . date('Y') . '-' . str_pad($lastId + 1, 5, '0', STR_PAD_LEFT);
+            $ref = $this->generateOrderRef();
 
             $orderId = DB::table('orders')->insertGetId([
                 'order_ref'         => $ref,
@@ -196,6 +195,15 @@ class CheckoutController extends Controller
 
             return redirect()->route('checkout.confirmation', ['ref' => $ref]);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+            // Same collision-retry as AdminOrderController — a race
+            // between two orders generated at nearly the same moment.
+            if (str_contains($e->getMessage(), 'orders_order_ref_unique') && !$request->boolean('_ref_retry')) {
+                return $this->store($request->merge(['_ref_retry' => true]));
+            }
+            Log::error('Order creation failed', ['error' => $e->getMessage()]);
+            return back()->with('error', 'Something went wrong. Please try again or contact us on WhatsApp.');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Order creation failed', ['error' => $e->getMessage()]);
@@ -284,6 +292,22 @@ class CheckoutController extends Controller
     // =========================================================
     // Helpers
     // =========================================================
+    // Collision-resistant order_ref generator — uses the highest
+    // sequence number actually used this year (parsed from existing
+    // refs), not a row count, since count()/max(id) both break if
+    // any order was ever deleted or if two requests race each other.
+    private function generateOrderRef(): string
+    {
+        $year = date('Y');
+        $maxSeq = DB::table('orders')
+            ->where('order_ref', 'like', "AZ-{$year}-%")
+            ->pluck('order_ref')
+            ->map(fn($ref) => (int) substr($ref, strrpos($ref, '-') + 1))
+            ->max() ?? 0;
+
+        return "AZ-{$year}-" . str_pad($maxSeq + 1, 5, '0', STR_PAD_LEFT);
+    }
+
     private function getCart(Request $request): array
     {
         $key  = $request->cookie('az_cart_key');

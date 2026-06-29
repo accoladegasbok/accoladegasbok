@@ -105,22 +105,26 @@
 
       <div class="total">Total: {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</div>
 
-      {{-- ── Payment breakdown — shown right on the receipt for any
-           partial payment, so the customer has it in writing. ── --}}
+      {{-- ── Payment breakdown — shown on every receipt for consistency ── --}}
       @php $printPaySummary3 = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id); @endphp
-      @if($printPaySummary3['payments']->count())
       <table style="margin-top: -8px;">
+        @if($printPaySummary3['payments']->where('status', 'confirmed')->count())
         @foreach($printPaySummary3['payments']->where('status', 'confirmed') as $p)
         <tr style="font-size: 11px; color: #777;">
           <td style="border-bottom: none;">Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
           <td style="border-bottom: none; text-align: right;">– {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($p->amount_local ?? $p->amount_ngn) : number_format($p->amount_local ?? $p->amount_ngn, 2) }}</td>
         </tr>
         @endforeach
+        @else
+        <tr style="font-size: 11px; color: #777;">
+          <td style="border-bottom: none;">Payment Applied (Paid at point of sale)</td>
+          <td style="border-bottom: none; text-align: right;">– {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</td>
+        </tr>
+        @endif
       </table>
       <div class="total" style="{{ $printPaySummary3['balanceDue'] > 0 ? 'color:#c0392b;' : 'color:#27500A;' }}">
-        {{ $printPaySummary3['balanceDue'] > 0 ? 'Balance Due: ' . $sym . (($order->currency_code ?? 'USD') === 'NGN' ? number_format($printPaySummary3['balanceDue']) : number_format($printPaySummary3['balanceDue'], 2)) : 'PAID IN FULL' }}
+        {{ $printPaySummary3['balanceDue'] > 0 ? 'Balance Due: ' . $sym . (($order->currency_code ?? 'USD') === 'NGN' ? number_format($printPaySummary3['balanceDue']) : number_format($printPaySummary3['balanceDue'], 2)) : 'Balance: ' . $sym . '0' }}
       </div>
-      @endif
 
       <div class="footer-note">
         Thank you for shopping with Auto Zenith Parts.<br>

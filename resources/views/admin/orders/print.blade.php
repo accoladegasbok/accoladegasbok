@@ -103,21 +103,27 @@
 
     <div class="total-row">Total: {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</div>
 
-    {{-- ── Payment breakdown — printed on every copy ── --}}
+    {{-- ── Payment breakdown — printed on every copy, always shown
+         for visual consistency across every receipt ── --}}
     @php $printPaySummary2 = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id); @endphp
-    @if($printPaySummary2['payments']->count())
     <table style="margin-top: -4px;">
+        @if($printPaySummary2['payments']->where('status', 'confirmed')->count())
         @foreach($printPaySummary2['payments']->where('status', 'confirmed') as $p)
         <tr style="font-size: 11px; color: #777;">
             <td style="border-bottom: none;">Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
             <td style="border-bottom: none; text-align: right;">– {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($p->amount_local ?? $p->amount_ngn) : number_format($p->amount_local ?? $p->amount_ngn, 2) }}</td>
         </tr>
         @endforeach
+        @else
+        <tr style="font-size: 11px; color: #777;">
+            <td style="border-bottom: none;">Payment Applied (Paid at point of sale)</td>
+            <td style="border-bottom: none; text-align: right;">– {{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($order->total_amount_local ?? $order->total_amount_ngn) : number_format($order->total_amount_local ?? $order->total_amount_usd, 2) }}</td>
+        </tr>
+        @endif
     </table>
     <div class="total-row" style="{{ $printPaySummary2['balanceDue'] > 0 ? 'color:#c0392b;' : 'color:#27500A;' }} font-size: 15px;">
-        {{ $printPaySummary2['balanceDue'] > 0 ? 'Balance Due: ' . $sym . (($order->currency_code ?? 'USD') === 'NGN' ? number_format($printPaySummary2['balanceDue']) : number_format($printPaySummary2['balanceDue'], 2)) : 'PAID IN FULL' }}
+        {{ $printPaySummary2['balanceDue'] > 0 ? 'Balance Due: ' . $sym . (($order->currency_code ?? 'USD') === 'NGN' ? number_format($printPaySummary2['balanceDue']) : number_format($printPaySummary2['balanceDue'], 2)) : 'Balance: ' . $sym . '0' }}
     </div>
-    @endif
 
     <div class="signature-row">
       <div>Staff Signature</div>

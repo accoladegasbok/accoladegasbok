@@ -53,7 +53,7 @@
         </div>
         <div class="border-t border-gray-700 pt-3 flex justify-between items-center">
           <span class="text-gray-400 text-sm font-body">Amount to transfer</span>
-          <span class="font-display font-700 text-gold text-xl">₦{{ number_format($order->total_amount_ngn) }}</span>
+          <span class="font-display font-700 text-gold text-xl">{{ $currencySymbol }}{{ $currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2) }}</span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-gray-400 text-sm font-body">Narration / Reference</span>
@@ -68,8 +68,11 @@
     {{-- Steps --}}
     <div class="space-y-3 mb-5">
       <div class="text-xs font-body font-500 text-gray-500 uppercase tracking-wider">After transferring:</div>
+      @php
+        $stepAmountFmt = $currencySymbol . ($currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2));
+      @endphp
       @foreach([
-        ['number' => '1', 'text' => 'Transfer exactly ₦'.number_format($order->total_amount_ngn).' to the Moniepoint account above.'],
+        ['number' => '1', 'text' => 'Transfer exactly '.$stepAmountFmt.' to the Moniepoint account above.'],
         ['number' => '2', 'text' => 'Use '.$order->order_ref.' as the narration so we can match your payment.'],
         ['number' => '3', 'text' => 'Enter your bank reference below and WhatsApp us — we confirm within 1–2 hours.'],
       ] as $step)
@@ -105,11 +108,14 @@
       POS Payment Instructions
     </h2>
 
+    @php
+      $stepAmountFmt2 = $currencySymbol . ($currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2));
+    @endphp
     <div class="space-y-3 mb-5">
       @foreach([
         ['number' => '1', 'text' => 'Visit any of our offices listed below during business hours (Mon–Sat, 8am–6pm).'],
         ['number' => '2', 'text' => 'Show your Order Reference '.$order->order_ref.' to our staff.'],
-        ['number' => '3', 'text' => 'Pay ₦'.number_format($order->total_amount_ngn).' by card on our POS terminal.'],
+        ['number' => '3', 'text' => 'Pay '.$stepAmountFmt2.' by card on our POS terminal.'],
         ['number' => '4', 'text' => 'Collect your part(s) immediately or arrange delivery with our team.'],
       ] as $step)
       <div class="flex gap-3 items-start text-sm font-body text-gray-600">
@@ -142,13 +148,13 @@
           <div class="text-xs text-gray-400 mt-0.5">{{ $item->location }} · {{ $item->part_code }}</div>
         </div>
         <div class="text-right flex-shrink-0">
-          <div class="font-display font-700 text-navy">₦{{ number_format($item->unit_price_ngn) }}</div>
+          <div class="font-display font-700 text-navy">{{ $currencySymbol }}{{ $currencyCode === 'NGN' ? number_format($item->unit_price_local ?? $item->unit_price_ngn) : number_format($item->unit_price_local ?? $item->unit_price_usd, 2) }}</div>
         </div>
       </div>
       @endforeach
       <div class="border-t border-gray-100 pt-3 flex justify-between font-body font-500 text-navy">
         <span>Total</span>
-        <span class="font-display font-700 text-xl">₦{{ number_format($order->total_amount_ngn) }}</span>
+        <span class="font-display font-700 text-xl">{{ $currencySymbol }}{{ $currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2) }}</span>
       </div>
     </div>
   </div>
@@ -157,7 +163,8 @@
   <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-5 text-center">
     <p class="text-sm font-body text-gray-500 mb-3">Questions? Our team is ready on WhatsApp.</p>
     @php
-      $waMsg = urlencode("Hi! I just placed order {$order->order_ref} for ₦".number_format($order->total_amount_ngn).". My name is {$order->customer_name}. Can you confirm my order?");
+      $waAmountFmt3 = $currencySymbol . ($currencyCode === 'NGN' ? number_format($totalLocal) : number_format($totalLocal, 2));
+      $waMsg = urlencode("Hi! I just placed order {$order->order_ref} for {$waAmountFmt3}. My name is {$order->customer_name}. Can you confirm my order?");
     @endphp
     <a href="https://wa.me/{{ $businessWa }}?text={{ $waMsg }}" target="_blank"
        class="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-body font-500 text-sm px-6 py-3 rounded-xl transition-colors">

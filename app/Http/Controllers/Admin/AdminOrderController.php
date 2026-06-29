@@ -181,9 +181,7 @@ class AdminOrderController extends Controller
             $totalLocal += $priceLocal * $li['qty'];
         }
 
-        $year = date('Y');
-        $seq  = DB::table('orders')->whereYear('created_at', $year)->count() + 1;
-        $orderRef = "AZ-{$year}-" . str_pad($seq, 5, '0', STR_PAD_LEFT);
+        $orderRef = $this->generateOrderRef();
 
         $paymentReceived = $request->boolean('payment_received');
 
@@ -292,6 +290,16 @@ class AdminOrderController extends Controller
             }
 
             DB::commit();
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+            // ── Duplicate order_ref collision — almost certainly a race
+            // between two orders generated at nearly the same moment
+            // (or a gap left by a previously deleted order). Retry once
+            // with a freshly generated ref rather than failing outright.
+            if (str_contains($e->getMessage(), 'orders_order_ref_unique') && !$request->boolean('_ref_retry')) {
+                return $this->store($request->merge(['_ref_retry' => true]));
+            }
+            return back()->withInput()->with('error', 'Order could not be placed: ' . $e->getMessage());
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->with('error', 'Order could not be placed: ' . $e->getMessage());
@@ -299,5 +307,25 @@ class AdminOrderController extends Controller
 
         return redirect()->route('admin.orders.show', $orderId)
             ->with('success', "Order {$orderRef} placed successfully.");
+    }
+
+    // =========================================================
+    // Shared, collision-resistant order_ref generator. Uses the
+    // highest SEQUENCE NUMBER actually used this year (parsed from
+    // existing refs), not a row count — count() silently breaks if
+    // any order was ever deleted, producing a number that's already
+    // taken. The store() method above also retries once on an actual
+    // DB-level collision as a final safety net for true race conditions.
+    // =========================================================
+    private function generateOrderRef(): string
+    {
+        $year = date('Y');
+        $maxSeq = DB::table('orders')
+            ->where('order_ref', 'like', "AZ-{$year}-%")
+            ->pluck('order_ref')
+            ->map(fn($ref) => (int) substr($ref, strrpos($ref, '-') + 1))
+            ->max() ?? 0;
+
+        return "AZ-{$year}-" . str_pad($maxSeq + 1, 5, '0', STR_PAD_LEFT);
     }
 }
