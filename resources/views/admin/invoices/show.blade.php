@@ -43,6 +43,15 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
 /* ── Invoice Page Wrapper ─────────────────────────────── */
 .invoice-pages { margin-top: 64px; padding: 20px; }
 
+/* ── Payments panel — normal block, NOT fixed/overlay like .print-controls.
+     Sits right below the fixed toolbar, never covers anything. ── */
+.payments-panel {
+    max-width: 560px; margin: 84px auto 0; padding: 16px 20px;
+    background: #fff; border: 1px solid #e2e2e2; border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06); position: relative; z-index: 1;
+}
+@media print { .payments-panel { display: none !important; } }
+
 /* ── Single Invoice Card ──────────────────────────────── */
 .invoice {
     background: white; width: 210mm; min-height: 148mm;
@@ -213,7 +222,7 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
     $paySummary = $resolvedInvoiceId ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
 @endphp
 @if($resolvedInvoiceId && $paySummary)
-<div class="print-controls" style="display:block; max-width: 520px; margin: 0 auto 20px;">
+<div class="payments-panel">
     <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px;">
         <div style="flex:1; background:#f5f5f5; border-radius:8px; padding:10px; text-align:center;">
             <div style="font-size:10px; color:#999; text-transform:uppercase;">Total</div>
