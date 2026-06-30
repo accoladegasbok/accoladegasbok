@@ -539,6 +539,33 @@ class HarvestController extends Controller
                     }
                 }
 
+                // ── Quantity per vehicle — most parts are qty 1, but a
+                // few (ignition coils, spark plugs) physically occur
+                // multiple times per vehicle, scaled to cylinder count.
+                // Resolved AFTER $engineCode is set above so the
+                // resolver has the actual engine code to look up,
+                // falling back to the donor vehicle's raw engine text
+                // if no OEM code was entered/suggested for this row.
+                $stockQty = 1;
+                if (in_array($key, ['ignition_coil', 'spark_plug'])) {
+                    $qtyResult = \App\Services\HarvestQuantityResolver::resolve(
+                        $tpl['label'],
+                        $engineCode ?? ($session->engine ?? null)
+                    );
+                    $stockQty = $qtyResult['qty'];
+
+                    if ($qtyResult['source'] === 'unknown_engine_needs_review') {
+                        Log::warning('Harvest qty defaulted to 1 — engine not in OEM database, needs manual review', [
+                            'part'   => $tpl['label'],
+                            'vin'    => $session->vin,
+                            'make'   => $session->make,
+                            'model'  => $session->model,
+                            'year'   => $session->year,
+                            'engine' => $engineCode ?? $session->engine,
+                        ]);
+                    }
+                }
+
                 $compatFrom = (int) $session->year;
                 $compatTo   = (int) $session->year;
                 if (in_array($tpl['category'], ['Body', 'Interior', 'Seat'])) {
@@ -583,7 +610,7 @@ class HarvestController extends Controller
                     'location'              => $session->location,
                     'storage_shelf_id'      => $itemShelfId,
                     'bin_location'          => $itemBinCode,
-                    'stock_qty'             => 1,
+                    'stock_qty'             => $stockQty,
                     'status'                => 'Available',
                     'description'           => $partNote,
                     'photos'                => '[]',
@@ -769,6 +796,7 @@ class HarvestController extends Controller
         return [
             'Engine & Powertrain' => [
                 ['key'=>'engine',              'label'=>'Complete Engine Assembly',         'category'=>'Engine'],
+                ['key'=>'engine_gear_complete','label'=>'Complete Engine And Gear With Accessories', 'category'=>'Engine'],
                 ['key'=>'engine_block',        'label'=>'Engine Block',                     'category'=>'Engine'],
                 ['key'=>'cylinder_head',       'label'=>'Cylinder Head',                    'category'=>'Engine'],
                 ['key'=>'intake_manifold',     'label'=>'Intake Manifold',                  'category'=>'Engine'],
@@ -796,6 +824,8 @@ class HarvestController extends Controller
                 ['key'=>'valve_cover',         'label'=>'Valve Cover / Cam Cover',          'category'=>'Engine'],
                 ['key'=>'timing_chain_kit',    'label'=>'Timing Chain / Belt Kit',          'category'=>'Engine'],
                 ['key'=>'flywheel',            'label'=>'Flywheel / Flexplate',             'category'=>'Engine'],
+                ['key'=>'ignition_coil',       'label'=>'Ignition Coil',                    'category'=>'Engine'],
+                ['key'=>'spark_plug',          'label'=>'Spark Plug',                       'category'=>'Engine'],
             ],
             'Cooling System' => [
                 ['key'=>'radiator',           'label'=>'Radiator',                          'category'=>'Cooling'],

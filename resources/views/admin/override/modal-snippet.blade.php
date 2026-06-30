@@ -28,7 +28,7 @@
 //
 // NOTE: this snippet defines requestOverride/closeOverrideModal/
 // submitOverridePin globally. If a page already defines its own
-// version of these (e.g. POS, Place Order), don't also @include this
+// version of these (e.g. POS, Place Order), don't also @@include this
 // partial on that same page — pick one source to avoid duplicate
 // function declarations.
 let _overrideCallback = null;
