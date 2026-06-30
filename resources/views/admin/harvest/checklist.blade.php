@@ -149,6 +149,23 @@
                     <span class="text-xs text-slate-500">{{ $currency['code'] }}</span>
                 </div>
 
+                {{-- Quantity — only for parts that occur multiple times
+                     per vehicle (ignition coils, spark plugs), since
+                     count varies by cylinder count (4-cyl, V6, V8...).
+                     Defaults to 4 (most common case); staff adjusts. --}}
+                @if(in_array($part['key'], ['ignition_coil', 'spark_plug']))
+                <div class="flex items-center gap-1 min-w-[90px]">
+                    <span class="text-slate-400 text-xs">Qty</span>
+                    <input type="number"
+                           name="qty[{{ $part['key'] }}]"
+                           min="1" max="12"
+                           value="4"
+                           class="w-16 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-sm text-white
+                                  focus:outline-none focus:border-[#C8960C]"
+                           {{ $alreadyHarvested ? 'disabled' : '' }}>
+                </div>
+                @endif
+
                 {{-- Condition grade --}}
                 <div class="min-w-[80px]">
                     <select name="grades[{{ $part['key'] }}]"
@@ -546,62 +563,5 @@ function enforceBinExclusivityAcrossRows() {
         });
     });
 }
-
-document.addEventListener('change', function(e) {
-    if (e.target.classList && e.target.classList.contains('harvest-bin-select')) {
-        enforceBinExclusivityAcrossRows();
-    }
-});
-
-// Run once now that bins have loaded, and call it again every time
-// loadHarvestRooms() is re-run elsewhere (e.g. when a new custom-part
-// row is added) by piggybacking on the same call sites — simplest
-// fix is just running it shortly after each fetch completes.
-setTimeout(enforceBinExclusivityAcrossRows, 800);
-
-document.getElementById('harvestForm').addEventListener('submit', function(e) {
-    // Only checked (ticked) rows need a bin and photos — unticked rows aren't being saved.
-    let missingBin = false;
-    let missingPhotos = [];
-
-    document.querySelectorAll('.part-checkbox:checked:not(:disabled)').forEach(chk => {
-        const key = chk.dataset.key;
-
-        const binSelect = document.querySelector(`select[name="bins[${key}]"]`);
-        if (binSelect && !binSelect.value) missingBin = true;
-
-        const photoInput = document.querySelector(`.harvest-photo-input[data-part-key="${key}"]`);
-        const warning = photoInput ? photoInput.parentElement.querySelector('.harvest-photo-warning') : null;
-        const count = photoInput ? photoInput.files.length : 0;
-        if (photoInput && count < 1) {
-            missingPhotos.push(key);
-            if (warning) warning.classList.remove('hidden');
-        } else if (warning) {
-            warning.classList.add('hidden');
-        }
-    });
-
-    // Custom parts rows — at least 1 photo
-    document.querySelectorAll('.custom-photo-input').forEach(input => {
-        const warning = input.parentElement.querySelector('.custom-photo-warning');
-        const count = input.files.length;
-        if (count < 1) {
-            missingPhotos.push('custom-' + input.dataset.customIdx);
-            if (warning) warning.classList.remove('hidden');
-        } else if (warning) {
-            warning.classList.add('hidden');
-        }
-    });
-
-    if (missingBin) {
-        e.preventDefault();
-        alert('Select a bin location for every ticked part before saving.');
-        return;
-    }
-    if (missingPhotos.length > 0) {
-        e.preventDefault();
-        alert(`Every part needs at least 1 photo before saving — check ${missingPhotos.length} item(s) highlighted in red.`);
-    }
-});
 </script>
 @endpush
