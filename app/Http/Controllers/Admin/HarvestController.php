@@ -539,31 +539,18 @@ class HarvestController extends Controller
                     }
                 }
 
-                // ── Quantity per vehicle — most parts are qty 1, but a
-                // few (ignition coils, spark plugs) physically occur
-                // multiple times per vehicle, scaled to cylinder count.
-                // Resolved AFTER $engineCode is set above so the
-                // resolver has the actual engine code to look up,
-                // falling back to the donor vehicle's raw engine text
-                // if no OEM code was entered/suggested for this row.
+                // ── Quantity per vehicle — most parts are qty 1, but
+                // ignition coils and spark plugs physically occur
+                // multiple times per vehicle (varies by cylinder
+                // count). Staff enters the actual count directly on
+                // the checklist row via a "qty" input — simpler and
+                // more reliable than auto-deriving it from an OEM
+                // engine-code lookup, since it works even when the
+                // donor vehicle's engine code is unknown or unset.
                 $stockQty = 1;
                 if (in_array($key, ['ignition_coil', 'spark_plug'])) {
-                    $qtyResult = \App\Services\HarvestQuantityResolver::resolve(
-                        $tpl['label'],
-                        $engineCode ?? ($session->engine ?? null)
-                    );
-                    $stockQty = $qtyResult['qty'];
-
-                    if ($qtyResult['source'] === 'unknown_engine_needs_review') {
-                        Log::warning('Harvest qty defaulted to 1 — engine not in OEM database, needs manual review', [
-                            'part'   => $tpl['label'],
-                            'vin'    => $session->vin,
-                            'make'   => $session->make,
-                            'model'  => $session->model,
-                            'year'   => $session->year,
-                            'engine' => $engineCode ?? $session->engine,
-                        ]);
-                    }
+                    $qtyInput = $request->input('qty', []);
+                    $stockQty = max(1, (int) ($qtyInput[$key] ?? 1));
                 }
 
                 $compatFrom = (int) $session->year;
