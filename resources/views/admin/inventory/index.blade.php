@@ -144,6 +144,11 @@
                   Delete
                 </button>
               </form>
+              @else
+              <button type="button" onclick="deletePartWithPin({{ $p->id }})"
+                class="text-xs font-body border border-red-200 text-red-400 hover:border-red-400 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors">
+                Delete
+              </button>
               @endif
             </div>
           </td>
@@ -201,7 +206,27 @@ async function doLiveInventorySearch() {
         spinner.classList.add('hidden');
     }
 }
+
+// ── Staff/Supervisor delete a part only via Supervisor-or-above PIN
+// approval. Admin/Manager use the direct form above instead.
+function deletePartWithPin(partId) {
+    if (!confirm('Delete this part? This cannot be undone.')) return;
+    requestOverride('delete_inventory_part', `Delete part #${partId}`, function(approvedBy, role) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/inventory/${partId}`;
+        form.innerHTML = `
+            @csrf
+            <input type="hidden" name="_method" value="DELETE">
+            <input type="hidden" name="override_token" value="${approvedBy} (${role})">
+        `;
+        document.body.appendChild(form);
+        form.submit();
+    });
+}
 </script>
+
+@include('admin.override.modal-snippet')
 
 @endsection
 

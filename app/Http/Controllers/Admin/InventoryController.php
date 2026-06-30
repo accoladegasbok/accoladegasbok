@@ -247,9 +247,27 @@ class InventoryController extends Controller
     }
 
     // ── Delete ────────────────────────────────────────────────────
-    public function destroy(int $id)
+    public function destroy(Request $request, int $id)
     {
-        if (!in_array(Session::get('staff_role'), ['admin','manager'])) abort(403);
+        $role = Session::get('staff_role');
+
+        if (!in_array($role, ['admin', 'manager'])) {
+            // Staff/Supervisor need a logged Supervisor-or-above PIN
+            // approval before a part can be deleted from inventory.
+            $request->validate(['override_token' => 'required|string']);
+            $validApproval = DB::table('override_logs')
+                ->where('action', 'delete_inventory_part')
+                ->where('context', 'like', "%part #{$id}%")
+                ->where('requested_by_staff_id', Session::get('staff_id'))
+                ->where('created_at', '>=', now()->subMinutes(5))
+                ->whereNotIn('approved_by_role', ['UNKNOWN'])
+                ->exists();
+
+            if (!$validApproval) {
+                return back()->with('error', 'A valid Supervisor/Manager/Admin PIN approval is required to delete a part.');
+            }
+        }
+
         DB::table('parts_inventory')->where('id', $id)->delete();
         return redirect()->route('admin.inventory.index')->with('success', 'Part deleted.');
     }

@@ -103,9 +103,13 @@
         <td class="px-4 py-3 text-xs text-gray-500">{{ \Carbon\Carbon::parse($inv->created_at)->format('d M Y H:i') }}</td>
         <td class="px-4 py-3 text-right">
           <a href="{{ $inv->url }}" target="_blank"
-             class="text-xs font-body font-500 text-navy border border-navy rounded-lg px-3 py-1.5 hover:bg-navy hover:text-white transition-colors">
+             class="text-xs font-body font-500 text-navy border border-navy rounded-lg px-3 py-1.5 hover:bg-navy hover:text-white transition-colors mr-1">
             🖨 View
           </a>
+          <button onclick="deleteInvoiceRow('{{ $inv->type }}', {{ $inv->id }})"
+             class="text-xs font-body font-500 text-red-500 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-colors">
+            🗑
+          </button>
         </td>
       </tr>
       @empty
@@ -121,4 +125,38 @@
     {{ $invoices->links() }}
   </div>
 </div>
+
+<script>
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+const STAFF_ROLE = '{{ session("staff_role") }}';
+
+function deleteInvoiceRow(type, id) {
+    if (!confirm('Permanently delete this ' + (type === 'order' ? 'order' : 'invoice') + '? This cannot be undone from the normal interface.')) return;
+
+    if (STAFF_ROLE === 'admin') {
+        submitDeleteRow(type, id, null);
+    } else {
+        requestOverride('delete_' + type, `Delete ${type} #${id}`, function(approvedBy, role) {
+            submitDeleteRow(type, id, `${approvedBy} (${role})`);
+        });
+    }
+}
+
+function submitDeleteRow(type, id, overrideToken) {
+    const url = type === 'order' ? `/admin/orders/${id}` : `/admin/invoices/${id}`;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.innerHTML = `
+        <input type="hidden" name="_token" value="${CSRF}">
+        <input type="hidden" name="_method" value="DELETE">
+        ${overrideToken ? `<input type="hidden" name="override_token" value="${overrideToken}">` : ''}
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+
+@include('admin.override.modal-snippet')
+
 @endsection

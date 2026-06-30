@@ -17,7 +17,7 @@ class OrderAdminController extends Controller
     // =========================================================
     public function index(Request $request)
     {
-        $query = DB::table('orders')->orderByDesc('created_at');
+        $query = DB::table('orders')->whereNull('deleted_at')->orderByDesc('created_at');
 
         // Filters
         if ($f = $request->get('status')) {
@@ -212,6 +212,40 @@ class OrderAdminController extends Controller
             $request->merge(['order_status' => 'cancelled']),
             $id
         );
+    }
+
+    // =========================================================
+    // DELETE /admin/orders/{id} — Admin deletes directly; Staff/
+    // Supervisor require a logged Supervisor-or-above PIN approval.
+    // Soft-delete only (deleted_at), same as invoices — financial
+    // records are never hard-deleted, only hidden from normal views,
+    // preserving the full audit trail.
+    // =========================================================
+    public function destroy(Request $request, int $id)
+    {
+        $role = Session::get('staff_role');
+
+        if ($role !== 'admin') {
+            $request->validate(['override_token' => 'required|string']);
+            $validApproval = DB::table('override_logs')
+                ->where('action', 'delete_order')
+                ->where('context', 'like', "%order #{$id}%")
+                ->where('requested_by_staff_id', Session::get('staff_id'))
+                ->where('created_at', '>=', now()->subMinutes(5))
+                ->whereNotIn('approved_by_role', ['UNKNOWN'])
+                ->exists();
+
+            if (!$validApproval) {
+                return back()->with('error', 'A valid Supervisor/Manager/Admin PIN approval is required to delete an order.');
+            }
+        }
+
+        DB::table('orders')->where('id', $id)->update([
+            'deleted_at'          => now(),
+            'deleted_by_staff_id' => Session::get('staff_id'),
+        ]);
+
+        return redirect()->route('admin.orders.index')->with('success', 'Order deleted.');
     }
 
     // =========================================================

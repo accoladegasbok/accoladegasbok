@@ -1246,10 +1246,29 @@ class InvoiceController extends Controller
     // for audit purposes (#14) — hidden from normal lists, never
     // fully erased, and the deleting admin is recorded.
     // =========================================================
-    public function destroy(int $id)
+    public function destroy(Request $request, int $id)
     {
-        if (\Illuminate\Support\Facades\Session::get('staff_role') !== 'admin') {
-            return back()->with('error', 'Only an admin can delete an invoice/receipt.');
+        $role = \Illuminate\Support\Facades\Session::get('staff_role');
+
+        // Admin can delete directly. Anyone else (Staff, Supervisor,
+        // Manager) must have gone through the Supervisor-or-above PIN
+        // override modal first — the form won't even submit without
+        // it client-side, and we re-verify a recent matching log
+        // entry exists server-side too, so this can't be bypassed by
+        // simply crafting a raw POST request.
+        if ($role !== 'admin') {
+            $request->validate(['override_token' => 'required|string']);
+            $validApproval = DB::table('override_logs')
+                ->where('action', 'delete_invoice')
+                ->where('context', 'like', "%invoice #{$id}%")
+                ->where('requested_by_staff_id', \Illuminate\Support\Facades\Session::get('staff_id'))
+                ->where('created_at', '>=', now()->subMinutes(5))
+                ->whereNotIn('approved_by_role', ['UNKNOWN'])
+                ->exists();
+
+            if (!$validApproval) {
+                return back()->with('error', 'A valid Supervisor/Manager/Admin PIN approval is required to delete an invoice.');
+            }
         }
 
         DB::table('invoices')->where('id', $id)->update([

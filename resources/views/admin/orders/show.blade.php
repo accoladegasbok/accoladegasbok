@@ -264,6 +264,15 @@
           <div id="emailReceiptFeedback" class="text-xs font-body mt-2"></div>
         </div>
 
+        {{-- Delete Order — admin direct, others require Supervisor+ PIN --}}
+        <div class="border border-red-200 bg-red-50 rounded-xl p-4 sm:col-span-2">
+          <div class="text-xs font-body font-500 text-red-700 mb-2">⚠ Delete this order permanently from the active list</div>
+          <button onclick="deleteOrder({{ $order->id }})"
+            class="w-full border border-red-300 text-red-600 hover:bg-red-100 font-display font-700 text-xs py-2.5 rounded-xl tracking-wide transition-colors">
+            🗑 Delete Order
+          </button>
+        </div>
+
       </div>
     </div>
 
@@ -417,5 +426,35 @@ async function emailReceipt(id) {
   }
   btn.disabled = false;
 }
+
+// ── Delete Order — admin deletes directly; everyone else must pass
+// the Supervisor-or-above PIN override modal first.
+function deleteOrder(id) {
+    const staffRole = '{{ session("staff_role") }}';
+    if (!confirm('Permanently delete this order? This cannot be undone from the normal interface.')) return;
+
+    if (staffRole === 'admin') {
+        submitDeleteOrder(id, null);
+    } else {
+        requestOverride('delete_order', `Delete order #${id}`, function(approvedBy, role) {
+            submitDeleteOrder(id, `${approvedBy} (${role})`);
+        });
+    }
+}
+
+async function submitDeleteOrder(id, overrideToken) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/admin/orders/${id}`;
+    form.innerHTML = `
+        @csrf
+        <input type="hidden" name="_method" value="DELETE">
+        ${overrideToken ? `<input type="hidden" name="override_token" value="${overrideToken}">` : ''}
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
 </script>
 @endpush
+
+@include('admin.override.modal-snippet')

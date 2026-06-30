@@ -480,18 +480,38 @@ async function loadHarvestRooms() {
         const data = await res.json();
         const bins = data.bins || [];
 
-        const optionsHtml = '<option value="">Select bin...</option>' +
-            bins.map(b => `<option value="${b.id}">${b.room_name} — ${b.full_bin_code}</option>`).join('');
-
-        document.querySelectorAll('.harvest-bin-select').forEach(sel => {
-            sel.innerHTML = optionsHtml;
-        });
-
         if (bins.length === 0) {
             document.querySelectorAll('.harvest-bin-select').forEach(sel => {
                 sel.innerHTML = '<option value="">No bins set up for this location yet</option>';
             });
+            return;
         }
+
+        // ── Group by room, with a "room only — assign bin later"
+        // fallback option per room. Useful when the physical bin
+        // isn't ready yet at harvest time — staff can place the part
+        // in the right ROOM now and assign the exact bin afterward
+        // via Edit, rather than being blocked or forced to guess a
+        // bin that doesn't physically hold the part yet.
+        const rooms = {};
+        bins.forEach(b => {
+            if (!rooms[b.room_name]) rooms[b.room_name] = [];
+            rooms[b.room_name].push(b);
+        });
+
+        let optionsHtml = '<option value="">Select bin or room...</option>';
+        Object.keys(rooms).forEach(roomName => {
+            optionsHtml += `<optgroup label="${roomName}">`;
+            optionsHtml += `<option value="room:${roomName}">📍 ${roomName} only — bin not ready, assign later</option>`;
+            rooms[roomName].forEach(b => {
+                optionsHtml += `<option value="${b.id}">${b.full_bin_code}</option>`;
+            });
+            optionsHtml += `</optgroup>`;
+        });
+
+        document.querySelectorAll('.harvest-bin-select').forEach(sel => {
+            sel.innerHTML = optionsHtml;
+        });
     } catch (e) {
         document.querySelectorAll('.harvest-bin-select').forEach(sel => {
             sel.innerHTML = '<option value="">Could not load bins</option>';
@@ -510,12 +530,15 @@ loadHarvestRooms();
 function enforceBinExclusivityAcrossRows() {
     const selects = document.querySelectorAll('.harvest-bin-select');
     const chosen = new Set();
-    selects.forEach(sel => { if (sel.value) chosen.add(sel.value); });
+    // Room-only placeholders (value starts with "room:") never count
+    // as occupying a real bin — many parts can share the same "room
+    // only, bin TBD" choice without conflict.
+    selects.forEach(sel => { if (sel.value && !sel.value.startsWith('room:')) chosen.add(sel.value); });
 
     selects.forEach(sel => {
         const myValue = sel.value;
         Array.from(sel.options).forEach(opt => {
-            if (!opt.value) return; // skip the placeholder
+            if (!opt.value || opt.value.startsWith('room:')) return; // skip placeholder + room-only options
             const takenByAnother = chosen.has(opt.value) && opt.value !== myValue;
             opt.disabled = takenByAnother;
             const baseLabel = opt.textContent.replace(' (already selected on this page)', '');

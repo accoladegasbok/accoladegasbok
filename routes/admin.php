@@ -74,6 +74,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/payments/{paymentId}/reject', [OrderAdminController::class, 'rejectPayment'])->name('payments.reject');
             Route::post('/{id}/send-reminder', [OrderAdminController::class, 'sendReminder'])->name('send-reminder');
             Route::post('/{id}/cancel',          [OrderAdminController::class, 'cancel'])->name('cancel');
+            Route::delete('/{id}',               [OrderAdminController::class, 'destroy'])->name('destroy');
             Route::post('/{id}/status',          [OrderAdminController::class, 'updateStatus'])->name('status');
             Route::post('/{id}/email-receipt',   [OrderAdminController::class, 'emailReceipt'])->name('email-receipt');
         });

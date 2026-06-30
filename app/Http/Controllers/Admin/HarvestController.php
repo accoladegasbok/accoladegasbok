@@ -442,14 +442,16 @@ class HarvestController extends Controller
         // ── A bin can only go to ONE item per submission — the
         // database-level exclusivity check (occupied bins disappearing
         // from selection) only knows about parts already saved in a
-        // PREVIOUS request. It has no way to know two rows in THIS
-        // same unsaved batch are both trying to claim the same bin.
         // Empty selections (unticked rows left blank) must be filtered
         // out first — otherwise multiple blank values look like
         // "duplicates" of each other and falsely trigger this error.
-        $allBinIdsThisBatch = array_values(array_filter($binsInput, fn($v) => !empty($v)));
+        // "room:<name>" placeholder values (bin not ready yet, room-
+        // only assignment) are also excluded — many parts CAN share
+        // the same room-only placeholder since none of them is
+        // actually claiming a real physical bin.
+        $allBinIdsThisBatch = array_values(array_filter($binsInput, fn($v) => !empty($v) && !str_starts_with($v, 'room:')));
         foreach ($customPartsInput as $cp) {
-            if (!empty($cp['bin_id'])) $allBinIdsThisBatch[] = $cp['bin_id'];
+            if (!empty($cp['bin_id']) && !str_starts_with($cp['bin_id'], 'room:')) $allBinIdsThisBatch[] = $cp['bin_id'];
         }
         $duplicateBins = array_diff_assoc($allBinIdsThisBatch, array_unique($allBinIdsThisBatch));
         if (!empty($duplicateBins)) {
@@ -472,9 +474,10 @@ class HarvestController extends Controller
 
         // Preload all referenced bins' full_bin_code in one query
         // (covers both regular ticked parts and custom parts' bins).
-        $allReferencedBinIds = array_values($binsInput);
+        // Room-only placeholders excluded — they're not real bin IDs.
+        $allReferencedBinIds = array_values(array_filter($binsInput, fn($v) => !empty($v) && !str_starts_with($v, 'room:')));
         foreach ($customPartsInput as $cp) {
-            if (!empty($cp['bin_id'])) $allReferencedBinIds[] = $cp['bin_id'];
+            if (!empty($cp['bin_id']) && !str_starts_with($cp['bin_id'], 'room:')) $allReferencedBinIds[] = $cp['bin_id'];
         }
         $binCodesById = DB::table('storage_shelves')
             ->whereIn('id', array_unique($allReferencedBinIds))
@@ -503,9 +506,21 @@ class HarvestController extends Controller
                 $grade    = $grades[$key] ?? 'B';
                 $partNote = $notes[$key]  ?? null;
 
-                // Per-item bin location (#A)
-                $itemShelfId = $binsInput[$key] ?? null;
-                $itemBinCode = $itemShelfId ? ($binCodesById[$itemShelfId] ?? null) : null;
+                // Per-item bin location (#A) — may be a real bin ID,
+                // or a "room:<name>" placeholder when the physical bin
+                // isn't ready yet. In the placeholder case, the part
+                // is saved with NO storage_shelf_id (so it doesn't
+                // falsely occupy a bin) but its bin_location notes
+                // which room it physically sits in, until staff
+                // assigns the real bin later via Edit.
+                $rawBinValue = $binsInput[$key] ?? null;
+                if ($rawBinValue && str_starts_with($rawBinValue, 'room:')) {
+                    $itemShelfId = null;
+                    $itemBinCode = substr($rawBinValue, 5) . ' — bin not yet assigned';
+                } else {
+                    $itemShelfId = $rawBinValue ?: null;
+                    $itemBinCode = $itemShelfId ? ($binCodesById[$itemShelfId] ?? null) : null;
+                }
 
                 $engineCode = null;
                 $transCode  = null;
@@ -653,8 +668,12 @@ class HarvestController extends Controller
                     'price_local'           => (float) $cp['price'],
                     'currency_code'         => $currency['code'],
                     'location'              => $session->location,
-                    'storage_shelf_id'      => $cp['bin_id'] ?? null,
-                    'bin_location'          => !empty($cp['bin_id']) ? ($binCodesById[$cp['bin_id']] ?? null) : null,
+                    'storage_shelf_id'      => (!empty($cp['bin_id']) && !str_starts_with($cp['bin_id'], 'room:')) ? $cp['bin_id'] : null,
+                    'bin_location'          => !empty($cp['bin_id'])
+                        ? (str_starts_with($cp['bin_id'], 'room:')
+                            ? substr($cp['bin_id'], 5) . ' — bin not yet assigned'
+                            : ($binCodesById[$cp['bin_id']] ?? null))
+                        : null,
                     'stock_qty'             => 1,
                     'status'                => 'Available',
                     'description'           => $cp['note']         ?? null,
