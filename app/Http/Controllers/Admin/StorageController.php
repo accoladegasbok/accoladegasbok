@@ -288,13 +288,33 @@ class StorageController extends Controller
     public function allBinsForLocation(Request $request)
     {
         $location = $request->get('location', '');
+        $keepPartId = $request->get('keep_part_id'); // edit pages: still show this part's own current bin
+
+        $occupants = DB::table('parts_inventory')
+            ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+            ->whereNotNull('storage_shelf_id')
+            ->when($keepPartId, fn($q) => $q->where('id', '!=', $keepPartId))
+            ->select('storage_shelf_id', 'part_name', 'part_code')
+            ->get()->keyBy('storage_shelf_id');
 
         $bins = DB::table('storage_shelves as s')
             ->join('storage_rooms as r', 'r.id', '=', 's.storage_room_id')
             ->where('r.location', $location)
             ->select('s.id', 's.full_bin_code', 'r.name as room_name', 'r.code as room_code')
             ->orderBy('r.name')->orderBy('s.full_bin_code')
-            ->get();
+            ->get()
+            ->map(function ($b) use ($occupants) {
+                // ── Bins are no longer hidden when occupied — they're
+                // marked instead. A small group of related/grouped
+                // items CAN deliberately share one bin (e.g. a set of
+                // small sensors or fasteners from the same harvest),
+                // but the UI must explicitly confirm with staff before
+                // allowing it, rather than silently disabling the
+                // option or silently allowing the conflict.
+                $occ = $occupants[$b->id] ?? null;
+                $b->occupied_by = $occ ? "{$occ->part_name} ({$occ->part_code})" : null;
+                return $b;
+            });
 
         return response()->json(['bins' => $bins]);
     }
@@ -302,15 +322,35 @@ class StorageController extends Controller
     // =========================================================
     // AJAX: GET /admin/storage/shelves-for-room?room_id=X
     // Used by inventory forms to populate the bin dropdown once a
-    // store room is selected.
+    // store room is selected. Bins are no longer hidden when
+    // occupied — they're marked with the current occupant instead,
+    // and the frontend asks staff to explicitly confirm before
+    // allowing two parts to deliberately share one bin (e.g. a
+    // small group of related items from the same harvest). For
+    // truly separate items, create more granular bins via the
+    // bulk-generate tool on the room page instead.
     // =========================================================
     public function shelvesForRoom(Request $request)
     {
         $roomId = (int) $request->get('room_id');
+        $keepPartId = $request->get('keep_part_id');
+
+        $occupants = DB::table('parts_inventory')
+            ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+            ->whereNotNull('storage_shelf_id')
+            ->when($keepPartId, fn($q) => $q->where('id', '!=', $keepPartId))
+            ->select('storage_shelf_id', 'part_name', 'part_code')
+            ->get()->keyBy('storage_shelf_id');
+
         $shelves = DB::table('storage_shelves')
             ->where('storage_room_id', $roomId)
             ->orderBy('shelf_code')->orderBy('column_number')->orderBy('space_number')
-            ->get(['id', 'full_bin_code', 'shelf_code', 'column_number', 'space_number']);
+            ->get(['id', 'full_bin_code', 'shelf_code', 'column_number', 'space_number'])
+            ->map(function ($s) use ($occupants) {
+                $occ = $occupants[$s->id] ?? null;
+                $s->occupied_by = $occ ? "{$occ->part_name} ({$occ->part_code})" : null;
+                return $s;
+            });
 
         return response()->json(['shelves' => $shelves]);
     }

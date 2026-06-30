@@ -190,6 +190,31 @@ class InventoryController extends Controller
         }
         // ──────────────────────────────────────────────────────────────
 
+        // ── Bin exclusivity — RE-VERIFIED at save time, not just at
+        // dropdown-load time. The dropdown already hides occupied
+        // bins when the page loads, but a stale page, browser back
+        // button, or another staff member claiming the same bin in
+        // the meantime could otherwise still slip an occupied bin
+        // through. A bin is normally one-part-only — only the ROOM
+        // is allowed to hold multiple parts/bins — UNLESS staff has
+        // explicitly confirmed (via the "are you sure?" prompt on
+        // selecting an already-occupied bin) that this is a
+        // deliberate grouped-items exception.
+        if ($request->storage_shelf_id && !$request->boolean('confirm_shared_bin')) {
+            $conflictingPart = DB::table('parts_inventory')
+                ->where('storage_shelf_id', $request->storage_shelf_id)
+                ->where('id', '!=', $id) // a part keeping its OWN current bin is fine
+                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+                ->first();
+
+            if ($conflictingPart) {
+                return back()->withInput()->withErrors([
+                    'storage_shelf_id' => "That bin is already occupied by {$conflictingPart->part_name} ({$conflictingPart->part_code}). Choose a different bin, or move/sell that part first."
+                ]);
+            }
+        }
+        // ──────────────────────────────────────────────────────────────
+
         // ── Fixed currency by location — the price staff types is the
         // authoritative, never-recalculated value in that location's
         // native currency. price_usd is updated only as a fresh
@@ -405,6 +430,22 @@ class InventoryController extends Controller
         }
         // ──────────────────────────────────────────────────────────────
 
+        // ── Bin exclusivity — re-verified at save time (new part, so
+        // any active occupant of this bin is a real conflict), unless
+        // staff explicitly confirmed sharing it deliberately. ──
+        if (!$request->boolean('confirm_shared_bin')) {
+            $conflictingConsumablePart = DB::table('parts_inventory')
+                ->where('storage_shelf_id', $request->storage_shelf_id)
+                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+                ->first();
+            if ($conflictingConsumablePart) {
+                return back()->withInput()->withErrors([
+                    'storage_shelf_id' => "That bin is already occupied by {$conflictingConsumablePart->part_name} ({$conflictingConsumablePart->part_code}). Choose a different bin."
+                ]);
+            }
+        }
+        // ──────────────────────────────────────────────────────────────
+
         // Typed brand not in our known list: JS already sends brand=Generic
         // with the real name in other_brand — fold it into part_name.
         $brand    = $request->brand;
@@ -467,6 +508,7 @@ class InventoryController extends Controller
             'price_usd'      => 'required|numeric|min:0',
             'condition_grade'=> 'required|in:A,B,C,New',
             'location'       => 'required|string',
+            'storage_shelf_id' => 'required|exists:storage_shelves,id',
             'photos'         => 'required|array|min:1',
             'photos.*'       => 'image|max:8192',
             'video'          => 'nullable|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
@@ -486,6 +528,24 @@ class InventoryController extends Controller
         // ── Part name guard (admin-only for unlisted names) ──────────
         if ($err = $this->assertAllowedPartName($request->part_name)) {
             return back()->withErrors(['part_name' => $err])->withInput();
+        }
+        // ──────────────────────────────────────────────────────────────
+
+        // ── Bin exclusivity — re-verified at save time, not just at
+        // dropdown-load time. A bin is normally one-part-only — only
+        // the ROOM is allowed to hold multiple parts/bins — unless
+        // staff explicitly confirmed a deliberate grouped-items
+        // exception via the "are you sure?" prompt.
+        if (!$request->boolean('confirm_shared_bin')) {
+            $conflictingPart = DB::table('parts_inventory')
+                ->where('storage_shelf_id', $request->storage_shelf_id)
+                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+                ->first();
+            if ($conflictingPart) {
+                return back()->withInput()->withErrors([
+                    'storage_shelf_id' => "That bin is already occupied by {$conflictingPart->part_name} ({$conflictingPart->part_code}). Choose a different bin."
+                ]);
+            }
         }
         // ──────────────────────────────────────────────────────────────
 

@@ -439,9 +439,13 @@ class HarvestController extends Controller
             return back()->with('error', 'Every ticked part needs a bin selected before saving — missing for: ' . implode(', ', $missingBins));
         }
 
-        // ── A bin can only go to ONE item per submission — the
-        // database-level exclusivity check (occupied bins disappearing
-        // from selection) only knows about parts already saved in a
+        // ── A bin can only go to ONE item per submission by default —
+        // UNLESS staff explicitly confirmed sharing it deliberately
+        // (the "are you sure?" prompt on selecting an already-taken
+        // bin client-side). Confirmed bin IDs are exempt from both
+        // checks below — a small group of genuinely related items CAN
+        // share one bin once staff has made that call.
+        //
         // Empty selections (unticked rows left blank) must be filtered
         // out first — otherwise multiple blank values look like
         // "duplicates" of each other and falsely trigger this error.
@@ -449,14 +453,36 @@ class HarvestController extends Controller
         // only assignment) are also excluded — many parts CAN share
         // the same room-only placeholder since none of them is
         // actually claiming a real physical bin.
+        $confirmedSharedBins = array_map('strval', $request->input('confirm_shared_bins', []));
+
         $allBinIdsThisBatch = array_values(array_filter($binsInput, fn($v) => !empty($v) && !str_starts_with($v, 'room:')));
         foreach ($customPartsInput as $cp) {
             if (!empty($cp['bin_id']) && !str_starts_with($cp['bin_id'], 'room:')) $allBinIdsThisBatch[] = $cp['bin_id'];
         }
-        $duplicateBins = array_diff_assoc($allBinIdsThisBatch, array_unique($allBinIdsThisBatch));
+
+        // Duplicate-in-batch check — skip any bin ID staff confirmed sharing
+        $unconfirmedBinIds = array_diff($allBinIdsThisBatch, $confirmedSharedBins);
+        $duplicateBins = array_diff_assoc($unconfirmedBinIds, array_unique($unconfirmedBinIds));
         if (!empty($duplicateBins)) {
             $dupeBinCodes = DB::table('storage_shelves')->whereIn('id', array_unique($duplicateBins))->pluck('full_bin_code')->implode(', ');
-            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part. Please choose a different bin for one of them.");
+            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part. Please choose a different bin for one of them, or confirm sharing it deliberately.");
+        }
+
+        // ── Also re-check against bins already occupied by PREVIOUSLY
+        // SAVED parts in the database — the dropdown marks these at
+        // page-load time, but if this harvest session has been open a
+        // while, another part may have claimed one of these bins since
+        // then. Confirmed shared bins are exempt here too.
+        $unconfirmedForDbCheck = array_diff($allBinIdsThisBatch, $confirmedSharedBins);
+        if (!empty($unconfirmedForDbCheck)) {
+            $alreadyOccupied = DB::table('parts_inventory')
+                ->whereIn('storage_shelf_id', $unconfirmedForDbCheck)
+                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+                ->get();
+            if ($alreadyOccupied->count() > 0) {
+                $conflicts = $alreadyOccupied->map(fn($p) => "{$p->part_name} ({$p->part_code})")->implode(', ');
+                return back()->with('error', "One or more selected bins are already occupied by another part: {$conflicts}. Please choose different bins, or confirm sharing deliberately — someone may have claimed it since this page loaded.");
+            }
         }
 
         // ── At least 1 photo required per ticked part — server-side too.
@@ -539,20 +565,6 @@ class HarvestController extends Controller
                     }
                 }
 
-                // ── Quantity per vehicle — most parts are qty 1, but
-                // ignition coils and spark plugs physically occur
-                // multiple times per vehicle (varies by cylinder
-                // count). Staff enters the actual count directly on
-                // the checklist row via a "qty" input — simpler and
-                // more reliable than auto-deriving it from an OEM
-                // engine-code lookup, since it works even when the
-                // donor vehicle's engine code is unknown or unset.
-                $stockQty = 1;
-                if (in_array($key, ['ignition_coil', 'spark_plug'])) {
-                    $qtyInput = $request->input('qty', []);
-                    $stockQty = max(1, (int) ($qtyInput[$key] ?? 1));
-                }
-
                 $compatFrom = (int) $session->year;
                 $compatTo   = (int) $session->year;
                 if (in_array($tpl['category'], ['Body', 'Interior', 'Seat'])) {
@@ -597,7 +609,7 @@ class HarvestController extends Controller
                     'location'              => $session->location,
                     'storage_shelf_id'      => $itemShelfId,
                     'bin_location'          => $itemBinCode,
-                    'stock_qty'             => $stockQty,
+                    'stock_qty'             => 1,
                     'status'                => 'Available',
                     'description'           => $partNote,
                     'photos'                => '[]',
@@ -811,8 +823,6 @@ class HarvestController extends Controller
                 ['key'=>'valve_cover',         'label'=>'Valve Cover / Cam Cover',          'category'=>'Engine'],
                 ['key'=>'timing_chain_kit',    'label'=>'Timing Chain / Belt Kit',          'category'=>'Engine'],
                 ['key'=>'flywheel',            'label'=>'Flywheel / Flexplate',             'category'=>'Engine'],
-                ['key'=>'ignition_coil',       'label'=>'Ignition Coil',                    'category'=>'Engine'],
-                ['key'=>'spark_plug',          'label'=>'Spark Plug',                       'category'=>'Engine'],
             ],
             'Cooling System' => [
                 ['key'=>'radiator',           'label'=>'Radiator',                          'category'=>'Cooling'],

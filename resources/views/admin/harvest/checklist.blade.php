@@ -149,23 +149,6 @@
                     <span class="text-xs text-slate-500">{{ $currency['code'] }}</span>
                 </div>
 
-                {{-- Quantity — only for parts that occur multiple times
-                     per vehicle (ignition coils, spark plugs), since
-                     count varies by cylinder count (4-cyl, V6, V8...).
-                     Defaults to 4 (most common case); staff adjusts. --}}
-                @if(in_array($part['key'], ['ignition_coil', 'spark_plug']))
-                <div class="flex items-center gap-1 min-w-[90px]">
-                    <span class="text-slate-400 text-xs">Qty</span>
-                    <input type="number"
-                           name="qty[{{ $part['key'] }}]"
-                           min="1" max="12"
-                           value="4"
-                           class="w-16 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-sm text-white
-                                  focus:outline-none focus:border-[#C8960C]"
-                           {{ $alreadyHarvested ? 'disabled' : '' }}>
-                </div>
-                @endif
-
                 {{-- Condition grade --}}
                 <div class="min-w-[80px]">
                     <select name="grades[{{ $part['key'] }}]"
@@ -212,16 +195,26 @@
                 </div>
                 @endif
 
-                {{-- Bin Location — per item (#A). NOT required by the
-                     browser unconditionally — only ticked/selected parts
-                     actually need a bin, enforced by the JS submit guard
-                     below instead, which checks only checked rows. --}}
-                <div class="min-w-[180px]">
-                    <select name="bins[{{ $part['key'] }}]"
-                            class="harvest-bin-select bg-[#1e293b] border border-[#C8960C] rounded-lg px-2 py-1.5 text-xs text-white
+                {{-- Room then Bin — two-step cascade per item (#A).
+                     Choosing the room first narrows the bin list,
+                     instead of one long flat list across every room.
+                     NOT required by the browser unconditionally —
+                     only ticked/selected parts actually need a bin,
+                     enforced by the JS submit guard below instead. --}}
+                <div class="min-w-[140px]">
+                    <select data-key="{{ $part['key'] }}"
+                            class="harvest-room-select bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-xs text-white
                                    focus:outline-none focus:border-[#C8960C] w-full"
                             {{ $alreadyHarvested ? 'disabled' : '' }}>
-                        <option value="">Select bin...</option>
+                        <option value="">Room...</option>
+                    </select>
+                </div>
+                <div class="min-w-[160px]">
+                    <select name="bins[{{ $part['key'] }}]" data-key="{{ $part['key'] }}"
+                            class="harvest-bin-select bg-[#1e293b] border border-[#C8960C] rounded-lg px-2 py-1.5 text-xs text-white
+                                   focus:outline-none focus:border-[#C8960C] w-full"
+                            disabled>
+                        <option value="">Select room first...</option>
                     </select>
                 </div>
 
@@ -449,10 +442,15 @@ function addCustomRow() {
             <option value="A">A</option><option value="B" selected>B</option>
             <option value="C">C</option><option value="D">D</option>
         </select>
-        <select name="custom_parts[${i}][bin_id]" required
+        <select data-key="custom-${i}"
+                class="harvest-room-select bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-xs text-white
+                       focus:outline-none focus:border-[#C8960C] min-w-[140px]">
+            <option value="">Room...</option>
+        </select>
+        <select name="custom_parts[${i}][bin_id]" data-key="custom-${i}" disabled
                 class="harvest-bin-select bg-[#1e293b] border border-[#C8960C] rounded-lg px-2 py-1.5 text-xs text-white
                        focus:outline-none focus:border-[#C8960C] min-w-[160px]">
-            <option value="">Select bin...</option>
+            <option value="">Select room first...</option>
         </select>
         <div class="min-w-[140px]">
             <input type="file" name="custom_parts[${i}][photos][]" class="custom-photo-input text-xs text-slate-400 w-full
@@ -471,8 +469,14 @@ function addCustomRow() {
                 class="text-red-400 hover:text-red-300 text-lg leading-none">×</button>
     `;
     document.getElementById('customPartsContainer').appendChild(row);
-    loadHarvestRooms(); // populate the new row's bin dropdown too
-    setTimeout(enforceBinExclusivityAcrossRows, 800);
+    // Populate the new row's Room dropdown from already-cached data —
+    // no need to refetch, we already have every bin for this location.
+    const newRoomSelect = row.querySelector('.harvest-room-select');
+    if (newRoomSelect) {
+        const roomNames = Object.keys(HARVEST_BINS_BY_ROOM);
+        newRoomSelect.innerHTML = '<option value="">Room...</option>' +
+            roomNames.map(r => `<option value="${r}">${r}</option>`).join('');
+    }
 }
 
 // ── Price input listener ──────────────────────────────────────────
@@ -491,6 +495,11 @@ updateTotal();
 // ── Bin location selector — per item (#A) ──────────────────────────
 const HARVEST_LOCATION = "{{ $harvestLocation }}";
 
+// ── Cached globally so selecting a Room can instantly filter to that
+// room's bins without a second network round trip — we already have
+// every bin for this location from the one fetch.
+let HARVEST_BINS_BY_ROOM = {};
+
 async function loadHarvestRooms() {
     try {
         const res = await fetch(`/admin/storage/all-bins-for-location?location=${encodeURIComponent(HARVEST_LOCATION)}`);
@@ -498,43 +507,63 @@ async function loadHarvestRooms() {
         const bins = data.bins || [];
 
         if (bins.length === 0) {
-            document.querySelectorAll('.harvest-bin-select').forEach(sel => {
-                sel.innerHTML = '<option value="">No bins set up for this location yet</option>';
+            document.querySelectorAll('.harvest-room-select').forEach(sel => {
+                sel.innerHTML = '<option value="">No rooms set up yet</option>';
             });
             return;
         }
 
-        // ── Group by room, with a "room only — assign bin later"
-        // fallback option per room. Useful when the physical bin
-        // isn't ready yet at harvest time — staff can place the part
-        // in the right ROOM now and assign the exact bin afterward
-        // via Edit, rather than being blocked or forced to guess a
-        // bin that doesn't physically hold the part yet.
-        const rooms = {};
+        HARVEST_BINS_BY_ROOM = {};
         bins.forEach(b => {
-            if (!rooms[b.room_name]) rooms[b.room_name] = [];
-            rooms[b.room_name].push(b);
+            if (!HARVEST_BINS_BY_ROOM[b.room_name]) HARVEST_BINS_BY_ROOM[b.room_name] = [];
+            HARVEST_BINS_BY_ROOM[b.room_name].push(b);
         });
 
-        let optionsHtml = '<option value="">Select bin or room...</option>';
-        Object.keys(rooms).forEach(roomName => {
-            optionsHtml += `<optgroup label="${roomName}">`;
-            optionsHtml += `<option value="room:${roomName}">📍 ${roomName} only — bin not ready, assign later</option>`;
-            rooms[roomName].forEach(b => {
-                optionsHtml += `<option value="${b.id}">${b.full_bin_code}</option>`;
-            });
-            optionsHtml += `</optgroup>`;
-        });
+        const roomNames = Object.keys(HARVEST_BINS_BY_ROOM);
+        const roomOptionsHtml = '<option value="">Room...</option>' +
+            roomNames.map(r => `<option value="${r}">${r}</option>`).join('');
 
-        document.querySelectorAll('.harvest-bin-select').forEach(sel => {
-            sel.innerHTML = optionsHtml;
+        document.querySelectorAll('.harvest-room-select').forEach(sel => {
+            sel.innerHTML = roomOptionsHtml;
         });
     } catch (e) {
-        document.querySelectorAll('.harvest-bin-select').forEach(sel => {
-            sel.innerHTML = '<option value="">Could not load bins</option>';
+        document.querySelectorAll('.harvest-room-select').forEach(sel => {
+            sel.innerHTML = '<option value="">Could not load rooms</option>';
         });
     }
 }
+
+// ── Room → Bin cascade — selecting a room narrows the paired bin
+// dropdown to just that room's bins, instead of one long flat list
+// across every room. Includes the "room only — bin not ready, assign
+// later" fallback at the top, for cases where the physical bin isn't
+// ready yet at harvest time.
+document.addEventListener('change', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('harvest-room-select')) return;
+
+    const key = e.target.dataset.key;
+    const roomName = e.target.value;
+    const binSelect = document.querySelector(`.harvest-bin-select[data-key="${key}"]`);
+    if (!binSelect) return;
+
+    if (!roomName) {
+        binSelect.innerHTML = '<option value="">Select room first...</option>';
+        binSelect.disabled = true;
+        return;
+    }
+
+    const roomBins = HARVEST_BINS_BY_ROOM[roomName] || [];
+    let optionsHtml = `<option value="">Select bin...</option>`;
+    optionsHtml += `<option value="room:${roomName}">📍 ${roomName} only — bin not ready, assign later</option>`;
+    roomBins.forEach(b => {
+        const occupiedAttr = b.occupied_by ? `data-occupied="1" data-occupied-by="${b.occupied_by}"` : '';
+        const label = b.occupied_by ? `${b.full_bin_code} — occupied: ${b.occupied_by}` : b.full_bin_code;
+        optionsHtml += `<option value="${b.id}" ${occupiedAttr}>${label}</option>`;
+    });
+
+    binSelect.innerHTML = optionsHtml;
+    binSelect.disabled = false;
+});
 
 document.addEventListener('DOMContentLoaded', loadHarvestRooms);
 loadHarvestRooms();
@@ -544,24 +573,124 @@ loadHarvestRooms();
 // ALREADY-SAVED parts, not what's still sitting unsaved in this form.
 // As soon as one row picks a bin, remove that option from every
 // other row's dropdown; restore it if deselected.
-function enforceBinExclusivityAcrossRows() {
-    const selects = document.querySelectorAll('.harvest-bin-select');
-    const chosen = new Set();
-    // Room-only placeholders (value starts with "room:") never count
-    // as occupying a real bin — many parts can share the same "room
-    // only, bin TBD" choice without conflict.
-    selects.forEach(sel => { if (sel.value && !sel.value.startsWith('room:')) chosen.add(sel.value); });
+// ── Confirm-to-share instead of hard-blocking — a small group of
+// genuinely related items CAN deliberately share one bin (e.g. a set
+// of small sensors from the same harvest). Selecting a bin that's
+// already taken — either by another row in THIS batch, or by an
+// already-saved part in the database (marked via occupied_by from
+// the server) — now asks staff to explicitly confirm rather than
+// silently disabling the option.
+const confirmedSharedBins = new Set();
 
-    selects.forEach(sel => {
-        const myValue = sel.value;
-        Array.from(sel.options).forEach(opt => {
-            if (!opt.value || opt.value.startsWith('room:')) return; // skip placeholder + room-only options
-            const takenByAnother = chosen.has(opt.value) && opt.value !== myValue;
-            opt.disabled = takenByAnother;
-            const baseLabel = opt.textContent.replace(' (already selected on this page)', '');
-            opt.textContent = baseLabel + (takenByAnother ? ' (already selected on this page)' : '');
-        });
+function getConfirmedBinsContainer() {
+    let el = document.getElementById('confirmedSharedBinsContainer');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'confirmedSharedBinsContainer';
+        el.style.display = 'none';
+        document.getElementById('harvestForm').appendChild(el);
+    }
+    return el;
+}
+
+function syncConfirmedBinsHiddenInputs() {
+    const container = getConfirmedBinsContainer();
+    container.innerHTML = '';
+    confirmedSharedBins.forEach(binId => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'confirm_shared_bins[]';
+        input.value = binId;
+        container.appendChild(input);
     });
 }
+
+function enforceBinExclusivityAcrossRows() {
+    // No longer disables options — occupied/duplicate bins stay
+    // selectable, the confirm happens at the moment of selection
+    // (see the change handler below) and the resulting choice is
+    // simply respected here.
+}
+
+document.addEventListener('change', function(e) {
+    if (!e.target.classList || !e.target.classList.contains('harvest-bin-select')) return;
+    const sel = e.target;
+    const selected = sel.options[sel.selectedIndex];
+    const value = sel.value;
+    if (!value || value.startsWith('room:')) return; // placeholder / room-only — never a real bin conflict
+
+    const occupiedInDb = selected && selected.dataset.occupied === '1';
+    const takenInThisBatch = Array.from(document.querySelectorAll('.harvest-bin-select'))
+        .some(other => other !== sel && other.value === value);
+
+    if (occupiedInDb || takenInThisBatch) {
+        const who = occupiedInDb ? selected.dataset.occupiedBy : 'another item in this batch';
+        const ok = confirm(`This bin is already in use (${who}).\n\nAre you sure you want to put this item in the same bin? Only do this for genuinely grouped/related items.`);
+        if (!ok) {
+            sel.value = sel.dataset.prevValue || '';
+            return;
+        }
+        confirmedSharedBins.add(value);
+        syncConfirmedBinsHiddenInputs();
+    }
+    sel.dataset.prevValue = value;
+});
+
+document.addEventListener('change', function(e) {
+    if (e.target.classList && e.target.classList.contains('harvest-bin-select')) {
+        enforceBinExclusivityAcrossRows();
+    }
+});
+
+// Run once now that bins have loaded, and call it again every time
+// loadHarvestRooms() is re-run elsewhere (e.g. when a new custom-part
+// row is added) by piggybacking on the same call sites — simplest
+// fix is just running it shortly after each fetch completes.
+setTimeout(enforceBinExclusivityAcrossRows, 800);
+
+document.getElementById('harvestForm').addEventListener('submit', function(e) {
+    // Only checked (ticked) rows need a bin and photos — unticked rows aren't being saved.
+    let missingBin = false;
+    let missingPhotos = [];
+
+    document.querySelectorAll('.part-checkbox:checked:not(:disabled)').forEach(chk => {
+        const key = chk.dataset.key;
+
+        const binSelect = document.querySelector(`select[name="bins[${key}]"]`);
+        if (binSelect && !binSelect.value) missingBin = true;
+
+        const photoInput = document.querySelector(`.harvest-photo-input[data-part-key="${key}"]`);
+        const warning = photoInput ? photoInput.parentElement.querySelector('.harvest-photo-warning') : null;
+        const count = photoInput ? photoInput.files.length : 0;
+        if (photoInput && count < 1) {
+            missingPhotos.push(key);
+            if (warning) warning.classList.remove('hidden');
+        } else if (warning) {
+            warning.classList.add('hidden');
+        }
+    });
+
+    // Custom parts rows — at least 1 photo
+    document.querySelectorAll('.custom-photo-input').forEach(input => {
+        const warning = input.parentElement.querySelector('.custom-photo-warning');
+        const count = input.files.length;
+        if (count < 1) {
+            missingPhotos.push('custom-' + input.dataset.customIdx);
+            if (warning) warning.classList.remove('hidden');
+        } else if (warning) {
+            warning.classList.add('hidden');
+        }
+    });
+
+    if (missingBin) {
+        e.preventDefault();
+        alert('Select a bin location for every ticked part before saving.');
+        return;
+    }
+    if (missingPhotos.length > 0) {
+        e.preventDefault();
+        alert(`Every part needs at least 1 photo before saving — check ${missingPhotos.length} item(s) highlighted in red.`);
+    }
+});
 </script>
 @endpush

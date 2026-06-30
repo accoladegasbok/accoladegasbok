@@ -265,6 +265,7 @@
         </select>
         <input type="hidden" name="storage_shelf_id" id="storageShelfIdInput">
         <input type="hidden" name="bin_location" id="binLocationInput">
+        <input type="hidden" name="confirm_shared_bin" id="confirmSharedBinInput" value="">
       </div>
       <div>
         <label class="block text-xs text-gray-500 font-body uppercase tracking-wider mb-1">Stock Quantity</label>
@@ -480,14 +481,29 @@ async function loadBinsForRoom() {
             return;
         }
         binSelect.innerHTML = '<option value="">Select Bin (optional)</option>' +
-            data.shelves.map(s => `<option value="${s.id}" data-code="${s.full_bin_code}">${s.full_bin_code}</option>`).join('');
+            data.shelves.map(s => `<option value="${s.id}" data-code="${s.full_bin_code}" data-occupied="${s.occupied_by ? '1' : ''}">${s.full_bin_code}${s.occupied_by ? ' — occupied: ' + s.occupied_by : ''}</option>`).join('');
     } catch (e) {
         binSelect.innerHTML = '<option value="">Could not load bins</option>';
     }
 }
 
+let binSelectPrevValue = '';
 document.getElementById('binSelect').addEventListener('change', function() {
     const selected = this.options[this.selectedIndex];
+    const isOccupied = selected && selected.dataset.occupied === '1';
+
+    if (isOccupied) {
+        const ok = confirm(`This bin already has "${selected.textContent.split(' — occupied: ')[1]}" in it.\n\nAre you sure you want to put this item in the same bin? Only do this for genuinely grouped/related items.`);
+        if (!ok) {
+            this.value = binSelectPrevValue;
+            return;
+        }
+        document.getElementById('confirmSharedBinInput').value = '1';
+    } else {
+        document.getElementById('confirmSharedBinInput').value = '';
+    }
+
+    binSelectPrevValue = this.value;
     const code = selected ? selected.dataset.code : '';
     document.getElementById('storageShelfIdInput').value = this.value;
     document.getElementById('binLocationInput').value = code || '';
