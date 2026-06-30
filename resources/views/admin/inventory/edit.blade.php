@@ -98,8 +98,11 @@
         </div>
 
         <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Price (USD) *</label>
-          <input type="number" name="price_usd" value="{{ old('price_usd', $part->price_usd) }}" step="0.01" min="0" required
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Price ({{ $part->currency_code ?? 'USD' }}) *
+            <span class="text-gray-400 font-normal normal-case">— this part's real, fixed price. Never auto-converted.</span>
+          </label>
+          <input type="number" name="price_usd" value="{{ old('price_usd', $part->price_local ?? $part->price_usd) }}" step="0.01" min="0" required
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
         </div>
 

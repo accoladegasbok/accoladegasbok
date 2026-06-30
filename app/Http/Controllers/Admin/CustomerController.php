@@ -264,7 +264,7 @@ class CustomerController extends Controller
     public function createContact()
     {
         return view('admin.customers.create-contact', [
-            'types' => ['Customer', 'Freelancer', 'Contractor', 'Delivery Personnel', 'Jobber', 'Other'],
+            'types' => ['Personal Contact', 'Customer', 'Freelancer', 'Contractor', 'Delivery Personnel', 'Jobber', 'Supplier', 'Vendor', 'Family', 'Other'],
         ]);
     }
 
@@ -303,7 +303,7 @@ class CustomerController extends Controller
 
         return view('admin.customers.edit-contact', [
             'contact' => $contact,
-            'types' => ['Customer', 'Freelancer', 'Contractor', 'Delivery Personnel', 'Jobber', 'Other'],
+            'types' => ['Personal Contact', 'Customer', 'Freelancer', 'Contractor', 'Delivery Personnel', 'Jobber', 'Supplier', 'Vendor', 'Family', 'Other'],
         ]);
     }
 

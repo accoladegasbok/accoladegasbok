@@ -46,6 +46,7 @@
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Channel</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Location</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Amount</th>
+        <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Balance Due</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Payment</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Staff</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Date</th>
@@ -84,6 +85,19 @@
         </td>
         <td class="px-4 py-3 text-xs text-gray-600">{{ $inv->location ?? '—' }}</td>
         <td class="px-4 py-3 font-display font-700 text-navy">{{ $amtFmt }}</td>
+        @php
+            $balDue = $inv->type === 'order'
+                ? \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($inv->id)['balanceDue']
+                : \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($inv->id)['balanceDue'];
+            $balFmt = $sym . ($inv->currency_code === 'NGN' ? number_format($balDue) : number_format($balDue, 2));
+        @endphp
+        <td class="px-4 py-3">
+          @if($balDue > 0)
+            <span class="badge badge-red">{{ $balFmt }}</span>
+          @else
+            <span class="badge badge-green">{{ $sym }}0</span>
+          @endif
+        </td>
         <td class="px-4 py-3 text-xs text-gray-600">{{ $inv->payment_method ?? '—' }}</td>
         <td class="px-4 py-3 text-xs text-gray-600">{{ $inv->staff ?? '—' }}</td>
         <td class="px-4 py-3 text-xs text-gray-500">{{ \Carbon\Carbon::parse($inv->created_at)->format('d M Y H:i') }}</td>
@@ -96,7 +110,7 @@
       </tr>
       @empty
       <tr>
-        <td colspan="9" class="px-4 py-12 text-center text-gray-400 font-body text-sm">
+        <td colspan="10" class="px-4 py-12 text-center text-gray-400 font-body text-sm">
           No invoices yet. <a href="{{ route('admin.invoices.manual.create') }}" class="text-gold underline">Create your first invoice</a>.
         </td>
       </tr>

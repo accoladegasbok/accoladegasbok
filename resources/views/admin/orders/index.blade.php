@@ -102,6 +102,7 @@
           <td class="px-4 py-3">
             <span id="pay-badge-{{ $o->id }}" class="badge
               @if($o->payment_status==='confirmed') badge-green
+              @elseif($o->payment_status==='partial') badge-blue
               @elseif(in_array($o->payment_status,['pending','awaiting_payment'])) badge-amber
               @elseif($o->payment_status==='transfer_sent') badge-blue
               @elseif($o->payment_status==='failed') badge-red

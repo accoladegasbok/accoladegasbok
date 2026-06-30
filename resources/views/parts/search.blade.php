@@ -453,10 +453,10 @@
                             {{-- Content --}}
                             <div class="p-4 flex flex-col flex-1">
 
-                                {{-- Brand + Model --}}
+                                {{-- Year / Make / Model — bold, prominent headline (matches industry standard layout) --}}
                                 <div class="flex items-start justify-between gap-2 mb-1">
-                                    <div class="font-body text-xs text-gray-400 font-500 uppercase tracking-wider">
-                                        {{ $part->brand }} {{ $part->model }} · {{ $part->year_from }}@if($part->year_to != $part->year_from)–{{ $part->year_to }}@endif
+                                    <div class="font-display font-700 text-navy text-sm tracking-wide">
+                                        {{ $part->year_from }}@if($part->year_to != $part->year_from)–{{ $part->year_to }}@endif {{ $part->brand }} {{ $part->model }}
                                     </div>
                                     <span class="text-xs font-body font-500 px-2 py-0.5 rounded-full flex-shrink-0 {{ $locClass }}">
                                         {{ $locFlag }} {{ explode(' ', $part->location)[0] }}
@@ -464,7 +464,7 @@
                                 </div>
 
                                 {{-- Part name --}}
-                                <h3 class="font-display font-700 text-navy text-base leading-tight mb-1 tracking-wide">
+                                <h3 class="font-body font-500 text-gray-600 text-sm leading-tight mb-1">
                                     <a href="{{ route('parts.show', $part->id) }}" class="hover:text-az-blue transition-colors">
                                         {{ $part->part_name }}
                                         @if($part->side && $part->side !== 'N/A')
@@ -560,8 +560,8 @@
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-start justify-between gap-3">
                                     <div>
-                                        <div class="text-xs font-body text-gray-400 uppercase tracking-wider mb-0.5">{{ $part->brand }} {{ $part->model }} · {{ $part->year_from }}@if($part->year_to!=$part->year_from)–{{ $part->year_to }}@endif</div>
-                                        <h3 class="font-display font-700 text-navy text-base tracking-wide">{{ $part->part_name }} @if($part->side && $part->side!=='N/A')<span class="text-gray-400">· {{ $part->side }}</span>@endif</h3>
+                                        <div class="font-display font-700 text-navy text-sm tracking-wide mb-0.5">{{ $part->year_from }}@if($part->year_to!=$part->year_from)–{{ $part->year_to }}@endif {{ $part->brand }} {{ $part->model }}</div>
+                                        <h3 class="font-body font-500 text-gray-600 text-sm">{{ $part->part_name }} @if($part->side && $part->side!=='N/A')<span class="text-gray-400">· {{ $part->side }}</span>@endif</h3>
                                         <div class="flex gap-3 mt-1 text-xs font-body text-gray-500">
                                             @if($part->mileage)<span>{{ number_format($part->mileage) }} mi</span>@endif
                                             @if($part->oem_part_number)<span class="font-mono">{{ $part->oem_part_number }}</span>@endif

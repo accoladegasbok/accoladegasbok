@@ -37,29 +37,31 @@
   @endforeach
 </div>
 
-{{-- Filters --}}
-<form method="GET" class="flex flex-wrap gap-2 mb-5">
-  <input type="text" name="q" value="{{ request('q') }}" placeholder="Part name, code, model, OEM..."
+{{-- Filters — all real-time, no Enter key or Search button needed --}}
+<div class="flex flex-wrap gap-2 mb-5">
+  <input type="text" id="invSearchQ" value="{{ request('q') }}" placeholder="Part name, code, model, OEM..."
+    oninput="liveInventorySearch()"
     class="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
-  <select name="brand" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+  <select id="invSearchBrand" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
     <option value="">All brands</option>
     @foreach($brands as $b)<option value="{{ $b }}" {{ request('brand')===$b?'selected':'' }}>{{ $b }}</option>@endforeach
   </select>
-  <select name="category" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+  <select id="invSearchCategory" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
     <option value="">All categories</option>
     @foreach($categories as $c)<option value="{{ $c }}" {{ request('category')===$c?'selected':'' }}>{{ $c }}</option>@endforeach
   </select>
-  <select name="location" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+  <select id="invSearchLocation" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
     <option value="">All locations</option>
     @foreach($locations as $l)<option value="{{ $l }}" {{ request('location')===$l?'selected':'' }}>{{ $l }}</option>@endforeach
   </select>
-  <button type="submit" class="bg-navy text-white font-display font-700 text-xs px-4 py-2.5 rounded-xl tracking-wide">Search</button>
+  <span id="invSearchSpinner" class="hidden self-center text-xs text-gray-400 font-body">Searching...</span>
   @if(request()->hasAny(['q','brand','category','location','status']))
     <a href="{{ route('admin.inventory.index') }}" class="border border-gray-200 text-gray-500 font-body text-xs px-4 py-2.5 rounded-xl hover:bg-gray-50">Clear</a>
   @endif
-</form>
+</div>
 
 {{-- Table --}}
+<div id="invResultsContainer">
 <div class="stat-card overflow-hidden p-0">
   <div class="overflow-x-auto">
     <table class="w-full text-sm font-body">
@@ -156,6 +158,51 @@
   <div class="px-4 py-4 border-t border-gray-100">{{ $parts->links() }}</div>
   @endif
 </div>
+</div>{{-- /#invResultsContainer --}}
+
+<script>
+let invSearchTimer = null;
+
+function liveInventorySearch() {
+    clearTimeout(invSearchTimer);
+    document.getElementById('invSearchSpinner').classList.remove('hidden');
+    invSearchTimer = setTimeout(doLiveInventorySearch, 350);
+}
+
+async function doLiveInventorySearch() {
+    const spinner = document.getElementById('invSearchSpinner');
+    try {
+        const url = new URL(window.location.href);
+        const q = document.getElementById('invSearchQ').value;
+        const brand = document.getElementById('invSearchBrand').value;
+        const category = document.getElementById('invSearchCategory').value;
+        const location = document.getElementById('invSearchLocation').value;
+
+        url.searchParams.set('q', q);
+        url.searchParams.set('brand', brand);
+        url.searchParams.set('category', category);
+        url.searchParams.set('location', location);
+        url.searchParams.delete('page');
+
+        const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const html = await res.text();
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newResults = doc.getElementById('invResultsContainer');
+        if (newResults) {
+            document.getElementById('invResultsContainer').innerHTML = newResults.innerHTML;
+        }
+
+        window.history.replaceState({}, '', url.toString());
+    } catch (e) {
+        console.error('Live inventory search failed', e);
+    } finally {
+        spinner.classList.add('hidden');
+    }
+}
+</script>
+
 @endsection
 
 @push('scripts')

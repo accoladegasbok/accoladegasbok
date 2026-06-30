@@ -192,8 +192,12 @@ class InventoryController extends Controller
 
         // ── Fixed currency by location — the price staff types is the
         // authoritative, never-recalculated value in that location's
-        // native currency. price_usd is updated only as a fresh snapshot,
-        // not used for display going forward.
+        // native currency. price_usd is updated only as a fresh
+        // snapshot for cross-location reporting, never used for
+        // display going forward. (The edit form field is still named
+        // price_usd for historical reasons, but is now correctly
+        // pre-filled with price_local — this was the bug causing
+        // prices to drift on every save.)
         $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
         $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
         $priceUsdSnapshot = $priceLocal / $currency['rate'];

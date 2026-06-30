@@ -12,6 +12,7 @@ class PartNames
         return [
             'Engine & Drivetrain' => [
                 'Complete Engine Assembly',
+                'Complete Engine And Gear With Accessories',
                 'Engine Long Block',
                 'Engine Short Block',
                 'Engine Block',

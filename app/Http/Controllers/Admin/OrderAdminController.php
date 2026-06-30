@@ -294,16 +294,31 @@ class OrderAdminController extends Controller
             'updated_at'             => now(),
         ]);
 
+        $order = DB::table('orders')->where('id', $id)->first();
         $summary = self::paymentSummary($id);
-        $newStatus = $summary['balanceDue'] <= 0 ? 'confirmed' : ($summary['confirmedPaid'] > 0 ? 'partial' : 'awaiting_payment');
+        $newPaymentStatus = $summary['balanceDue'] <= 0 ? 'confirmed' : ($summary['confirmedPaid'] > 0 ? 'partial' : 'awaiting_payment');
+
+        // ── payment_status reflects payment progress (this drives the
+        // visible badge on the orders list). order_status is a
+        // SEPARATE fulfillment-stage field (Processing, Shipped, etc)
+        // with its own fixed dropdown that doesn't include "partial"
+        // — it should only ever auto-advance once fully paid (moving
+        // it from "Awaiting Payment" into "Confirmed"), and otherwise
+        // stay exactly as staff left it.
+        $newOrderStatus = $order->order_status;
+        if ($newPaymentStatus === 'confirmed' && in_array($order->order_status, ['awaiting_payment', 'payment_pending_confirmation', 'pending'])) {
+            $newOrderStatus = 'confirmed';
+        }
 
         DB::table('orders')->where('id', $id)->update([
-            'payment_status' => $newStatus,
-            'order_status'   => $newStatus === 'confirmed' ? 'confirmed' : DB::raw('order_status'),
-            'updated_at'     => now(),
+            'payment_status'        => $newPaymentStatus,
+            'order_status'          => $newOrderStatus,
+            'payment_confirmed_at'  => $newPaymentStatus === 'confirmed' ? now() : null,
+            'confirmed_by'          => $newPaymentStatus === 'confirmed' ? (Session::get('staff_name') ?? 'Admin') : null,
+            'updated_at'            => now(),
         ]);
 
-        return back()->with('success', 'Payment confirmed. ' . ($summary['balanceDue'] <= 0 ? 'Order is now fully paid.' : 'Balance updated.'));
+        return back()->with('success', 'Payment confirmed. ' . ($summary['balanceDue'] <= 0 ? 'Order is now fully paid.' : 'Balance updated — order marked partial.'));
     }
 
     public function rejectPayment(int $id, int $paymentId)

@@ -89,7 +89,7 @@ class InvoiceController extends Controller
     // =========================================================
     // BUSINESS INFO BY LOCATION
     // =========================================================
-    private function getBusinessInfo(string $location): array
+    public function getBusinessInfo(string $location): array
 {
     $loc = strtolower($location);
 

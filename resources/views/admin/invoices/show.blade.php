@@ -219,9 +219,17 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
      shows up on a printed/saved copy). ── --}}
 @php
     $resolvedInvoiceId = $invoice->id ?? $invoiceId ?? null;
-    $paySummary = $resolvedInvoiceId ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
+    $paySummary = ($resolvedInvoiceId && !isset($order)) ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
 @endphp
-@if($resolvedInvoiceId && $paySummary)
+@if(isset($order) && $order)
+{{-- Order-derived invoice — payment actions live on the order's own
+     detail page (correctly scoped to order_payments), not here. ── --}}
+<div class="payments-panel" style="text-align:center;">
+    <a href="{{ route('admin.orders.show', $order->id) }}" style="display:inline-block; background:#0d1b2a; color:#fff; font-weight:700; font-size:12px; padding:10px 20px; border-radius:8px; text-decoration:none;">
+        Manage Payments on Order {{ $order->order_ref }} →
+    </a>
+</div>
+@elseif($resolvedInvoiceId && $paySummary)
 <div class="payments-panel">
     <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px;">
         <div style="flex:1; background:#f5f5f5; border-radius:8px; padding:10px; text-align:center;">
@@ -459,7 +467,24 @@ $qrUrl = isset($invoice)
 
         @php
             $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
-            $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
+            // ── Order-derived invoices (viewed via /admin/invoices/order/{id})
+            // store their real payment records in order_payments, NOT
+            // invoice_payments — that table is only for Manual Invoice/
+            // Quick Receipt/Open Tab. Using the wrong source here silently
+            // showed every order as "fully paid" regardless of its real
+            // balance, since invoice_payments has no rows for an order ID.
+            if (isset($order) && $order) {
+                $printPaySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
+                $printPaySummary['payments'] = $printPaySummary['payments']->map(function ($p) {
+                    // Normalize field names so the shared blade below
+                    // (written for invoice_payments) works for either
+                    // source without duplicating the whole block.
+                    $p->amount_local = $p->amount_local ?? $p->amount_ngn;
+                    return $p;
+                });
+            } else {
+                $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
+            }
         @endphp
         <div class="inv-totals" style="margin-top: -6px;">
             <div class="totals-box" style="border-top: 1px dashed #ccc; padding-top: 8px;">

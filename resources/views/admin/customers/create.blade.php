@@ -2,7 +2,7 @@
 @extends('admin.layouts.admin')
 @section('title','Add Contact')
 @section('page-title','Add Contact')
-@section('page-sub','Anyone you need a phone-book or address record for — freelancers, contractors, suppliers, personal contacts, family. No purchase needed.')
+@section('page-sub','Freelancers, contractors, delivery personnel, jobbers — anyone you need a phone-book record for')
 
 @section('content')
 <form method="POST" action="{{ route('admin.customers.contacts.store') }}" class="max-w-2xl">
@@ -35,13 +35,15 @@
       <input type="text" name="whatsapp" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold">
     </div>
   </div>
-  <div>
-    <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Email</label>
-    <input type="email" name="email" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold">
-  </div>
-  <div>
-    <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Address</label>
-    <textarea name="address" rows="2" placeholder="Full address — street, city, state/country" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold"></textarea>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div>
+      <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Email</label>
+      <input type="email" name="email" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold">
+    </div>
+    <div>
+      <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Address</label>
+      <input type="text" name="address" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold">
+    </div>
   </div>
   <div>
     <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Notes</label>

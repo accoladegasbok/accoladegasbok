@@ -84,11 +84,9 @@
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
       </div>
       <div class="col-span-2">
-        <label class="flex items-center gap-2 text-sm font-body text-gray-700">
-          <input type="checkbox" name="payment_received" value="1" id="paymentReceivedCheck" class="rounded border-gray-300">
-          Payment already received — confirm this order immediately
-        </label>
-        <p class="text-xs text-gray-400 font-body mt-1">Leave unchecked for phone orders awaiting payment, or pickup orders paying on collection.</p>
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs font-body text-blue-700">
+          ℹ️ Every order starts as <strong>awaiting payment</strong>. Once placed, record any payment (full or partial) on the order's detail page — with proof upload and a separate staff confirmation step. This keeps every payment consistent and auditable across the system.
+        </div>
       </div>
       <div class="col-span-2">
         <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Notes (optional)</label>

@@ -157,13 +157,21 @@ class StockTransferController extends Controller
         $toRooms   = DB::table('storage_rooms')->where('location', $transfer->to_location)->get();
 
         // Destination bins available for picking, if not yet received
-        $toBins = $transfer->status === 'in_transit'
-            ? DB::table('storage_shelves as s')
+        // — one bin per item, so occupied bins are excluded here too.
+        $toBins = collect();
+        if ($transfer->status === 'in_transit') {
+            $occupiedBinIds = DB::table('parts_inventory')
+                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+                ->whereNotNull('storage_shelf_id')
+                ->pluck('storage_shelf_id');
+
+            $toBins = DB::table('storage_shelves as s')
                 ->join('storage_rooms as r', 'r.id', '=', 's.storage_room_id')
                 ->where('r.location', $transfer->to_location)
+                ->whereNotIn('s.id', $occupiedBinIds)
                 ->select('s.id', 's.full_bin_code', 'r.name as room_name')
-                ->orderBy('r.name')->orderBy('s.full_bin_code')->get()
-            : collect();
+                ->orderBy('r.name')->orderBy('s.full_bin_code')->get();
+        }
 
         return view('admin.transfers.show', compact('transfer', 'items', 'createdBy', 'receivedBy', 'fromRooms', 'toRooms', 'toBins'));
     }
@@ -178,7 +186,16 @@ class StockTransferController extends Controller
         $fromRooms = DB::table('storage_rooms')->where('location', $transfer->from_location)->get();
         $toRooms   = DB::table('storage_rooms')->where('location', $transfer->to_location)->get();
 
-        return view('admin.transfers.waybill', compact('transfer', 'items', 'fromRooms', 'toRooms'));
+        // Full company letterhead info — same source invoices already
+        // use, so the waybill matches the rest of the document set
+        // rather than showing just a bare location name and a QR code.
+        $fromBusinessInfo = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($transfer->from_location);
+        $toBusinessInfo   = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($transfer->to_location);
+
+        $fromAddress = $fromRooms->pluck('address')->filter()->first() ?? null;
+        $toAddress   = $toRooms->pluck('address')->filter()->first() ?? null;
+
+        return view('admin.transfers.waybill', compact('transfer', 'items', 'fromRooms', 'toRooms', 'fromBusinessInfo', 'toBusinessInfo', 'fromAddress', 'toAddress'));
     }
 
     public function receive(Request $request, int $id)

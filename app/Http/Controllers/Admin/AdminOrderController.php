@@ -119,7 +119,6 @@ class AdminOrderController extends Controller
             'customer_phone'   => 'required|string|max:30',
             'fulfillment_type' => 'required|in:Collection,Delivery',
             'payment_method'   => 'required|string',
-            'payment_received' => 'nullable|boolean',
             'items'            => 'required|array|min:1',
             'items.*.item_type'=> 'required|in:part,service',
             'items.*.id'       => 'required|integer',
@@ -183,7 +182,15 @@ class AdminOrderController extends Controller
 
         $orderRef = $this->generateOrderRef();
 
-        $paymentReceived = $request->boolean('payment_received');
+        // ── Every order ALWAYS starts as awaiting_payment — no
+        // shortcut to mark it pre-confirmed at creation time. Payment
+        // (full or partial) must be recorded afterward through the
+        // structured Record a Payment flow on the order's detail page,
+        // with proof upload and a separate staff confirmation step.
+        // This was previously bypassable via a "payment already
+        // received" checkbox, which caused inconsistent payment
+        // records between orders confirmed that way and orders that
+        // went through the real payment-tracking system.
 
         $derivedCountry = match(true) {
             str_contains($primaryLocation, 'Nigeria') => 'Nigeria',
@@ -205,10 +212,10 @@ class AdminOrderController extends Controller
                 'fulfillment_type'    => $request->fulfillment_type,
                 'delivery_address'    => $request->delivery_address,
                 'payment_method'      => $request->payment_method,
-                'payment_status'      => $paymentReceived ? 'confirmed' : 'awaiting_payment',
-                'order_status'        => $paymentReceived ? 'confirmed' : 'awaiting_payment',
-                'payment_confirmed_at'=> $paymentReceived ? now() : null,
-                'confirmed_by'        => $paymentReceived ? (Session::get('staff_name') ?? 'Admin') : null,
+                'payment_status'      => 'awaiting_payment',
+                'order_status'        => 'awaiting_payment',
+                'payment_confirmed_at'=> null,
+                'confirmed_by'        => null,
                 // ── Fixed currency — no conversion, ever. The order has
                 // ONE real total in ONE real currency, matching wherever
                 // the parts/services actually are. No fabricated NGN

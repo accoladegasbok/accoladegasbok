@@ -35,6 +35,7 @@
   <div class="header">
     <div>
       <h1>AUTO ZENITH PARTS</h1>
+      <p>{{ $fromBusinessInfo['company'] ?? 'Gasbok Engineering Nig Limited' }}</p>
       <p>Stock Transfer Waybill — {{ $transfer->transfer_no }}</p>
     </div>
     <div class="qr-box">
@@ -43,6 +44,25 @@
   </div>
 
   <div class="body">
+    {{-- ── Full From/To letterhead — company name, phone, and the
+         actual street address, not just a bare location name ── --}}
+    <div style="display:flex; gap:16px; margin-bottom: 20px;">
+      <div style="flex:1; border:1px solid #e2e8f0; border-radius:10px; padding:14px;">
+        <div style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Shipped From</div>
+        <div style="font-weight:bold; color:#0A1F5C; font-size:14px;">{{ $transfer->from_location }}</div>
+        <div style="font-size:12px; color:#555; margin-top:2px;">{{ $fromBusinessInfo['company'] ?? '' }}</div>
+        <div style="font-size:12px; color:#555;">{{ $fromAddress ?? 'No address on file for this location' }}</div>
+        @if(!empty($fromBusinessInfo['phone']))<div style="font-size:12px; color:#555;">📞 {{ $fromBusinessInfo['phone'] }}</div>@endif
+      </div>
+      <div style="flex:1; border:1px solid #e2e8f0; border-radius:10px; padding:14px;">
+        <div style="font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Shipped To</div>
+        <div style="font-weight:bold; color:#0A1F5C; font-size:14px;">{{ $transfer->to_location }}</div>
+        <div style="font-size:12px; color:#555; margin-top:2px;">{{ $toBusinessInfo['company'] ?? '' }}</div>
+        <div style="font-size:12px; color:#555;">{{ $toAddress ?? 'No address on file for this location' }}</div>
+        @if(!empty($toBusinessInfo['phone']))<div style="font-size:12px; color:#555;">📞 {{ $toBusinessInfo['phone'] }}</div>@endif
+      </div>
+    </div>
+
     <div class="route">
       <div class="loc">
         <div class="loc-label">From</div>
