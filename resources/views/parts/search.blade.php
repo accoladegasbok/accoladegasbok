@@ -376,9 +376,10 @@
                 <div id="partsGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                     @foreach($parts as $part)
                         @php
-                            $photos  = json_decode($part->photos ?? '[]', true);
-                            $thumb   = $photos[0] ?? null;
+                            $photos     = json_decode($part->photos ?? '[]', true) ?: [];
                             $photoCount = count($photos);
+                            $hasRealPhoto = $photoCount > 0;
+                            $thumb      = $photos[0] ?? asset('images/parts-photo-coming-soon.jpg');
 
                             // ── FIXED PRICE — each part shows its own real
                             // price in its own currency. No live FX math.
@@ -424,16 +425,9 @@
 
                             {{-- Photo --}}
                             <a href="{{ route('parts.show', $part->id) }}" class="block relative bg-gray-100 aspect-[4/3] overflow-hidden">
-                                @if($thumb)
-                                    <img src="{{ asset(config('media.prefix') . '/' . $thumb) }}" alt="{{ $part->part_name }}"
-                                        class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                                        loading="lazy">
-                                @else
-                                    <div class="w-full h-full flex flex-col items-center justify-center text-gray-300">
-                                        <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                        <span class="text-xs font-body">No photo</span>
-                                    </div>
-                                @endif
+                                <img src="{{ $thumb }}" alt="{{ $part->part_name }}"
+                                    class="w-full h-full {{ $hasRealPhoto ? 'object-cover hover:scale-105' : 'object-contain p-4' }} transition-transform duration-300"
+                                    loading="lazy">
 
                                 {{-- Photo count badge --}}
                                 @if($photoCount > 1)
@@ -472,6 +466,31 @@
                                         @endif
                                     </a>
                                 </h3>
+
+                                {{-- Pin count + Drive type — shown on transmissions and
+                                     Complete Engine And Gear, key buying info for customers.
+                                     drive_type is now a real stored column, not guessed
+                                     from the gear alias text. --}}
+                                @if(($part->pin_count ?? null) || ($part->gear_alias ?? null) || ($part->drive_type ?? null))
+                                <div class="flex flex-wrap gap-1 mb-1">
+                                    @if($part->pin_count ?? null)
+                                    <span class="text-[10px] font-mono font-700 bg-navy text-gold px-1.5 py-0.5 rounded">{{ $part->pin_count }}-pin</span>
+                                    @endif
+                                    @if($part->drive_type ?? null)
+                                    <span class="text-[10px] font-body font-700 bg-blue-600 text-white px-1.5 py-0.5 rounded">{{ $part->drive_type }}</span>
+                                    @elseif($part->gear_alias ?? null)
+                                    @php
+                                        $driveBadge = null;
+                                        foreach (['4WD','4x4','AWD','2WD','4x2','FWD','RWD'] as $dt) {
+                                            if (str_contains(strtoupper($part->gear_alias), str_replace('x','X',$dt))) { $driveBadge = $dt; break; }
+                                        }
+                                    @endphp
+                                    @if($driveBadge)
+                                    <span class="text-[10px] font-body font-700 bg-blue-600 text-white px-1.5 py-0.5 rounded">{{ $driveBadge }}</span>
+                                    @endif
+                                    @endif
+                                </div>
+                                @endif
 
                                 {{-- Mileage + OEM --}}
                                 <div class="flex flex-wrap gap-3 text-xs font-body text-gray-500 mb-3">
@@ -530,8 +549,9 @@
                 <div id="partsList" class="hidden flex flex-col gap-3">
                     @foreach($parts as $part)
                         @php
-                            $photos  = json_decode($part->photos ?? '[]', true);
-                            $thumb   = $photos[0] ?? null;
+                            $photos = json_decode($part->photos ?? '[]', true) ?: [];
+                            $thumb  = $photos[0] ?? asset('images/parts-photo-coming-soon.jpg');
+                            $hasRealPhoto = count($photos) > 0;
 
                             // ── FIXED PRICE — same as grid view, no conversion ──
                             $priceLocal = $part->price_local ?? $part->price_usd;
@@ -548,13 +568,8 @@
                         <div class="part-card bg-white rounded-xl border border-gray-200 shadow-sm flex gap-4 p-4 items-start">
                             {{-- Thumb --}}
                             <a href="{{ route('parts.show', $part->id) }}" class="w-24 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                                @if($thumb)
-                                    <img src="{{ asset(config('media.prefix') . '/' . $thumb) }}" alt="{{ $part->part_name }}" class="w-full h-full object-cover">
-                                @else
-                                    <div class="w-full h-full flex items-center justify-center text-gray-300">
-                                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                    </div>
-                                @endif
+                                <img src="{{ $thumb }}" alt="{{ $part->part_name }}"
+                                    class="w-full h-full {{ $hasRealPhoto ? 'object-cover' : 'object-contain p-2' }}">
                             </a>
                             {{-- Info --}}
                             <div class="flex-1 min-w-0">

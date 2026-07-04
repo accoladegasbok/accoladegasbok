@@ -40,18 +40,18 @@
       <div class="bg-gray-100 rounded-2xl overflow-hidden aspect-[4/3] mb-3 relative">
         @if(!empty($photos[0]))
           <img id="mainPhoto" src="{{ $photos[0] }}" alt="{{ $part->part_name }}"
-            class="w-full h-full object-cover cursor-zoom-in" onclick="openLightbox(0)">
+            class="w-full h-full {{ $hasRealPhotos ? 'object-cover' : 'object-contain p-6' }} cursor-zoom-in" onclick="openLightbox(0)">
         @else
           <div class="w-full h-full flex items-center justify-center text-gray-300 text-sm font-body">No photo yet</div>
         @endif
         @if($part->status !== 'Available')
           <div class="absolute top-3 left-3 bg-red-600 text-white text-xs font-display font-700 px-3 py-1.5 rounded-full">{{ strtoupper($part->status) }}</div>
         @endif
-        @if(count($photos) > 1)
+        @if($hasRealPhotos && count($photos) > 1)
           <div class="absolute bottom-3 right-3 bg-black bg-opacity-60 text-white text-xs font-body px-2.5 py-1 rounded-full">📷 {{ count($photos) }}</div>
         @endif
       </div>
-      @if(count($photos) > 1)
+      @if($hasRealPhotos && count($photos) > 1)
       <div class="grid grid-cols-6 gap-2">
         @foreach($photos as $i => $url)
           <button onclick="setPhoto({{ $i }},'{{ $url }}')"
@@ -103,6 +103,28 @@
               · {{ $part->pin_count }}-pin
             @endif
           </span>
+        @endif
+        @if($part->pin_count ?? null)
+          <span class="inline-flex items-center gap-1.5 bg-navy text-gold font-mono font-700 text-sm px-3 py-1 rounded-lg">
+            {{ $part->pin_count }}-pin connector
+          </span>
+        @endif
+        @if($part->drive_type ?? null)
+          <span class="inline-flex items-center gap-1.5 bg-blue-600 text-white font-display font-700 text-sm px-3 py-1 rounded-lg">
+            {{ $part->drive_type }}
+          </span>
+        @elseif($part->gear_alias ?? null)
+          @php
+              $driveFromAlias = null;
+              foreach (['4WD','4x4','AWD','2WD','4x2','FWD','RWD'] as $dt) {
+                  if (str_contains(strtoupper($part->gear_alias), str_replace('x','X',$dt))) { $driveFromAlias = $dt; break; }
+              }
+          @endphp
+          @if($driveFromAlias)
+          <span class="inline-flex items-center gap-1.5 bg-blue-600 text-white font-display font-700 text-sm px-3 py-1 rounded-lg">
+            {{ $driveFromAlias }}
+          </span>
+          @endif
         @endif
         @if($part->gear_alias ?? null)
           <span class="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 font-body font-500 text-xs px-3 py-1 rounded-lg">
@@ -192,6 +214,8 @@
           ['Engine Code',     $part->engine_code_oem ?? null],
           ['Gear / Trans Code',$part->transmission_code_oem ?? null],
           ['Pin Count',       ($part->pin_count ?? null) ? ($part->pin_count . ' pins') : null],
+          ['Drive Type',      $part->drive_type ?? null],
+          ['Gear Alias',      $part->gear_alias ?? null],
           ['Origin Market',   ($part->origin_market ?? 'N/A') !== 'N/A' ? ($part->origin_market ?? null) : null],
           ['Side',            $part->side !== 'N/A' ? $part->side : null],
           ['Body Style',      $part->body_style],
@@ -362,7 +386,7 @@
         class="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-md hover:-translate-y-1 transition-all group">
         <div class="aspect-square bg-gray-100 overflow-hidden">
           @if($rel->thumb)
-            <img src="{{ $rel->thumb }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy">
+            <img src="{{ $rel->thumb }}" class="w-full h-full {{ isset($rel->has_real_photo) && !$rel->has_real_photo ? 'object-contain p-3' : 'object-cover group-hover:scale-105' }} transition-transform duration-300" loading="lazy">
           @else
             <div class="w-full h-full flex items-center justify-center text-gray-300">
               <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
@@ -383,7 +407,7 @@
 </div>
 
 {{-- Lightbox --}}
-@if(count($photos) > 1)
+@if($hasRealPhotos && count($photos) > 1)
 <div id="lightbox" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex items-center justify-center" onclick="closeLightbox()">
   <button onclick="closeLightbox()" class="absolute top-4 right-4 text-white text-3xl">×</button>
   <button onclick="prevPhoto(event)" class="absolute left-4 text-white text-3xl px-4 py-2">‹</button>

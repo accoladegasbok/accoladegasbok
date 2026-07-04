@@ -39,7 +39,18 @@ class PartController extends Controller
             abort(404, 'Part not found.');
         }
 
-        $photos = json_decode($part->photos ?? '[]', true);
+        $decodedPhotos = json_decode($part->photos ?? '[]', true) ?: [];
+        $hasRealPhotos = !empty($decodedPhotos);
+        $photos = collect($decodedPhotos)
+            ->map(fn($path) => asset(config('media.prefix') . '/' . $path))
+            ->values()->all();
+
+        // No real photos uploaded yet — fall back to the AutoZenith
+        // default "photo coming soon" image so the detail page never
+        // shows a blank/broken image slot.
+        if (empty($photos)) {
+            $photos = [asset('images/parts-photo-coming-soon.jpg')];
+        }
 
         // ── FIXED PRICE — this part's own currency, no conversion ──
         $priceLocal   = $part->price_local ?? $part->price_usd; // fallback for pre-migration rows
@@ -91,7 +102,10 @@ class PartController extends Controller
             ->get()
             ->map(function ($p) {
                 $ph = json_decode($p->photos ?? '[]', true);
-                $p->thumb = $ph[0] ?? null;
+                $p->has_real_photo = !empty($ph[0]);
+                $p->thumb = $p->has_real_photo
+                    ? asset(config('media.prefix') . '/' . $ph[0])
+                    : asset('images/parts-photo-coming-soon.jpg');
                 $pLocal = $p->price_local ?? $p->price_usd;
                 $pCode  = $p->currency_code ?? 'USD';
                 $p->price_display = $this->formatLocal($pLocal, $pCode);
@@ -132,6 +146,7 @@ class PartController extends Controller
         return view('parts.show', [
             'part'                 => $part,
             'photos'               => $photos,
+            'hasRealPhotos'        => $hasRealPhotos,
             'currency'             => $currency,
             'priceDisplay'         => $priceDisplay,
             'compat'               => $compat,
