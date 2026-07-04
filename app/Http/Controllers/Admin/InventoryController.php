@@ -4,6 +4,10 @@
 //          origin_market, fitment_notes, compat years, compatible_trims
 // Updated: part_name now restricted to App\Data\PartNames::flat() for
 //          non-admin staff, to keep naming uniform across the system.
+// Updated: photos are now OPTIONAL on manual add — parts saved without
+//          a photo show the AutoZenith default "photo coming soon"
+//          image on the customer-facing screen until real photos are
+//          added (see App\Support\PartMedia).
 
 namespace App\Http\Controllers\Admin;
 
@@ -248,6 +252,7 @@ class InventoryController extends Controller
                                           ? strtoupper(trim($request->transmission_code_oem)) : null,
             'pin_count'              => $request->pin_count,
             'gear_alias'             => $request->gear_alias,
+            'drive_type'             => $request->drive_type ?: null,
             'origin_market'          => $request->origin_market ?? 'N/A',
             'fitment_notes'          => $request->fitment_notes,
             'compat_year_from'       => $request->compat_year_from,
@@ -501,6 +506,10 @@ class InventoryController extends Controller
     {
         $isConsumable = $request->part_category === 'Consumable';
 
+        // Photos are OPTIONAL now — staff can save a part with zero
+        // photos and add them later. When empty, the customer-facing
+        // screen falls back to the AutoZenith default "photo coming
+        // soon" image automatically (see App\Support\PartMedia).
         $rules = [
             'brand'          => 'required|string',
             'part_name'      => 'required|string|max:150',
@@ -509,7 +518,7 @@ class InventoryController extends Controller
             'condition_grade'=> 'required|in:A,B,C,New',
             'location'       => 'required|string',
             'storage_shelf_id' => 'required|exists:storage_shelves,id',
-            'photos'         => 'required|array|min:1',
+            'photos'         => 'nullable|array',
             'photos.*'       => 'image|max:8192',
             'video'          => 'nullable|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
         ];
@@ -597,6 +606,7 @@ class InventoryController extends Controller
                                           ? strtoupper(trim($request->transmission_code_oem)) : null,
             'pin_count'              => $request->pin_count,
             'gear_alias'             => $request->gear_alias,
+            'drive_type'             => $request->drive_type ?: null,
             'origin_market'          => $request->origin_market ?? 'N/A',
             'fitment_notes'          => $request->fitment_notes,
             'compatible_trims'       => $request->compatible_trims,
@@ -613,7 +623,9 @@ class InventoryController extends Controller
 
         // ── Photo upload — multiple photos allowed, stored in the
         // existing photos JSON column. First photo uploaded becomes
-        // primary by default (shown in search/cards).
+        // primary by default (shown in search/cards). If none were
+        // uploaded, the photos column stays '[]' and the customer
+        // screen shows the AutoZenith default image instead.
         if ($request->hasFile('photos')) {
             $this->storePartPhotos($partId, $request->file('photos'));
         }
