@@ -379,7 +379,9 @@
                             $photos     = json_decode($part->photos ?? '[]', true) ?: [];
                             $photoCount = count($photos);
                             $hasRealPhoto = $photoCount > 0;
-                            $thumb      = $photos[0] ?? asset('images/parts-photo-coming-soon.jpg');
+                            $thumb      = !empty($photos[0])
+                                ? asset(config('media.prefix') . '/' . $photos[0])
+                                : asset('images/parts-photo-coming-soon.jpg');
 
                             // ── FIXED PRICE — each part shows its own real
                             // price in its own currency. No live FX math.
@@ -550,7 +552,9 @@
                     @foreach($parts as $part)
                         @php
                             $photos = json_decode($part->photos ?? '[]', true) ?: [];
-                            $thumb  = $photos[0] ?? asset('images/parts-photo-coming-soon.jpg');
+                            $thumb  = !empty($photos[0])
+                                ? asset(config('media.prefix') . '/' . $photos[0])
+                                : asset('images/parts-photo-coming-soon.jpg');
                             $hasRealPhoto = count($photos) > 0;
 
                             // ── FIXED PRICE — same as grid view, no conversion ──
