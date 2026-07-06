@@ -23,9 +23,12 @@
 
 @section('content')
 
-{{-- Status tabs --}}
+{{-- Status tabs — now includes Missing (was previously the only one
+     missing from this filter row; Hold/Core/Scrapped were already here
+     but had no way to actually BE set on a part — see the per-row
+     dropdown below, which is the real fix for improvement #1). --}}
 <div class="flex flex-wrap gap-2 mb-5">
-  @foreach([''=> 'All Parts', 'Available'=>'Available', 'Reserved'=>'Reserved', 'Sold'=>'Sold', 'Hold'=>'Hold', 'Core'=>'Core', 'Scrapped'=>'Scrapped'] as $val => $lbl)
+  @foreach([''=> 'All Parts', 'Available'=>'Available', 'Reserved'=>'Reserved', 'Sold'=>'Sold', 'Missing'=>'Missing', 'Hold'=>'Hold', 'Core'=>'Core', 'Scrapped'=>'Scrapped'] as $val => $lbl)
   <a href="{{ request()->fullUrlWithQuery(['status'=>$val,'page'=>1]) }}"
      class="inline-flex items-center gap-1.5 text-xs font-body font-500 px-3 py-1.5 rounded-full border transition-colors
        {{ request('status')===$val ? 'bg-navy text-white border-navy' : 'bg-white text-gray-600 border-gray-200 hover:border-navy' }}">
@@ -119,9 +122,14 @@
           </td>
           <td class="px-4 py-3 text-xs text-gray-600">{{ $p->location }}</td>
           <td class="px-4 py-3">
+            {{-- Status dropdown — now includes ALL 7 real statuses.
+                 Previously only had Available/Reserved/Sold, so staff
+                 could FILTER by Hold/Core/Scrapped above but never
+                 actually SET a part to those statuses — this was the
+                 actual gap in improvement #1. --}}
             <select onchange="updateStatus({{ $p->id }}, this.value)"
               class="border border-gray-200 rounded-lg px-2 py-1 text-xs font-body bg-white focus:outline-none">
-              @foreach(['Available','Reserved','Sold'] as $s)
+              @foreach(['Available','Reserved','Sold','Missing','Hold','Core','Scrapped'] as $s)
                 <option value="{{ $s }}" {{ $p->status===$s?'selected':'' }}>{{ $s }}</option>
               @endforeach
             </select>

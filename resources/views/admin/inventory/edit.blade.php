@@ -117,8 +117,13 @@
 
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Status *</label>
+          {{-- Now includes all 7 real statuses. Previously only had
+               Available/Reserved/Sold — Missing/Hold/Core/Scrapped
+               existed conceptually elsewhere in the code (e.g. the
+               bin-exclusivity check already treats 'Hold' as active)
+               but were never selectable here. --}}
           <select name="status" required class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
-            @foreach(['Available','Reserved','Sold'] as $s)
+            @foreach(['Available','Reserved','Sold','Missing','Hold','Core','Scrapped'] as $s)
               <option value="{{ $s }}" {{ old('status',$part->status)===$s?'selected':'' }}>{{ $s }}</option>
             @endforeach
           </select>

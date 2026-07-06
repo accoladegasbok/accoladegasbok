@@ -159,7 +159,7 @@ class InventoryController extends Controller
             'part_name'           => 'required|string|max:150',
             'price_usd'           => 'required|numeric|min:0',
             'condition_grade'     => 'required|in:A,B,C,New',
-            'status'              => 'required|in:Available,Reserved,Sold',
+            'status'              => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped',
             'location'            => 'required|string',
             'description'         => 'nullable|string|max:1000',
             'oem_part_number'     => 'nullable|string|max:80',
@@ -275,7 +275,7 @@ class InventoryController extends Controller
     // widening it, same lesson learned from the Lagos location bug.
     public function updateStatus(Request $request, int $id)
     {
-        $request->validate(['status' => 'required|in:Available,Reserved,Sold']);
+        $request->validate(['status' => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped']);
         DB::table('parts_inventory')->where('id', $id)->update([
             'status' => $request->status, 'updated_at' => now(),
         ]);
