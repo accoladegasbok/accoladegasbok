@@ -232,6 +232,19 @@
             placeholder="e.g. 13-pin gear, 22-pin gear">
           <p class="text-xs text-gray-400 font-body mt-1">How this gear is known in the Nigerian market.</p>
         </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Drive Type
+          </label>
+          <select name="drive_type" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            <option value="">Not specified</option>
+            @foreach(['2WD','4WD','AWD','RWD','FWD','4x2','4x4'] as $dt)
+              <option value="{{ $dt }}" {{ old('drive_type', $part->drive_type ?? '') === $dt ? 'selected' : '' }}>{{ $dt }}</option>
+            @endforeach
+          </select>
+          <p class="text-xs text-gray-400 font-body mt-1">Drive configuration — shown to customers alongside pin count.</p>
+        </div>
         @endif
 
         <div>

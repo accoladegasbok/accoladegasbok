@@ -1,5 +1,22 @@
+---
 deployment:
   tasks:
     - export DEPLOYPATH=/home/autodlrn/public_html
-    - /bin/rsync -rltD --delete --exclude='.env' --exclude='vendor' --exclude='/storage' --exclude='.git' ./ $DEPLOYPATH
+
+    # Main sync — repo root into flattened doc root.
+    # --exclude='/media' stops this from ever deleting the manual symlink
+    # that MEDIA_URL_PREFIX depends on.
+    - /bin/rsync -rltD --delete --exclude='.env' --exclude='vendor' --exclude='/storage' --exclude='.git' --exclude='/media' ./ $DEPLOYPATH
+
+    # Laravel's public/ subfolder (css, images, build assets, etc.) needs
+    # to land ONE LEVEL UP, since this doc root is flattened (index.php
+    # lives directly in public_html, not public_html/public). Without
+    # this, anything added under public/ in the repo (like static images)
+    # silently 404s on the live site even though it deployed "successfully".
+    - /bin/rsync -rltD /home/autodlrn/autozenith_git/public/ $DEPLOYPATH --exclude='.htaccess' --exclude='index.php'
+
     - chmod 755 $DEPLOYPATH
+
+    # Self-healing safety net — recreate the media symlink if it's ever
+    # missing (belt-and-suspenders alongside the --exclude above).
+    - '[ -L $DEPLOYPATH/media ] || ln -s $DEPLOYPATH/storage/app/public $DEPLOYPATH/media'

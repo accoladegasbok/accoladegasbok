@@ -4,10 +4,14 @@
 //          origin_market, fitment_notes, compat years, compatible_trims
 // Updated: part_name now restricted to App\Data\PartNames::flat() for
 //          non-admin staff, to keep naming uniform across the system.
-// Updated: photos are now OPTIONAL on manual add — parts saved without
-//          a photo show the AutoZenith default "photo coming soon"
-//          image on the customer-facing screen until real photos are
-//          added (see App\Support\PartMedia).
+// Updated: LOCATIONS constant replaced with App\Support\Locations::all()
+//          — single source of truth shared with HarvestController and
+//          checkout/index.blade.php, so adding/renaming a location only
+//          needs to happen in one place (see Locations.php for the bug
+//          this fixes: Lagos harvest 500 error from a naming mismatch).
+// Updated: photos are now OPTIONAL on manual add, matching Harvest —
+//          parts saved without a photo show the AutoZenith default
+//          "photo coming soon" image on the customer-facing screen.
 
 namespace App\Http\Controllers\Admin;
 
@@ -16,20 +20,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
 use App\Data\PartNames;
+use App\Support\Locations;
 
 class InventoryController extends Controller
 {
-    const LOCATIONS = [
-    'Waxahachie TX',
-    'Elkhorn WI',
-    'Ile-Ife Nigeria',
-    'Ibadan Nigeria',
-    'Lagos Nigeria',
-    'Abuja Nigeria',
-    'Akure Nigeria',
-    'Accra Ghana',
-];
-
     const BRANDS = [
         'Toyota','Lexus','Kia','Hyundai','Nissan','Mercedes-Benz',
         'Infiniti','Ford','GM','Chevrolet','Acura','VW','Honda',
@@ -95,7 +89,7 @@ class InventoryController extends Controller
             'counts'     => $counts,
             'brands'     => self::BRANDS,
             'categories' => self::CATEGORIES,
-            'locations'  => self::LOCATIONS,
+            'locations'  => Locations::all(),
         ]);
     }
 
@@ -148,7 +142,7 @@ class InventoryController extends Controller
             'part'                 => $part,
             'brands'               => self::BRANDS,
             'categories'           => self::CATEGORIES,
-            'locations'            => self::LOCATIONS,
+            'locations'            => Locations::all(),
             'years'                => $this->yearRange(),
             'currentRoomId'        => $currentRoomId,
             'interchangeGroup'     => $interchangeGroup,
@@ -191,6 +185,14 @@ class InventoryController extends Controller
         // ── Part name guard (admin-only for unlisted names) ──────────
         if ($err = $this->assertAllowedPartName($request->part_name)) {
             return back()->withErrors(['part_name' => $err])->withInput();
+        }
+        // ──────────────────────────────────────────────────────────────
+
+        // ── Location must be a recognized value from the single
+        // source of truth — same validation added to Harvest, to
+        // prevent any future mismatch reaching the database.
+        if (!Locations::isValid($request->location)) {
+            return back()->withInput()->withErrors(['location' => "\"{$request->location}\" is not a recognized location."]);
         }
         // ──────────────────────────────────────────────────────────────
 
@@ -267,6 +269,10 @@ class InventoryController extends Controller
     }
 
     // ── Quick status update (AJAX) ────────────────────────────────
+    // NOTE: this list is missing 'Missing', 'Hold', 'Core', 'Scrapped'
+    // per improvement #1 — left as-is here pending confirmation of
+    // the exact status column definition (varchar vs enum) before
+    // widening it, same lesson learned from the Lagos location bug.
     public function updateStatus(Request $request, int $id)
     {
         $request->validate(['status' => 'required|in:Available,Reserved,Sold']);
@@ -389,15 +395,16 @@ class InventoryController extends Controller
         return view('admin.inventory.create', [
             'brands'     => self::BRANDS,
             'categories' => self::CATEGORIES,
-            'locations'  => self::LOCATIONS,
+            'locations'  => Locations::all(),
             'years'      => $this->yearRange(),
         ]);
     }
     // ── Manual add form ───────────────────────────────────────────
-    // ── Manual add form ───────────────────────────────────────────
     public function manualAdd()
     {
-        return view('admin.inventory.manual-add');
+        return view('admin.inventory.manual-add', [
+            'locations' => Locations::all(),
+        ]);
     }
 
     // =========================================================
@@ -406,7 +413,7 @@ class InventoryController extends Controller
     public function consumableCreate()
     {
         return view('admin.inventory.consumable-create', [
-            'locations' => self::LOCATIONS,
+            'locations' => Locations::all(),
         ]);
     }
 
@@ -434,6 +441,10 @@ class InventoryController extends Controller
             return back()->withErrors(['part_name' => $err])->withInput();
         }
         // ──────────────────────────────────────────────────────────────
+
+        if (!Locations::isValid($request->location)) {
+            return back()->withInput()->withErrors(['location' => "\"{$request->location}\" is not a recognized location."]);
+        }
 
         // ── Bin exclusivity — re-verified at save time (new part, so
         // any active occupant of this bin is a real conflict), unless
@@ -506,10 +517,10 @@ class InventoryController extends Controller
     {
         $isConsumable = $request->part_category === 'Consumable';
 
-        // Photos are OPTIONAL now — staff can save a part with zero
-        // photos and add them later. When empty, the customer-facing
-        // screen falls back to the AutoZenith default "photo coming
-        // soon" image automatically (see App\Support\PartMedia).
+        // Photos are OPTIONAL now — synchronized with HarvestController's
+        // saveParts(). Staff can save a part with zero photos and add
+        // them later; the customer-facing screen falls back to the
+        // AutoZenith default "photo coming soon" image automatically.
         $rules = [
             'brand'          => 'required|string',
             'part_name'      => 'required|string|max:150',
@@ -539,6 +550,10 @@ class InventoryController extends Controller
             return back()->withErrors(['part_name' => $err])->withInput();
         }
         // ──────────────────────────────────────────────────────────────
+
+        if (!Locations::isValid($request->location)) {
+            return back()->withInput()->withErrors(['location' => "\"{$request->location}\" is not a recognized location."]);
+        }
 
         // ── Bin exclusivity — re-verified at save time, not just at
         // dropdown-load time. A bin is normally one-part-only — only
@@ -621,11 +636,10 @@ class InventoryController extends Controller
             'updated_at'             => now(),
         ]);
 
-        // ── Photo upload — multiple photos allowed, stored in the
-        // existing photos JSON column. First photo uploaded becomes
-        // primary by default (shown in search/cards). If none were
-        // uploaded, the photos column stays '[]' and the customer
-        // screen shows the AutoZenith default image instead.
+        // ── Photo upload — OPTIONAL. If none uploaded, photos stays
+        // '[]' and the customer-facing screen shows the AutoZenith
+        // default image instead (see App\Support\PartMedia / the
+        // x-part-photo / x-part-gallery Blade components).
         if ($request->hasFile('photos')) {
             $this->storePartPhotos($partId, $request->file('photos'));
         }

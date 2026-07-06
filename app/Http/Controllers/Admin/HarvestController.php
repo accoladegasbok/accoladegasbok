@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Log;
 use App\Data\OemDatabase;
 use App\Services\InterchangeService;
+use App\Support\Locations;
 
 class HarvestController extends Controller
 {
@@ -129,17 +130,14 @@ class HarvestController extends Controller
     {
         return view('admin.harvest.create', [
             'staffLocation' => Session::get('staff_location'),
-            'locations'     => [
-                'Waxahachie TX',
-                'Kennedale TX',
-                'Elkhorn WI',
-                'Ile-Ife Nigeria',
-                'Ibadan Nigeria',
-                'Lagos Nigeria',
-                'Abuja Nigeria',
-                'Akure Nigeria',
-                'Accra Ghana',
-            ],
+            // ── Single source of truth (#Locations fix) — this list
+            // used to be hardcoded here AND in InventoryController AND
+            // checkout/index.blade.php, and they drifted out of sync
+            // (checkout had "Oshodi Lagos" while this had "Lagos Nigeria"),
+            // which caused the donor_vehicles.location enum mismatch and
+            // 500 error on every Lagos harvest. Adding/renaming a location
+            // now only requires editing App\Support\Locations.
+            'locations'     => Locations::all(),
         ]);
     }
 
@@ -290,6 +288,15 @@ class HarvestController extends Controller
             'source'    => 'required|in:Auction,Insurance,Private Sale,Dealer,Other',
             'location'  => 'required|string|max:60',
         ]);
+
+        // ── Validate against the single source of truth BEFORE it ever
+        // reaches the database. Catches a location mismatch here with a
+        // clear message, instead of a cryptic MySQL "Data truncated"
+        // exception surfacing as a raw 500 error to staff — this is
+        // exactly the class of bug that broke Lagos harvesting before.
+        if (!Locations::isValid($request->location)) {
+            return back()->withInput()->with('error', "\"{$request->location}\" is not a recognized location. Please select one from the dropdown.");
+        }
 
         // Manual entry with no VIN — generate a 17-char placeholder so it
         // fits the vin column constraint, and so downstream donor_vin
@@ -453,15 +460,13 @@ class HarvestController extends Controller
         if (!empty($customPartsInput) && !in_array(Session::get('staff_role'), ['admin', 'manager'])) {
             return back()->with('error', 'Only admin or manager can add custom part names. Please select a part from the standard list, or ask them to add it.');
         }
-        // Custom parts also each need their own bin (#A) and at least 1 photo
+
+        // Custom parts each need their own bin (#A). Photos are now
+        // OPTIONAL — if none are uploaded, the customer-facing screen
+        // falls back to the AutoZenith default "photo coming soon" image.
         foreach ($customPartsInput as $idx => $cp) {
             if (empty($cp['bin_id'])) {
                 return back()->with('error', 'Every custom part needs a bin selected before saving.');
-            }
-            $cpPhotoFiles = $request->file("custom_parts.{$idx}.photos") ?? [];
-            $cpValidCount = count(array_filter($cpPhotoFiles, fn($f) => $f && $f->isValid()));
-            if ($cpValidCount < 1) {
-                return back()->with('error', 'Every custom part needs at least 1 photo before saving.');
             }
         }
 
@@ -524,19 +529,6 @@ class HarvestController extends Controller
                 $conflicts = $alreadyOccupied->map(fn($p) => "{$p->part_name} ({$p->part_code})")->implode(', ');
                 return back()->with('error', "One or more selected bins are already occupied by another part: {$conflicts}. Please choose different bins, or confirm sharing deliberately — someone may have claimed it since this page loaded.");
             }
-        }
-
-        // ── At least 1 photo required per ticked part — server-side too.
-        $missingPhotos = [];
-        foreach ($parts as $partKey) {
-            $photoFiles = $request->file("photos.{$partKey}") ?? [];
-            $validCount = count(array_filter($photoFiles, fn($f) => $f && $f->isValid()));
-            if ($validCount < 1) {
-                $missingPhotos[] = $partKey;
-            }
-        }
-        if (!empty($missingPhotos)) {
-            return back()->with('error', 'Every ticked part needs at least 1 photo before saving — missing for: ' . implode(', ', $missingPhotos));
         }
 
         // Preload all referenced bins' full_bin_code in one query
@@ -677,7 +669,9 @@ class HarvestController extends Controller
                     $interchange->assignPartToGroup($newPartId, $matchedGroup->id);
                 }
 
-                // ── Photo upload — required, per item (shown to customers) ──
+                // ── Photo upload — OPTIONAL now, per item. If none
+                // uploaded, photos stays '[]' and the customer-facing
+                // screen shows the AutoZenith default image instead.
                 if ($request->hasFile("photos.{$key}")) {
                     $uploaded = [];
                     foreach ($request->file("photos.{$key}") as $photoFile) {
@@ -762,7 +756,7 @@ class HarvestController extends Controller
                     $interchange->assignPartToGroup($newCpId, $matchedGroupCp->id);
                 }
 
-                // ── Photo upload — required 3-10, per custom item ──
+                // ── Photo upload — OPTIONAL now, per custom item ──
                 if ($request->hasFile("custom_parts.{$cpIdx}.photos")) {
                     $cpUploaded = [];
                     foreach ($request->file("custom_parts.{$cpIdx}.photos") as $photoFile) {
@@ -939,4 +933,3 @@ class HarvestController extends Controller
         return $sections;
     }
 }
-

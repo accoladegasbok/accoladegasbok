@@ -139,7 +139,12 @@
             </div>
           </label>
 
-          {{-- 2. POS at Office --}}
+          {{-- 2. POS at Office ── location list now pulled from the single
+               source of truth (App\Support\Locations::nigeria()) instead
+               of being hardcoded here. This automatically includes any
+               location added there (e.g. Abuja Nigeria, Akure Nigeria)
+               without needing this file touched again. Each still only
+               renders if $posLocations has real POS details for it. --}}
           <label class="flex items-start gap-4 border-2 border-gray-200 rounded-2xl p-5 cursor-pointer mb-3 payment-option">
             <input type="radio" name="payment_method" value="pos_instore" class="mt-1 accent-navy" onchange="switchPayment(this.value)">
             <div class="flex-1">
@@ -149,7 +154,7 @@
               </div>
               <p class="text-xs text-gray-500 font-body mb-3">Visit any Nigerian office with your Order Reference to pay by card.</p>
               <div class="space-y-2">
-                @foreach(['Ile-Ife Nigeria','Ibadan Nigeria','Oshodi Lagos'] as $loc)
+                @foreach(\App\Support\Locations::nigeria() as $loc)
                   @if(isset($posLocations[$loc]))
                   <div class="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs font-body">
                     <div class="font-500 text-navy mb-0.5">{{ $loc }}</div>
@@ -213,13 +218,15 @@
             </div>
           </label>
 
-          {{-- 4. Cash --}}
+          {{-- 4. Cash — location list now pulled from Locations::usa()
+               instead of a hardcoded array, same single-source-of-truth
+               fix as the Nigeria POS list above. --}}
           <label class="flex items-start gap-4 border-2 border-gray-200 rounded-2xl p-5 cursor-pointer mb-3 payment-option">
             <input type="radio" name="payment_method" value="cash" class="mt-1 accent-navy" onchange="switchPayment(this.value)">
             <div class="flex-1">
               <div class="font-display font-700 text-navy text-sm tracking-wide mb-2">💵 CASH (USD) AT OFFICE</div>
               <div class="space-y-2">
-                @foreach(['Waxahachie TX','Elkhorn WI'] as $loc)
+                @foreach(\App\Support\Locations::usa() as $loc)
                   @if(isset($posLocations[$loc]))
                   <div class="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 text-xs font-body">
                     <div class="font-500 text-navy mb-0.5">{{ $loc }}</div>
