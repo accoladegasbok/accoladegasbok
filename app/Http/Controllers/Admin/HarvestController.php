@@ -478,24 +478,31 @@ class HarvestController extends Controller
             return back()->with('error', 'Every ticked part needs a bin selected before saving — missing for: ' . implode(', ', $missingBins));
         }
 
-        // ── A bin can only go to ONE item per submission — the
-        // database-level exclusivity check (occupied bins disappearing
-        // from selection) only knows about parts already saved in a
-        // Empty selections (unticked rows left blank) must be filtered
-        // out first — otherwise multiple blank values look like
-        // "duplicates" of each other and falsely trigger this error.
-        // "room:<name>" placeholder values (bin not ready yet, room-
-        // only assignment) are also excluded — many parts CAN share
-        // the same room-only placeholder since none of them is
+        // ── A bin can only go to ONE item per submission — UNLESS staff
+        // explicitly confirmed grouping via the UI prompt, in which case
+        // the front-end sends grouped_bins[] listing the bin IDs that
+        // were deliberately shared. Those are excluded from the duplicate
+        // check below.
+        // "room:<name>" placeholder values are also excluded — many parts
+        // CAN share the same room-only placeholder since none of them is
         // actually claiming a real physical bin.
-        $allBinIdsThisBatch = array_values(array_filter($binsInput, fn($v) => !empty($v) && !str_starts_with($v, 'room:')));
+        $confirmedGroupedBins = $request->input('grouped_bins', []);
+        $allBinIdsThisBatch   = array_values(array_filter($binsInput, fn($v) =>
+            !empty($v) &&
+            !str_starts_with($v, 'room:') &&
+            !in_array($v, $confirmedGroupedBins)  // exclude confirmed grouped bins
+        ));
         foreach ($customPartsInput as $cp) {
-            if (!empty($cp['bin_id']) && !str_starts_with($cp['bin_id'], 'room:')) $allBinIdsThisBatch[] = $cp['bin_id'];
+            if (!empty($cp['bin_id']) &&
+                !str_starts_with($cp['bin_id'], 'room:') &&
+                !in_array($cp['bin_id'], $confirmedGroupedBins)) {
+                $allBinIdsThisBatch[] = $cp['bin_id'];
+            }
         }
         $duplicateBins = array_diff_assoc($allBinIdsThisBatch, array_unique($allBinIdsThisBatch));
         if (!empty($duplicateBins)) {
             $dupeBinCodes = DB::table('storage_shelves')->whereIn('id', array_unique($duplicateBins))->pluck('full_bin_code')->implode(', ');
-            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part. Please choose a different bin for one of them.");
+            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part unless you confirmed grouping in the checklist. Please choose a different bin or go back and confirm grouping.");
         }
 
         // ── At least 1 photo required per ticked part — server-side too.

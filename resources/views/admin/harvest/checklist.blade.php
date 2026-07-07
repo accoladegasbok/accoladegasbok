@@ -633,29 +633,162 @@ async function loadHarvestRooms() {
 document.addEventListener('DOMContentLoaded', loadHarvestRooms);
 loadHarvestRooms();
 
-// ── Prevent the same bin being claimed by two rows in the same
-// unsaved batch — bin exclusivity in the database only knows about
-// ALREADY-SAVED parts, not what's still sitting unsaved in this form.
-// As soon as one row picks a bin, remove that option from every
-// other row's dropdown; restore it if deselected.
-function enforceBinExclusivityAcrossRows() {
-    const selects = document.querySelectorAll('.harvest-bin-select');
-    const chosen = new Set();
-    // Room-only placeholders (value starts with "room:") never count
-    // as occupying a real bin — many parts can share the same "room
-    // only, bin TBD" choice without conflict.
-    selects.forEach(sel => { if (sel.value && !sel.value.startsWith('room:')) chosen.add(sel.value); });
+// ── Inject grouped_bins[] as hidden inputs just before form submits ──
+// So the server knows which bin IDs were intentionally confirmed
+// as shared (grouped) rather than accidentally duplicated.
+document.getElementById('harvestForm').addEventListener('submit', function() {
+    // Remove any previously injected grouped_bins inputs
+    this.querySelectorAll('input[name="grouped_bins[]"]').forEach(el => el.remove());
+    // Add one hidden input per confirmed grouped bin ID
+    _groupedBins.forEach(binId => {
+        const hidden = document.createElement('input');
+        hidden.type  = 'hidden';
+        hidden.name  = 'grouped_bins[]';
+        hidden.value = binId;
+        this.appendChild(hidden);
+    });
+});
+
+// ── Bin selection — grouping-aware exclusivity ───────────────────
+//
+// When a bin already picked by another row in this batch is
+// selected again, instead of silently blocking it we ask:
+// "Bin X already has [Part Y] in it — are you grouping these
+//  parts together in the same bin?"
+//
+// YES  → both rows share the bin; a "grouped" badge appears on
+//         each row; the server saves them with the same bin and
+//         storage_shelf_id (already supported — bin exclusivity
+//         check on the server side only blocks if the same key
+//         appears twice in the same POST, so grouped rows still
+//         pass because each row has a distinct part key).
+// NO   → the selection is cleared; staff picks a different bin.
+//
+// Room-only placeholders (room:NAME) are always shareable and
+// never trigger this prompt — they're not real physical bins.
+
+// Tracks which rows have been marked as grouped: Set of bin IDs
+// that have been explicitly confirmed for multi-part grouping.
+const _groupedBins = new Set();
+
+// Map of binId → [partLabels] for the confirmation message
+const _binPartMap  = {};
+
+function onBinChange(changedSelect) {
+    const newVal   = changedSelect.value;
+    const myRowKey = changedSelect.dataset.partKey || changedSelect.name;
+
+    // Room-only or empty — always allowed, no prompt needed
+    if (!newVal || newVal.startsWith('room:')) {
+        _refreshBinState();
+        return;
+    }
+
+    // Find if any OTHER row already has this same bin value
+    const allSelects = Array.from(document.querySelectorAll('.harvest-bin-select'));
+    const clash = allSelects.find(sel =>
+        sel !== changedSelect &&
+        sel.value === newVal &&
+        !sel.value.startsWith('room:')
+    );
+
+    if (!clash) {
+        // No clash — just update state normally
+        _refreshBinState();
+        return;
+    }
+
+    // ── Clash found — ask about grouping ──────────────────────────
+    const clashRow    = clash.closest('.part-row');
+    const clashLabel  = clashRow
+        ? (clashRow.querySelector('.text-slate-200, .text-slate-500')?.textContent?.trim() || 'another part')
+        : 'another part';
+    const binLabel    = changedSelect.options[changedSelect.selectedIndex]?.textContent?.trim() || newVal;
+    const thisLabel   = changedSelect.closest('.part-row')
+        ?.querySelector('.text-slate-200, .text-slate-500')
+        ?.textContent?.trim() || 'this part';
+
+    const confirmed = window.confirm(
+        `⚠ Bin Conflict\n\n` +
+        `"${binLabel}" is already assigned to:\n  ${clashLabel}\n\n` +
+        `Are you grouping "${thisLabel}" together with it in the same bin?\n\n` +
+        `OK = Yes, group them together in this bin\n` +
+        `Cancel = No, let me pick a different bin`
+    );
+
+    if (confirmed) {
+        // Mark this bin as a confirmed group — both rows keep the value
+        _groupedBins.add(newVal);
+        _addGroupedBadge(changedSelect, binLabel);
+        _addGroupedBadge(clash, binLabel);
+        _refreshBinState();
+    } else {
+        // Clear the selection — staff picks another bin
+        changedSelect.value = '';
+        _refreshBinState();
+    }
+}
+
+function _addGroupedBadge(select, binLabel) {
+    const row = select.closest('.part-row');
+    if (!row) return;
+    // Remove any existing grouped badge on this row first
+    row.querySelectorAll('.grouped-bin-badge').forEach(b => b.remove());
+    const badge = document.createElement('span');
+    badge.className = 'grouped-bin-badge text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-1';
+    badge.title     = 'Grouped in same bin as another part in this harvest';
+    badge.textContent = '📦 Grouped';
+    select.parentNode.insertBefore(badge, select.nextSibling);
+}
+
+function _refreshBinState() {
+    // After any change: visually mark bins that are taken but NOT
+    // grouped-confirmed, so staff can see at a glance what's free
+    const selects   = Array.from(document.querySelectorAll('.harvest-bin-select'));
+    const chosenMap = {}; // binId → first select that chose it
 
     selects.forEach(sel => {
-        const myValue = sel.value;
+        if (sel.value && !sel.value.startsWith('room:')) {
+            if (!chosenMap[sel.value]) chosenMap[sel.value] = sel;
+        }
+    });
+
+    selects.forEach(sel => {
+        const myVal = sel.value;
         Array.from(sel.options).forEach(opt => {
-            if (!opt.value || opt.value.startsWith('room:')) return; // skip placeholder + room-only options
-            const takenByAnother = chosen.has(opt.value) && opt.value !== myValue;
-            opt.disabled = takenByAnother;
-            const baseLabel = opt.textContent.replace(' (already selected on this page)', '');
-            opt.textContent = baseLabel + (takenByAnother ? ' (already selected on this page)' : '');
+            if (!opt.value || opt.value.startsWith('room:')) return;
+            const takenByAnother = chosenMap[opt.value] && chosenMap[opt.value] !== sel;
+            const isGrouped      = _groupedBins.has(opt.value);
+
+            // Strip any previous suffix labels
+            const base = opt.textContent
+                .replace(' ✓ grouped', '')
+                .replace(' — already selected', '');
+
+            if (takenByAnother && isGrouped) {
+                opt.disabled     = false; // grouped bins are selectable
+                opt.textContent  = base + ' ✓ grouped';
+            } else if (takenByAnother) {
+                opt.disabled     = true;
+                opt.textContent  = base + ' — already selected';
+            } else {
+                opt.disabled     = false;
+                opt.textContent  = base;
+            }
         });
     });
 }
+
+// Wire up all current bin selects and re-wire when new ones appear
+// (e.g. custom part rows added dynamically)
+function enforceBinExclusivityAcrossRows() {
+    _refreshBinState();
+}
+
+document.addEventListener('change', function(e) {
+    if (e.target.matches('.harvest-bin-select')) {
+        onBinChange(e.target);
+    }
+});
 </script>
 @endpush
