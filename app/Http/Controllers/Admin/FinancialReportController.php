@@ -1,137 +1,184 @@
 <?php
-// UPDATED: Fixed-currency reporting. Revenue is now reported PER CURRENCY
-// separately (e.g. "₦4,500,000 in Nigeria" and "$3,200 in Texas" shown as
-// distinct totals) — no blended/converted grand total across currencies,
-// per business decision to avoid FX-loss distortion in reporting.
+// FILE: app/Http/Controllers/Admin/FinancialReportController.php
 
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * FinancialReportController — Phase 7 Powerlink Adoption
+ *
+ * Routes to add in web.php (admin auth middleware group):
+ *
+ *   Route::get('/admin/reports/financial',
+ *       [\App\Http\Controllers\Admin\FinancialReportController::class, 'index'])
+ *       ->name('admin.reports.financial');
+ *
+ *   Route::get('/admin/reports/financial/export',
+ *       [\App\Http\Controllers\Admin\FinancialReportController::class, 'export'])
+ *       ->name('admin.reports.financial.export');
+ */
 class FinancialReportController extends Controller
 {
-    // =========================================================
-    // GET /admin/reports/financial
-    // =========================================================
     public function index(Request $request)
     {
-        $period = $request->get('period', 'monthly'); // daily | weekly | monthly
-        [$from, $to] = $this->resolveDateRange($request, $period);
+        $from     = $request->get('from', now()->startOfMonth()->toDateString());
+        $to       = $request->get('to',   now()->toDateString());
+        $location = $request->get('location', 'all');
 
-        // ── Confirmed online orders within range ──────────────────
-        $orders = DB::table('orders')
-            ->where('payment_status', 'confirmed')
-            ->where('order_status', 'completed')
-            ->whereBetween('created_at', [$from, $to])
-            ->get(['id', 'order_ref', 'total_amount_usd', 'currency_code', 'customer_country', 'confirmed_by', 'created_at']);
+        // ── 1. Revenue by Part Category ────────────────────────────────
+        $revenueByCategory = DB::table('part_group_revenue')
+            ->when($location !== 'all', fn($q) =>
+                $q->whereExists(fn($sub) =>
+                    $sub->from('parts_inventory')
+                        ->whereColumn('parts_inventory.id', 'part_group_revenue.parts_inventory_id')
+                        ->where('parts_inventory.location', $location)))
+            ->whereBetween('sale_date', [$from, $to])
+            ->selectRaw('part_category, SUM(revenue_amount) as total, COUNT(*) as sales_count')
+            ->groupBy('part_category')
+            ->orderByDesc('total')
+            ->get();
 
-        // ── Manual / walk-in invoices within range ─────────────────
-        $invoices = DB::table('invoices')
-            ->whereBetween('created_at', [$from, $to])
-            ->get(['id', 'invoice_no', 'subtotal_local', 'subtotal_usd', 'currency_code', 'location', 'created_by', 'created_at']);
+        // ── 2. Daily Revenue Trend ─────────────────────────────────────
+        $dailyRevenue = DB::table('part_group_revenue')
+            ->whereBetween('sale_date', [$from, $to])
+            ->when($location !== 'all', fn($q) =>
+                $q->whereExists(fn($sub) =>
+                    $sub->from('parts_inventory')
+                        ->whereColumn('parts_inventory.id', 'part_group_revenue.parts_inventory_id')
+                        ->where('parts_inventory.location', $location)))
+            ->selectRaw('sale_date, SUM(revenue_amount) as total')
+            ->groupBy('sale_date')
+            ->orderBy('sale_date')
+            ->get()
+            ->pluck('total', 'sale_date');
 
-        // Normalize both sources into one shape: amount + currency_code
-        $allTransactions = $orders->map(fn($o) => (object)[
-                'source'   => 'order',
-                'amount'   => $o->total_amount_usd, // orders predate fixed-currency change; treat as their stored currency
-                'currency' => $o->currency_code ?? 'USD',
-                'location' => $o->customer_country . ' (Online)',
-                'staff'    => $o->confirmed_by,
-                'date'     => $o->created_at,
-            ])
-            ->concat($invoices->map(fn($i) => (object)[
-                'source'   => 'invoice',
-                'amount'   => $i->subtotal_local ?? $i->subtotal_usd,
-                'currency' => $i->currency_code ?? 'USD',
-                'location' => $i->location,
-                'staff'    => $i->created_by,
-                'date'     => $i->created_at,
-            ]));
+        // ── 3. Wholesale vs Retail Sales Mix ──────────────────────────
+        $wholesaleRevenue = DB::table('invoice_items as ii')
+            ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
+            ->whereBetween(DB::raw('DATE(i.created_at)'), [$from, $to])
+            ->when($location !== 'all', fn($q) => $q->where('i.location', $location))
+            ->whereNull('i.deleted_at')
+            ->whereNotNull('ii.price_wholesale')
+            ->selectRaw('
+                SUM(ii.unit_price_local * ii.qty) as retail_total,
+                SUM(COALESCE(ii.price_wholesale, ii.unit_price_local) * ii.qty) as wholesale_total,
+                COUNT(*) as wholesale_line_count
+            ')
+            ->first();
 
-        $totalTransactions = $allTransactions->count();
+        // ── 4. Vehicle ROI / Break-Even Report ────────────────────────
+        $vehicleRoi = DB::table('donor_vehicles as dv')
+            ->leftJoin('vehicle_revenue_projections as vrp', 'vrp.donor_vehicle_id', '=', 'dv.id')
+            ->when($location !== 'all', fn($q) => $q->where('dv.location', $location))
+            ->where('dv.total_cost', '>', 0)
+            ->select(
+                'dv.id', 'dv.year', 'dv.make', 'dv.model',
+                'dv.total_cost', 'dv.currency_code', 'dv.date_acquired',
+                'dv.break_even_days', 'dv.vehicle_status',
+                'vrp.actual_total', 'vrp.break_even_reached_at'
+            )
+            ->orderByDesc('dv.created_at')
+            ->limit(50)
+            ->get()
+            ->map(function ($v) {
+                $v->recovery_pct  = $v->total_cost > 0
+                    ? min(100, round(($v->actual_total / $v->total_cost) * 100, 1))
+                    : 0;
+                $v->days_acquired = $v->date_acquired
+                    ? now()->diffInDays($v->date_acquired)
+                    : null;
+                $syms             = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
+                $v->sym           = $syms[$v->currency_code ?? 'NGN'] ?? '₦';
+                return $v;
+            });
 
-        // ── Revenue PER CURRENCY — no blending across currencies ───
-        $revenueByCurrency = $allTransactions->groupBy('currency')
-            ->map(fn($group, $code) => (object)[
-                'currency_code' => $code,
-                'symbol'        => InvoiceController::currencyMeta($code)['symbol'],
-                'total'         => $group->sum('amount'),
-                'count'         => $group->count(),
-            ])
-            ->values();
+        // ── 5. Top 10 Best Selling Parts ──────────────────────────────
+        $topParts = DB::table('part_group_revenue')
+            ->whereBetween('sale_date', [$from, $to])
+            ->when($location !== 'all', fn($q) =>
+                $q->whereExists(fn($sub) =>
+                    $sub->from('parts_inventory')
+                        ->whereColumn('parts_inventory.id', 'part_group_revenue.parts_inventory_id')
+                        ->where('parts_inventory.location', $location)))
+            ->selectRaw('part_name, COUNT(*) as times_sold, SUM(revenue_amount) as total_revenue')
+            ->groupBy('part_name')
+            ->orderByDesc('total_revenue')
+            ->limit(10)
+            ->get();
 
-        // ── Revenue by location, WITHIN each currency (no cross-currency sum) ──
-        $byLocation = $allTransactions->groupBy(fn($t) => $t->location . '|' . $t->currency)
-            ->map(function ($group) {
-                $first = $group->first();
-                return (object)[
-                    'location'      => $first->location,
-                    'currency_code' => $first->currency,
-                    'symbol'        => InvoiceController::currencyMeta($first->currency)['symbol'],
-                    'revenue'       => $group->sum('amount'),
-                    'count'         => $group->count(),
-                ];
-            })
-            ->sortByDesc('revenue')
-            ->values();
+        // ── 6. Summary KPIs ───────────────────────────────────────────
+        $totalRevenue      = $revenueByCategory->sum('total');
+        $totalSales        = $revenueByCategory->sum('sales_count');
+        $avgSaleValue      = $totalSales > 0 ? round($totalRevenue / $totalSales, 2) : 0;
+        $vehiclesRecovered = $vehicleRoi->where('break_even_reached_at', '!=', null)->count();
+        $vehiclesPending   = $vehicleRoi->where('break_even_reached_at', null)->count();
 
-        // ── Revenue by staff, WITHIN each currency (no cross-currency sum) ──
-        $byStaff = $allTransactions->groupBy(fn($t) => ($t->staff ?: 'Unattributed') . '|' . $t->currency)
-            ->map(function ($group) {
-                $first = $group->first();
-                return (object)[
-                    'staff'         => $first->staff ?: 'Unattributed',
-                    'currency_code' => $first->currency,
-                    'symbol'        => InvoiceController::currencyMeta($first->currency)['symbol'],
-                    'revenue'       => $group->sum('amount'),
-                    'count'         => $group->count(),
-                ];
-            })
-            ->sortByDesc('revenue')
-            ->values();
+        $locations = [
+            'all', 'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
+            'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria',
+            'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
+        ];
 
-        // ── Revenue trend, grouped by day AND currency (separate lines
-        // per currency on the chart — never summed together) ──
-        $trend = $allTransactions->groupBy(fn($t) => Carbon::parse($t->date)->format('Y-m-d') . '|' . $t->currency)
-            ->map(function ($group) {
-                $first = $group->first();
-                return (object)[
-                    'date'          => Carbon::parse($first->date)->format('Y-m-d'),
-                    'currency_code' => $first->currency,
-                    'revenue'       => $group->sum('amount'),
-                ];
-            })
-            ->sortBy('date')
-            ->values();
-
-        return view('admin.reports.financial', [
-            'period'             => $period,
-            'from'               => $from,
-            'to'                 => $to,
-            'revenueByCurrency'  => $revenueByCurrency, // e.g. [{NGN, ₦4.5M, 12 txns}, {USD, $3.2K, 8 txns}]
-            'totalTransactions'  => $totalTransactions,
-            'byLocation'         => $byLocation,
-            'byStaff'            => $byStaff,
-            'trend'              => $trend,
-        ]);
+        return view('admin.reports.financial', compact(
+            'from', 'to', 'location', 'locations',
+            'revenueByCategory', 'dailyRevenue', 'wholesaleRevenue',
+            'vehicleRoi', 'topParts',
+            'totalRevenue', 'totalSales', 'avgSaleValue',
+            'vehiclesRecovered', 'vehiclesPending'
+        ));
     }
 
-    private function resolveDateRange(Request $request, string $period): array
+    public function export(Request $request)
     {
-        if ($request->get('from') && $request->get('to')) {
-            return [
-                Carbon::parse($request->get('from'))->startOfDay(),
-                Carbon::parse($request->get('to'))->endOfDay(),
-            ];
-        }
+        $from     = $request->get('from', now()->startOfMonth()->toDateString());
+        $to       = $request->get('to',   now()->toDateString());
+        $location = $request->get('location', 'all');
 
-        return match ($period) {
-            'daily'   => [now()->startOfDay(), now()->endOfDay()],
-            'weekly'  => [now()->startOfWeek(), now()->endOfWeek()],
-            default   => [now()->startOfMonth(), now()->endOfMonth()], // monthly
+        $rows = DB::table('part_group_revenue as pgr')
+            ->leftJoin('parts_inventory as pi', 'pi.id', '=', 'pgr.parts_inventory_id')
+            ->leftJoin('donor_vehicles as dv', 'dv.vin', '=', 'pi.donor_vin')
+            ->whereBetween('pgr.sale_date', [$from, $to])
+            ->when($location !== 'all', fn($q) => $q->where('pi.location', $location))
+            ->select(
+                'pgr.sale_date', 'pgr.part_name', 'pgr.part_category',
+                'pgr.revenue_amount', 'pgr.currency_code',
+                'pi.part_code', 'pi.condition_grade', 'pi.location',
+                'pi.is_major_component', 'pi.legal_trace_required',
+                'dv.year as vehicle_year', 'dv.make', 'dv.model', 'dv.total_cost as vehicle_cost'
+            )
+            ->orderBy('pgr.sale_date')
+            ->get();
+
+        $filename = "autozenith-revenue-{$from}-to-{$to}.csv";
+        $headers  = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ];
+
+        $callback = function () use ($rows) {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, [
+                'Sale Date', 'Part Code', 'Part Name', 'Category',
+                'Grade', 'Revenue', 'Currency', 'Location',
+                'Major Component', 'Legal Trace',
+                'Donor Vehicle', 'Vehicle Cost',
+            ]);
+            foreach ($rows as $r) {
+                fputcsv($handle, [
+                    $r->sale_date, $r->part_code, $r->part_name, $r->part_category,
+                    $r->condition_grade, $r->revenue_amount, $r->currency_code, $r->location,
+                    $r->is_major_component ? 'Yes' : 'No',
+                    $r->legal_trace_required ? 'Yes' : 'No',
+                    trim(($r->vehicle_year ?? '') . ' ' . ($r->make ?? '') . ' ' . ($r->model ?? '')),
+                    $r->vehicle_cost ?? '',
+                ]);
+            }
+            fclose($handle);
         };
+
+        return response()->stream($callback, 200, $headers);
     }
 }
