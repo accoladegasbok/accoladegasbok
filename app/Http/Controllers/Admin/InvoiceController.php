@@ -1,30 +1,20 @@
 <?php
 // FILE: app/Http/Controllers/Admin/InvoiceController.php
-//
-// UPDATED: Fixed-currency pricing. price_local + currency_code are now the
-// authoritative, never-recalculated values (set once at creation/harvest
-// time, based on the location). price_usd is kept ONLY as a frozen
-// historical snapshot for cross-location $ reference — it is NEVER used
-// for display or live conversion anymore. formatPrice() now formats
-// whatever currency a record was actually priced in; it does not convert.
 
 namespace App\Http\Controllers\Admin;
 
+use App\Events\PartSold;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use App\Support\Brands;
 
 class InvoiceController extends Controller
 {
     // =========================================================
-    // CURRENCY HELPERS — static so HarvestController can call them
+    // CURRENCY HELPERS
     // =========================================================
-
-    // Still used to DETERMINE which currency a NEW record should be
-    // priced in, based on its location. Once set, that currency is
-    // fixed for that record forever — this is not used to convert
-    // existing records on the fly anymore.
     public static function currencyForLocation(string $location): array
     {
         $loc = strtolower(trim($location));
@@ -56,9 +46,6 @@ class InvoiceController extends Controller
         return ['code' => 'USD', 'symbol' => '$', 'rate' => 1, 'decimals' => 2];
     }
 
-    // Maps a currency CODE back to its display symbol/decimals — used
-    // when formatting an already-fixed price_local + currency_code pair,
-    // with NO conversion happening (rate is irrelevant here).
     public static function currencyMeta(string $code): array
     {
         return match ($code) {
@@ -69,17 +56,12 @@ class InvoiceController extends Controller
         };
     }
 
-    // Formats a FIXED local price with its own currency's symbol —
-    // no conversion, no rate involved. This is the only formatter
-    // that should be used for displaying parts/invoice prices now.
     public static function formatLocal(float $priceLocal, string $currencyCode): string
     {
         $meta = self::currencyMeta($currencyCode);
         return $meta['symbol'] . number_format($priceLocal, $meta['decimals']);
     }
 
-    // ── Legacy formatter, kept only for any code path still passing
-    // a USD snapshot + rate table. New code should use formatLocal().
     public static function formatPrice(float $usdPrice, array $currency): string
     {
         $amount = $usdPrice * $currency['rate'];
@@ -87,87 +69,103 @@ class InvoiceController extends Controller
     }
 
     // =========================================================
+    // PAYMENT SUMMARY — static so invoice show blade can call it
+    // =========================================================
+    public static function invoicePaymentSummary(int $invoiceId): array
+    {
+        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        if (!$invoice) return ['payments' => collect(), 'confirmedPaid' => 0, 'balanceDue' => 0];
+
+        $payments = DB::table('invoice_payments')
+            ->where('invoice_id', $invoiceId)
+            ->orderBy('created_at')
+            ->get();
+
+        $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_local');
+        $subtotal      = $invoice->subtotal_local ?? $invoice->subtotal_usd ?? 0;
+        $balanceDue    = max(0, $subtotal - $confirmedPaid);
+
+        return compact('payments', 'confirmedPaid', 'balanceDue');
+    }
+
+    // =========================================================
     // BUSINESS INFO BY LOCATION
     // =========================================================
     public function getBusinessInfo(string $location): array
-{
-    $loc = strtolower($location);
+    {
+        $loc = strtolower($location);
 
-    if (str_contains($loc, 'oshodi') || str_contains($loc, 'lagos')) {
-        return [
-            'company'   => 'Gasbok Engineering Nig. Limited',
-            'rc'        => 'RC: 1135830',
-            'address'   => 'Oshodi, Lagos State, Nigeria',
-            'phone'     => '+234 915 568 8804',
-            'email'     => 'lagos@autozenithparts.com',
-            'bank'      => 'Bank Transfer',
-            'account'   => '5085726530',
-            'acct_name' => 'Gasbok Engineering Nigeria Limited',
-            'warranty'  => '10 days',
-        ];
-    }
+        if (str_contains($loc, 'oshodi') || str_contains($loc, 'lagos')) {
+            return [
+                'company'   => 'Gasbok Engineering Nig. Limited',
+                'rc'        => 'RC: 1135830',
+                'address'   => 'Oshodi, Lagos State, Nigeria',
+                'phone'     => '+234 915 568 8804',
+                'email'     => 'lagos@autozenithparts.com',
+                'bank'      => 'Bank Transfer',
+                'account'   => '5085726530',
+                'acct_name' => 'Gasbok Engineering Nigeria Limited',
+                'warranty'  => '10 days',
+            ];
+        }
 
-    if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife') || str_contains($loc, 'ibadan')) {
-        return [
-            'company'   => 'Gasbok Engineering Nig. Limited',
-            'rc'        => 'RC: 1135830',
-            'address'   => 'Ile-Ife, Osun State, Nigeria',
-            'phone'     => '+234 915 568 8804',
-            'email'     => 'ng@autozenithparts.com',
-            'bank'      => 'Bank Transfer',
-            'account'   => '5085726530',
-            'acct_name' => 'Gasbok Engineering Nigeria Limited',
-            'warranty'  => '10 days',
-        ];
-    }
+        if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife') || str_contains($loc, 'ibadan')) {
+            return [
+                'company'   => 'Gasbok Engineering Nig. Limited',
+                'rc'        => 'RC: 1135830',
+                'address'   => 'Ile-Ife, Osun State, Nigeria',
+                'phone'     => '+234 915 568 8804',
+                'email'     => 'ng@autozenithparts.com',
+                'bank'      => 'Bank Transfer',
+                'account'   => '5085726530',
+                'acct_name' => 'Gasbok Engineering Nigeria Limited',
+                'warranty'  => '10 days',
+            ];
+        }
 
-    if (str_contains($loc, 'ghana') || str_contains($loc, 'accra')) {
+        if (str_contains($loc, 'ghana') || str_contains($loc, 'accra')) {
+            return [
+                'company'   => 'Auto Zenith Parts — Ghana Office',
+                'rc'        => null,
+                'address'   => 'Accra, Ghana',
+                'phone'     => '+233 XXX XXX XXXX',
+                'email'     => 'gh@autozenithparts.com',
+                'bank'      => 'Bank Transfer',
+                'account'   => 'On request',
+                'acct_name' => 'Auto Zenith Parts Ghana',
+                'warranty'  => '10 days',
+            ];
+        }
+
+        if (str_contains($loc, 'elkhorn') || str_contains($loc, 'wi')) {
+            return [
+                'company'   => 'Auto Zenith LLC',
+                'rc'        => null,
+                'address'   => '613 E Geneva St #23, Elkhorn WI 53121',
+                'phone'     => '+1 512 587 3425',
+                'email'     => 'wi@autozenithparts.com',
+                'bank'      => 'Zelle / CashApp / Venmo',
+                'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
+                'acct_name' => 'Auto Zenith LLC',
+                'warranty'  => '15 days',
+            ];
+        }
+
         return [
-            'company'   => 'Auto Zenith Parts — Ghana Office',
+            'company'   => 'Accolade Autos and General LLC',
             'rc'        => null,
-            'address'   => 'Accra, Ghana',
-            'phone'     => '+233 XXX XXX XXXX',
-            'email'     => 'gh@autozenithparts.com',
-            'bank'      => 'Bank Transfer',
-            'account'   => 'On request',
-            'acct_name' => 'Auto Zenith Parts Ghana',
-            'warranty'  => '10 days',
-        ];
-    }
-
-    if (str_contains($loc, 'elkhorn') || str_contains($loc, 'wi')) {
-        return [
-            'company'   => 'Auto Zenith LLC',
-            'rc'        => null,
-            'address'   => '613 E Geneva St #23, Elkhorn WI 53121',
+            'address'   => 'Waxahachie TX 75165',
             'phone'     => '+1 512 587 3425',
-            'email'     => 'wi@autozenithparts.com',
+            'email'     => 'info@autozenithparts.com',
             'bank'      => 'Zelle / CashApp / Venmo',
             'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
-            'acct_name' => 'Auto Zenith LLC',
+            'acct_name' => 'Accolade Autos and General LLC',
             'warranty'  => '15 days',
         ];
     }
 
-    // Default: Waxahachie TX / Kennedale TX
-    return [
-        'company'   => 'Accolade Autos and General LLC',
-        'rc'        => null,
-        'address'   => 'Waxahachie TX 75165',
-        'phone'     => '+1 512 587 3425',
-        'email'     => 'info@autozenithparts.com',
-        'bank'      => 'Zelle / CashApp / Venmo',
-        'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
-        'acct_name' => 'Accolade Autos and General LLC',
-        'warranty'  => '15 days',
-    ];
-}
-
     // =========================================================
-    // Commission helper — credits the creating staff member if they
-    // are a sales_rep. Uses commission_tiers (volume-based, evaluated
-    // against the rep's running total this calendar month in their
-    // own currency) if set, falling back to commission_base_percent.
+    // COMMISSION HELPER
     // =========================================================
     private function creditCommissionIfApplicable(int $invoiceId, float $saleAmountLocal, string $currencyCode): void
     {
@@ -182,7 +180,6 @@ class InvoiceController extends Controller
         if ($staff->commission_tiers) {
             $tiers = json_decode($staff->commission_tiers, true);
             if (is_array($tiers) && count($tiers) > 0) {
-                // Running volume this calendar month, same currency, sale-type entries only
                 $monthVolume = (float) DB::table('sales_commissions')
                     ->where('staff_id', $staffId)
                     ->where('currency_code', $currencyCode)
@@ -192,8 +189,6 @@ class InvoiceController extends Controller
                     ->sum('sale_amount_local');
 
                 $projectedVolume = $monthVolume + $saleAmountLocal;
-
-                // Pick the highest tier whose min_volume the projected volume has reached
                 usort($tiers, fn($a, $b) => $a['min_volume'] <=> $b['min_volume']);
                 foreach ($tiers as $tier) {
                     if ($projectedVolume >= ($tier['min_volume'] ?? 0)) {
@@ -238,14 +233,10 @@ class InvoiceController extends Controller
                 'oi.item_type',
                 'oi.unit_price_local',
                 'oi.subtotal_local',
-                // Legacy fallback columns — orders placed BEFORE the
-                // fixed-currency fix have unit_price_local/subtotal_local
-                // as null, since those columns didn't exist yet. Without
-                // these, old orders would show $0.00 on every line item.
                 'oi.unit_price_ngn',
                 'oi.unit_price_usd',
                 'oi.subtotal_ngn',
-                'oi.part_name',  // read directly from order_items — set for BOTH parts and services
+                'oi.part_name',
                 'oi.part_code',
                 'oi.brand',
                 'oi.model',
@@ -257,9 +248,6 @@ class InvoiceController extends Controller
                 'p.part_category'
             )->get()
             ->map(function ($item) use ($orderCurrency) {
-                // Resolve the real unit price — prefer the new fixed-
-                // currency field, fall back to whichever legacy NGN/USD
-                // field matches this order's currency for older rows.
                 if (empty($item->unit_price_local)) {
                     $item->unit_price_local = $orderCurrency === 'NGN'
                         ? ($item->unit_price_ngn ?? 0)
@@ -268,25 +256,15 @@ class InvoiceController extends Controller
                 if (empty($item->subtotal_local)) {
                     $item->subtotal_local = $orderCurrency === 'NGN' ? ($item->subtotal_ngn ?? null) : null;
                 }
-
-                // qty derived from subtotal_local / unit_price_local —
-                // works regardless of currency now (the old NGN-only
-                // hack broke for USD/GHS orders with qty > 1).
                 $item->qty = ($item->subtotal_local && $item->unit_price_local)
                     ? max(1, round($item->subtotal_local / $item->unit_price_local))
                     : 1;
                 return $item;
             });
 
-        $saleLocation = $order->location
-            ?? ($items->first()->part_location ?? 'Waxahachie TX');
-
-        // The order's ONE real, fixed currency — no conversion, no
-        // guessing from individual items. Stamped once at order
-        // creation time and never recalculated.
-        $currencyCode = $order->currency_code ?? self::currencyForLocation($saleLocation)['code'];
-        $businessInfo = $this->getBusinessInfo($saleLocation);
-
+        $saleLocation  = $order->location ?? ($items->first()->part_location ?? 'Waxahachie TX');
+        $currencyCode  = $order->currency_code ?? self::currencyForLocation($saleLocation)['code'];
+        $businessInfo  = $this->getBusinessInfo($saleLocation);
         $subtotalLocal = $order->total_amount_local ?? $items->sum('subtotal_local');
 
         $lineItems = $items->map(function ($item) use ($currencyCode) {
@@ -297,32 +275,32 @@ class InvoiceController extends Controller
             ]);
         });
 
-        $subtotalFmt = self::formatLocal($subtotalLocal, $currencyCode);
-        $invoiceNo   = 'AZP-' . date('Y') . '-' . str_pad($orderId, 5, '0', STR_PAD_LEFT);
-
-        $customerInfo = (object)[
+        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
+        $invoiceNo     = 'AZP-' . date('Y') . '-' . str_pad($orderId, 5, '0', STR_PAD_LEFT);
+        $customerInfo  = (object)[
             'name'    => $order->customer_name ?? '',
             'phone'   => $order->customer_phone ?? '',
             'email'   => $order->customer_email ?? '',
             'address' => $order->customer_address ?? '',
         ];
 
-        $currency      = self::currencyMeta($currencyCode); // for blade templates expecting ['symbol'=>..,'code'=>..]
+        $currency      = self::currencyMeta($currencyCode);
         $location      = $saleLocation;
         $createdAt     = $order->created_at ?? now();
         $paymentMethod = $order->payment_method ?? 'Cash';
         $copyKey       = 'customer';
-        $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real USD conversion
+        $subtotalUsd   = $subtotalLocal;
+        $invoiceType   = 'order';
 
         return view('admin.invoices.show', compact(
             'order', 'lineItems', 'currency', 'subtotalFmt',
             'subtotalUsd', 'invoiceNo', 'businessInfo', 'saleLocation',
-            'location', 'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
+            'location', 'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
         ));
     }
 
     // =========================================================
-    // HARVEST INVOICE — from a completed harvest session
+    // HARVEST INVOICE
     // GET /admin/harvest/{id}/invoice
     // =========================================================
     public function harvest(int $harvestId)
@@ -351,7 +329,7 @@ class InvoiceController extends Controller
         $businessInfo    = $this->getBusinessInfo($harvestLocation);
 
         $lineItems = $parts->map(function ($p) {
-            $priceLocal = $p->price_local ?? $p->price_usd; // fallback for pre-migration rows
+            $priceLocal = $p->price_local ?? $p->price_usd;
             return (object)[
                 'part_name'       => $p->part_name,
                 'part_code'       => $p->part_code,
@@ -363,13 +341,13 @@ class InvoiceController extends Controller
                 'qty'             => 1,
                 'unit_fmt'        => self::formatLocal($priceLocal, $p->currency_code ?? 'USD'),
                 'total_fmt'       => self::formatLocal($priceLocal, $p->currency_code ?? 'USD'),
-                'price_usd'       => $priceLocal, // kept for template compatibility
+                'price_usd'       => $priceLocal,
             ];
         });
 
         $subtotalLocal = $parts->sum(fn($p) => $p->price_local ?? $p->price_usd);
         $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
-        $subtotalUsd   = $subtotalLocal; // kept for template compatibility
+        $subtotalUsd   = $subtotalLocal;
         $invoiceNo     = 'HVSN-' . str_pad($harvestId, 5, '0', STR_PAD_LEFT);
 
         return view('admin.invoices.harvest', compact(
@@ -391,15 +369,15 @@ class InvoiceController extends Controller
                    'year_from','year_to','price_local','currency_code','price_usd','condition_grade','location']);
 
         $locations = [
-            'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
-            'Kennedale TX'     => 'Kennedale TX — USD ($)',
-            'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
-            'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
-            'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
-            'Lagos Nigeria'     => 'Lagos, Nigeria — NGN (₦)',
-            'Abuja Nigeria'     => 'Abuja, Nigeria — NGN (₦)',
-            'Akure Nigeria'     => 'Akure, Nigeria — NGN (₦)',
-            'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
+            'Waxahachie TX'   => 'Waxahachie TX — USD ($)',
+            'Kennedale TX'    => 'Kennedale TX — USD ($)',
+            'Elkhorn WI'      => 'Elkhorn WI — USD ($)',
+            'Ile-Ife Nigeria' => 'Ile-Ife, Nigeria — NGN (₦)',
+            'Ibadan Nigeria'  => 'Ibadan, Nigeria — NGN (₦)',
+            'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 
         $staffLocation = Session::get('staff_location');
@@ -409,8 +387,6 @@ class InvoiceController extends Controller
         $staffDiscountCapFixed   = $currentStaff->discount_cap_fixed ?? null;
         $staffDiscountCapPercent = $currentStaff->discount_cap_percent ?? null;
 
-        // #18 — Manual Invoice should be able to add Service Rates
-        // alongside parts, not just inventory items.
         $serviceRates = DB::table('service_rates')->where('is_active', true)
             ->orderBy('category')->orderBy('name')->get();
 
@@ -424,8 +400,9 @@ class InvoiceController extends Controller
             'staffDiscountCapFixed', 'staffDiscountCapPercent', 'serviceRates', 'servicePricesByLocation'
         ));
     }
+
     // =========================================================
-    // GET /admin/invoices/manual/{id}/edit — admin/manager only
+    // GET /admin/invoices/manual/{id}/edit
     // =========================================================
     public function editManual(int $id)
     {
@@ -445,15 +422,15 @@ class InvoiceController extends Controller
                    'year_from','year_to','price_local','currency_code','price_usd','condition_grade','location']);
 
         $locations = [
-            'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
-            'Kennedale TX'     => 'Kennedale TX — USD ($)',
-            'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
-            'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
-            'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
-            'Lagos Nigeria'     => 'Lagos, Nigeria — NGN (₦)',
-            'Abuja Nigeria'     => 'Abuja, Nigeria — NGN (₦)',
-            'Akure Nigeria'     => 'Akure, Nigeria — NGN (₦)',
-            'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
+            'Waxahachie TX'   => 'Waxahachie TX — USD ($)',
+            'Kennedale TX'    => 'Kennedale TX — USD ($)',
+            'Elkhorn WI'      => 'Elkhorn WI — USD ($)',
+            'Ile-Ife Nigeria' => 'Ile-Ife, Nigeria — NGN (₦)',
+            'Ibadan Nigeria'  => 'Ibadan, Nigeria — NGN (₦)',
+            'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 
         $staffLocation = Session::get('staff_location');
@@ -463,12 +440,11 @@ class InvoiceController extends Controller
         $staffDiscountCapFixed   = $currentStaff->discount_cap_fixed ?? null;
         $staffDiscountCapPercent = $currentStaff->discount_cap_percent ?? null;
 
-        // Currency is now FIXED on the invoice itself — never recalculated
         $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
         $currency     = self::currencyMeta($currencyCode);
 
         $existingItemsJson = $items->map(function ($i) {
-            $priceLocal = $i->unit_price_local ?? $i->unit_price_usd; // fallback for pre-migration rows
+            $priceLocal = $i->unit_price_local ?? $i->unit_price_usd;
             return [
                 'name'           => $i->part_name,
                 'part_id'        => $i->part_id,
@@ -485,8 +461,9 @@ class InvoiceController extends Controller
             'staffDiscountCapFixed', 'staffDiscountCapPercent', 'currency', 'existingItemsJson'
         ));
     }
+
     // =========================================================
-    // PUT /admin/invoices/manual/{id} — admin/manager only
+    // PUT /admin/invoices/manual/{id}
     // =========================================================
     public function updateManual(Request $request, int $id)
     {
@@ -509,27 +486,20 @@ class InvoiceController extends Controller
         $saleLocation = $request->location;
         $currencyCode = self::currencyForLocation($saleLocation)['code'];
 
-        // ── Prices entered here are now treated as FIXED local-currency
-        // values — no division by a rate, no conversion to USD storage.
         $lineItems = collect($request->items)->map(function ($item) {
-            $priceLocal   = (float) $item['price'];
-            $qty          = (int) $item['qty'];
+            $priceLocal     = (float) $item['price'];
+            $qty            = (int) $item['qty'];
             $lineGrossLocal = $priceLocal * $qty;
-
-            $discType  = $item['discount_type'] ?? 'fixed';
-            $discValue = (float) ($item['discount_value'] ?? 0);
-            $discLocal = 0;
+            $discType       = $item['discount_type'] ?? 'fixed';
+            $discValue      = (float) ($item['discount_value'] ?? 0);
+            $discLocal      = 0;
             if ($discValue > 0) {
                 $discLocal = $discType === 'percent'
                     ? $lineGrossLocal * ($discValue / 100)
                     : min($discValue, $lineGrossLocal);
             }
             $lineLocal = $lineGrossLocal - $discLocal;
-
-            $part = !empty($item['part_id'])
-                ? DB::table('parts_inventory')->find($item['part_id'])
-                : null;
-
+            $part = !empty($item['part_id']) ? DB::table('parts_inventory')->find($item['part_id']) : null;
             return (object)[
                 'part_name'             => $item['name'],
                 'part_code'             => $part->part_code ?? 'MANUAL',
@@ -546,7 +516,6 @@ class InvoiceController extends Controller
         });
 
         $subtotalAfterLineDiscounts = $lineItems->sum('line_local');
-
         $invoiceDiscType  = $request->invoice_discount_type ?? 'fixed';
         $invoiceDiscValue = (float) ($request->invoice_discount_value ?? 0);
         $invoiceDiscLocal = 0;
@@ -556,29 +525,20 @@ class InvoiceController extends Controller
                 : min($invoiceDiscValue, $subtotalAfterLineDiscounts);
         }
 
-        $newSubtotalLocal = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
+        $newSubtotalLocal   = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
         $totalDiscountLocal = $lineItems->sum('discount_amount_local') + $invoiceDiscLocal;
 
-        // ── Build a human-readable change summary before overwriting ──
         $changes = [];
-        if ($invoice->customer_name !== $request->customer_name) {
-            $changes[] = "Customer name: \"{$invoice->customer_name}\" → \"{$request->customer_name}\"";
-        }
-        if ($invoice->location !== $saleLocation) {
-            $changes[] = "Location: \"{$invoice->location}\" → \"{$saleLocation}\"";
-        }
+        if ($invoice->customer_name !== $request->customer_name) $changes[] = "Customer name: \"{$invoice->customer_name}\" → \"{$request->customer_name}\"";
+        if ($invoice->location !== $saleLocation) $changes[] = "Location: \"{$invoice->location}\" → \"{$saleLocation}\"";
         $oldSubtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
         if (round((float) $oldSubtotalLocal, 2) !== round($newSubtotalLocal, 2)) {
-            $changes[] = "Subtotal: " . self::formatLocal($oldSubtotalLocal, $invoice->currency_code ?? $currencyCode)
-                . " → " . self::formatLocal($newSubtotalLocal, $currencyCode);
+            $changes[] = "Subtotal: " . self::formatLocal($oldSubtotalLocal, $invoice->currency_code ?? $currencyCode) . " → " . self::formatLocal($newSubtotalLocal, $currencyCode);
         }
         $oldItemCount = DB::table('invoice_items')->where('invoice_id', $id)->count();
-        if ($oldItemCount !== $lineItems->count()) {
-            $changes[] = "Item count: {$oldItemCount} → {$lineItems->count()}";
-        }
+        if ($oldItemCount !== $lineItems->count()) $changes[] = "Item count: {$oldItemCount} → {$lineItems->count()}";
         $changesSummary = $changes ? implode('; ', $changes) : 'No substantive changes detected.';
 
-        // ── Apply the update ───────────────────────────────────────
         DB::table('invoices')->where('id', $id)->update([
             'customer_name'             => $request->customer_name,
             'customer_phone'            => $request->customer_phone ?? '',
@@ -587,16 +547,15 @@ class InvoiceController extends Controller
             'location'                  => $saleLocation,
             'currency_code'             => $currencyCode,
             'subtotal_local'            => $newSubtotalLocal,
-            'subtotal_usd'              => $newSubtotalLocal, // kept for template compatibility — not a real $ value
+            'subtotal_usd'              => $newSubtotalLocal,
             'discount_amount_local'     => $totalDiscountLocal,
-            'discount_amount_usd'       => $totalDiscountLocal, // kept for template compatibility
+            'discount_amount_usd'       => $totalDiscountLocal,
             'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
             'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
             'notes'                     => $request->notes ?? null,
             'updated_at'                => now(),
         ]);
 
-        // Replace items wholesale — simpler and safer than diffing rows
         DB::table('invoice_items')->where('invoice_id', $id)->delete();
         foreach ($lineItems as $li) {
             DB::table('invoice_items')->insert([
@@ -609,9 +568,9 @@ class InvoiceController extends Controller
                 'condition_grade'        => $li->condition_grade,
                 'qty'                    => $li->qty,
                 'unit_price_local'       => $li->unit_price_local,
-                'unit_price_usd'         => $li->unit_price_local, // kept for template compatibility
+                'unit_price_usd'         => $li->unit_price_local,
                 'discount_amount_local'  => $li->discount_amount_local,
-                'discount_amount_usd'    => $li->discount_amount_local, // kept for template compatibility
+                'discount_amount_usd'    => $li->discount_amount_local,
                 'discount_type'          => $li->discount_type,
                 'discount_value'         => $li->discount_value,
                 'created_at'             => now(),
@@ -619,17 +578,17 @@ class InvoiceController extends Controller
             ]);
         }
 
-        // ── Log the edit ───────────────────────────────────────────
         DB::table('invoice_edit_log')->insert([
-            'invoice_id'       => $id,
-            'edited_by'        => Session::get('staff_name') ?? 'Unknown',
-            'changes_summary'  => $changesSummary,
-            'created_at'       => now(),
+            'invoice_id'      => $id,
+            'edited_by'       => Session::get('staff_name') ?? 'Unknown',
+            'changes_summary' => $changesSummary,
+            'created_at'      => now(),
         ]);
 
         return redirect()->route('admin.invoices.show.manual', $id)
             ->with('success', 'Invoice updated successfully. Changes have been logged.');
     }
+
     // =========================================================
     // POST /admin/invoices/manual — Store + show invoice
     // =========================================================
@@ -649,26 +608,20 @@ class InvoiceController extends Controller
         $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($saleLocation);
 
-        // ── Prices entered here are FIXED local-currency values now —
-        // no division by a rate, no USD conversion at storage time.
         $lineItems = collect($request->items)->map(function ($item) use ($currencyCode) {
             $priceLocal     = (float) $item['price'];
             $qty            = (int) $item['qty'];
             $lineGrossLocal = $priceLocal * $qty;
-
-            $discType  = $item['discount_type'] ?? 'fixed';
-            $discValue = (float) ($item['discount_value'] ?? 0);
-            $discLocal = 0;
+            $discType       = $item['discount_type'] ?? 'fixed';
+            $discValue      = (float) ($item['discount_value'] ?? 0);
+            $discLocal      = 0;
             if ($discValue > 0) {
                 $discLocal = $discType === 'percent'
                     ? $lineGrossLocal * ($discValue / 100)
                     : min($discValue, $lineGrossLocal);
             }
             $lineLocal = $lineGrossLocal - $discLocal;
-
-            $part = !empty($item['part_id'])
-                ? DB::table('parts_inventory')->find($item['part_id'])
-                : null;
+            $part = !empty($item['part_id']) ? DB::table('parts_inventory')->find($item['part_id']) : null;
             return (object)[
                 'part_id'               => $part->id ?? null,
                 'part_name'             => $item['name'],
@@ -692,7 +645,6 @@ class InvoiceController extends Controller
         });
 
         $subtotalAfterLineDiscounts = $lineItems->sum('line_local');
-
         $invoiceDiscType  = $request->invoice_discount_type ?? 'fixed';
         $invoiceDiscValue = (float) ($request->invoice_discount_value ?? 0);
         $invoiceDiscLocal = 0;
@@ -702,137 +654,99 @@ class InvoiceController extends Controller
                 : min($invoiceDiscValue, $subtotalAfterLineDiscounts);
         }
 
-        $subtotalLocal = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
-        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
-
-        // ── Discount cap check (server-side, authoritative) ──────────
-        // NOTE: discount caps were previously stored/compared in USD.
-        // Now compared directly against the LOCAL currency amount.
-        // If your discount_cap_fixed values were set assuming USD,
-        // they'll need updating per-location — flag this for review.
-        $currentStaffForCap = DB::table('staff')->where('id', Session::get('staff_id'))->first();
+        $subtotalLocal      = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
+        $subtotalFmt        = self::formatLocal($subtotalLocal, $currencyCode);
         $totalDiscountLocal = $lineItems->sum('discount_amount_local') + $invoiceDiscLocal;
-        $grossLocal = $subtotalAfterLineDiscounts + $lineItems->sum('discount_amount_local');
-        $discountPercentOfGross = $grossLocal > 0 ? ($totalDiscountLocal / $grossLocal) * 100 : 0;
 
+        $currentStaffForCap          = DB::table('staff')->where('id', Session::get('staff_id'))->first();
+        $grossLocal                  = $subtotalAfterLineDiscounts + $lineItems->sum('discount_amount_local');
+        $discountPercentOfGross      = $grossLocal > 0 ? ($totalDiscountLocal / $grossLocal) * 100 : 0;
         $exceedsCap = false;
         if ($currentStaffForCap) {
-            if ($currentStaffForCap->discount_cap_fixed !== null && $totalDiscountLocal > $currentStaffForCap->discount_cap_fixed) {
-                $exceedsCap = true;
-            }
-            if ($currentStaffForCap->discount_cap_percent !== null && $discountPercentOfGross > $currentStaffForCap->discount_cap_percent) {
-                $exceedsCap = true;
-            }
+            if ($currentStaffForCap->discount_cap_fixed !== null && $totalDiscountLocal > $currentStaffForCap->discount_cap_fixed) $exceedsCap = true;
+            if ($currentStaffForCap->discount_cap_percent !== null && $discountPercentOfGross > $currentStaffForCap->discount_cap_percent) $exceedsCap = true;
         }
-
         if ($exceedsCap && !$request->filled('discount_override_reason')) {
-            return back()->withInput()->with('error',
-                'This discount exceeds your allowance cap. Please provide an override reason and resubmit.');
+            return back()->withInput()->with('error', 'This discount exceeds your allowance cap. Please provide an override reason and resubmit.');
         }
 
-        // ── STOCK ENFORCEMENT — never sell more than what's physically
-        // available. Checked again here (authoritative, server-side)
-        // even though the form should already prevent this client-side.
-        // This is the line that actually protects inventory from theft/
-        // loss via under-reported or inflated sales.
+        // Stock check
         $stockErrors = [];
         foreach ($request->items as $item) {
-            if (empty($item['part_id'])) continue; // manually-typed item, not tied to real stock
-
+            if (empty($item['part_id'])) continue;
             $part = DB::table('parts_inventory')->where('id', $item['part_id'])->first();
             $qty  = (int) ($item['qty'] ?? 1);
-
-            if (!$part) {
-                $stockErrors[] = "Part for \"{$item['name']}\" no longer exists in inventory.";
-                continue;
-            }
-            if ($part->status !== 'Available') {
-                $stockErrors[] = "{$part->part_code} ({$part->part_name}) is no longer Available (current status: {$part->status}).";
-                continue;
-            }
-            if ($qty > $part->stock_qty) {
-                $stockErrors[] = "{$part->part_code} ({$part->part_name}): requested {$qty}, but only {$part->stock_qty} in stock.";
-            }
+            if (!$part) { $stockErrors[] = "Part for \"{$item['name']}\" no longer exists."; continue; }
+            if ($part->status !== 'Available') { $stockErrors[] = "{$part->part_code} is no longer Available (status: {$part->status})."; continue; }
+            if ($qty > $part->stock_qty) $stockErrors[] = "{$part->part_code}: requested {$qty}, only {$part->stock_qty} in stock.";
         }
-
         if (!empty($stockErrors)) {
-            return back()->withInput()->with('error',
-                'Cannot complete this sale — stock check failed: ' . implode(' | ', $stockErrors));
+            return back()->withInput()->with('error', 'Cannot complete sale — stock check failed: ' . implode(' | ', $stockErrors));
         }
-        // ──────────────────────────────────────────────────────────────
 
-        $invoiceNo   = 'AZP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
-
+        $invoiceNo    = 'AZP-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
         $customerInfo = (object)[
             'name'    => $request->customer_name,
             'phone'   => $request->customer_phone ?? '',
             'email'   => $request->customer_email ?? '',
             'address' => $request->customer_address ?? '',
         ];
-
         $location      = $saleLocation;
         $createdAt     = now();
         $paymentMethod = $request->payment_method ?? 'Cash';
         $copyKey       = 'customer';
-        $subtotalUsd   = $subtotalLocal; // kept for template compatibility; NOT a real $ conversion
+        $subtotalUsd   = $subtotalLocal;
 
-        // ── Persist invoice + items + stock deduction — all in one
-        // transaction so a failure partway through never leaves stock
-        // decremented without a matching invoice, or vice versa.
         DB::beginTransaction();
         try {
             $invoiceId = DB::table('invoices')->insertGetId([
-                'invoice_no'                => $invoiceNo,
-                'invoice_type'              => 'parts',
-                'customer_name'             => $customerInfo->name,
-                'customer_phone'            => $customerInfo->phone,
-                'customer_email'            => $customerInfo->email,
-                'customer_address'          => $customerInfo->address,
-                'location'                  => $saleLocation,
-                'currency_code'             => $currencyCode,
-                'subtotal_local'            => $subtotalLocal,
-                'subtotal_usd'              => $subtotalLocal, // kept for template compatibility
-                'discount_amount_local'     => $totalDiscountLocal,
-                'discount_amount_usd'       => $totalDiscountLocal, // kept for template compatibility
-                'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
-                'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
-                'discount_override'         => $exceedsCap,
-                'discount_override_reason'  => $exceedsCap ? $request->discount_override_reason : null,
-                'payment_method'            => $paymentMethod,
-                'created_by'                => Session::get('staff_name') ?? 'Admin',
-                'notes'                     => $request->notes ?? null,
-                'created_at'                => $createdAt,
-                'updated_at'                => $createdAt,
+                'invoice_no'               => $invoiceNo,
+                'invoice_type'             => 'parts',
+                'customer_name'            => $customerInfo->name,
+                'customer_phone'           => $customerInfo->phone,
+                'customer_email'           => $customerInfo->email,
+                'customer_address'         => $customerInfo->address,
+                'location'                 => $saleLocation,
+                'currency_code'            => $currencyCode,
+                'subtotal_local'           => $subtotalLocal,
+                'subtotal_usd'             => $subtotalLocal,
+                'discount_amount_local'    => $totalDiscountLocal,
+                'discount_amount_usd'      => $totalDiscountLocal,
+                'discount_type'            => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
+                'discount_value'           => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
+                'discount_override'        => $exceedsCap,
+                'discount_override_reason' => $exceedsCap ? $request->discount_override_reason : null,
+                'payment_method'           => $paymentMethod,
+                'created_by'               => Session::get('staff_name') ?? 'Admin',
+                'notes'                    => $request->notes ?? null,
+                'created_at'               => $createdAt,
+                'updated_at'               => $createdAt,
             ]);
 
             foreach ($lineItems as $li) {
                 DB::table('invoice_items')->insert([
-                    'invoice_id'             => $invoiceId,
-                    'part_id'                => $li->part_id,
-                    'part_name'              => $li->part_name,
-                    'part_code'              => $li->part_code,
-                    'brand'                  => $li->brand,
-                    'model'                  => $li->model,
-                    'condition_grade'        => $li->condition_grade,
-                    'qty'                    => $li->qty,
-                    'unit_price_local'       => $li->unit_price_local,
-                    'unit_price_usd'         => $li->unit_price_local, // kept for template compatibility
-                    'discount_amount_local'  => $li->discount_amount_local,
-                    'discount_amount_usd'    => $li->discount_amount_local, // kept for template compatibility
-                    'discount_type'          => $li->discount_type,
-                    'discount_value'         => $li->discount_value,
-                    'created_at'             => $createdAt,
-                    'updated_at'             => $createdAt,
+                    'invoice_id'            => $invoiceId,
+                    'part_id'               => $li->part_id,
+                    'part_name'             => $li->part_name,
+                    'part_code'             => $li->part_code,
+                    'brand'                 => $li->brand,
+                    'model'                 => $li->model,
+                    'condition_grade'       => $li->condition_grade,
+                    'qty'                   => $li->qty,
+                    'unit_price_local'      => $li->unit_price_local,
+                    'unit_price_usd'        => $li->unit_price_local,
+                    'discount_amount_local' => $li->discount_amount_local,
+                    'discount_amount_usd'   => $li->discount_amount_local,
+                    'discount_type'         => $li->discount_type,
+                    'discount_value'        => $li->discount_value,
+                    'created_at'            => $createdAt,
+                    'updated_at'            => $createdAt,
                 ]);
 
-                // ── Deduct stock for real inventory items only. Re-checks
-                // availability one more time inside the transaction (in
-                // case two staff sold the same last unit simultaneously)
-                // and aborts the whole sale if it's no longer sufficient.
                 if ($li->part_id) {
-                    $part = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
+                    $part   = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
                     if (!$part || $part->stock_qty < $li->qty) {
-                        throw new \Exception("Stock for {$li->part_code} changed before this sale completed — only " . ($part->stock_qty ?? 0) . " left. Please review and resubmit.");
+                        throw new \Exception("Stock for {$li->part_code} changed before sale completed — only " . ($part->stock_qty ?? 0) . " left.");
                     }
                     $newQty = $part->stock_qty - $li->qty;
                     DB::table('parts_inventory')->where('id', $li->part_id)->update([
@@ -842,66 +756,70 @@ class InvoiceController extends Controller
                     ]);
                 }
             }
-            // ──────────────────────────────────────────────────────────
 
             DB::commit();
+
+            // ── Phase 4: fire PartSold for each real inventory part ──
+            // Runs AFTER commit so listener never fires on a rolled-back
+            // transaction. Only fires for parts with a real part_id
+            // (manual line items never tied to stock are skipped).
+            foreach ($lineItems as $li) {
+                if ($li->part_id) {
+                    PartSold::dispatch(
+                        $li->part_id,
+                        $invoiceId,
+                        $li->line_local,
+                        $currencyCode,
+                        'invoice'
+                    );
+                }
+            }
+
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->with('error', 'Sale could not be completed: ' . $e->getMessage());
         }
 
-        // ── Commission — if the staff who created this invoice is a
-        // sales_rep, credit them with commission on the net sale.
-        // Uses their volume tiers if set, else a flat base %. Computed
-        // once at sale time; Phase B returns will insert a NEGATIVE
-        // adjustment row referencing this invoice rather than editing
-        // this entry, so the ledger stays auditable.
         $this->creditCommissionIfApplicable($invoiceId, $subtotalUsd, $currency['code']);
+        $invoiceType = 'parts';
 
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
-            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
+            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
         ));
     }
 
     // =========================================================
-    // GET /admin/invoices/service/create — Quick Receipt for services
-    // (labor, diagnostic fees, misc charges) — NEVER touches inventory.
+    // GET /admin/invoices/service/create
     // =========================================================
     public function createService()
     {
         $serviceRates = DB::table('service_rates')->where('is_active', true)
             ->orderBy('category')->orderBy('name')->get();
 
-        // Per-location prices — no FX conversion, each location has its
-        // own real fixed price. Grouped as {service_id: {location: price}}
-        // so the JS can look up the right number whenever the location
-        // selector changes.
         $servicePricesByLocation = DB::table('service_rate_prices')
             ->get()
             ->groupBy('service_rate_id')
             ->map(fn($rows) => $rows->pluck('price_local', 'location'));
 
         $locations = [
-            'Waxahachie TX'    => 'Waxahachie TX — USD ($)',
-            'Kennedale TX'     => 'Kennedale TX — USD ($)',
-            'Elkhorn WI'       => 'Elkhorn WI — USD ($)',
-            'Ile-Ife Nigeria'  => 'Ile-Ife, Nigeria — NGN (₦)',
-            'Ibadan Nigeria'   => 'Ibadan, Nigeria — NGN (₦)',
-            'Lagos Nigeria'     => 'Lagos, Nigeria — NGN (₦)',
-            'Abuja Nigeria'     => 'Abuja, Nigeria — NGN (₦)',
-            'Akure Nigeria'     => 'Akure, Nigeria — NGN (₦)',
-            'Accra Ghana'      => 'Accra, Ghana — GHS (GH₵)',
+            'Waxahachie TX'   => 'Waxahachie TX — USD ($)',
+            'Kennedale TX'    => 'Kennedale TX — USD ($)',
+            'Elkhorn WI'      => 'Elkhorn WI — USD ($)',
+            'Ile-Ife Nigeria' => 'Ile-Ife, Nigeria — NGN (₦)',
+            'Ibadan Nigeria'  => 'Ibadan, Nigeria — NGN (₦)',
+            'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 
         return view('admin.invoices.service', compact('serviceRates', 'locations', 'servicePricesByLocation'));
     }
 
     // =========================================================
-    // AJAX: GET /admin/invoices/service/search-parts?q=&location=
-    // Lets Quick Receipt add real Parts/Consumables alongside
-    // Quick Service entries (#16).
+    // AJAX: GET /admin/invoices/service/search-parts
     // =========================================================
     public function serviceSearchParts(Request $request)
     {
@@ -926,22 +844,19 @@ class InvoiceController extends Controller
     }
 
     // =========================================================
-    // POST /admin/invoices/service — store a service/misc receipt.
-    // No part_id ever involved, no inventory touched at all — this is
-    // the whole point: labor/service charges can't be mistaken for or
-    // used to disguise a parts sale.
+    // POST /admin/invoices/service
     // =========================================================
     public function storeService(Request $request)
     {
         $request->validate([
-            'customer_name'    => 'required|string|max:120',
-            'location'         => 'required|string',
-            'items'            => 'required|array|min:1',
-            'items.*.item_type'=> 'required|in:service,part',
-            'items.*.name'     => 'required_if:items.*.item_type,service|nullable|string',
-            'items.*.price'    => 'required|numeric|min:0',
-            'items.*.qty'      => 'required|integer|min:1',
-            'items.*.part_id'  => 'required_if:items.*.item_type,part|nullable|integer',
+            'customer_name'     => 'required|string|max:120',
+            'location'          => 'required|string',
+            'items'             => 'required|array|min:1',
+            'items.*.item_type' => 'required|in:service,part',
+            'items.*.name'      => 'required_if:items.*.item_type,service|nullable|string',
+            'items.*.price'     => 'required|numeric|min:0',
+            'items.*.qty'       => 'required|integer|min:1',
+            'items.*.part_id'   => 'required_if:items.*.item_type,part|nullable|integer',
         ]);
 
         $saleLocation = $request->location;
@@ -949,10 +864,7 @@ class InvoiceController extends Controller
         $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($saleLocation);
 
-        // ── #16 — Quick Receipt now supports adding real Parts /
-        // Consumables alongside Quick Service entries, in one ticket.
-        // Parts get the same stock-enforcement as Manual Invoice.
-        $stockErrors = [];
+        $stockErrors   = [];
         $resolvedParts = [];
         foreach ($request->items as $i => $item) {
             if (($item['item_type'] ?? 'service') === 'part') {
@@ -974,7 +886,6 @@ class InvoiceController extends Controller
             $qty        = (int) $item['qty'];
             $lineLocal  = $priceLocal * $qty;
             $part       = $resolvedParts[$i] ?? null;
-
             return (object)[
                 'part_id'          => $part?->id,
                 'part_name'        => $isPart ? $part->part_name : $item['name'],
@@ -996,37 +907,35 @@ class InvoiceController extends Controller
         $subtotalLocal = $lineItems->sum('line_local');
         $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
         $invoiceNo     = 'SVC-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
-
-        $customerInfo = (object)[
+        $customerInfo  = (object)[
             'name'    => $request->customer_name,
             'phone'   => $request->customer_phone ?? '',
             'email'   => $request->customer_email ?? '',
             'address' => $request->customer_address ?? '',
         ];
-
         $createdAt     = now();
         $paymentMethod = $request->payment_method ?? 'Cash';
         $copyKey       = 'customer';
-        $subtotalUsd   = $subtotalLocal; // kept for template compatibility
+        $subtotalUsd   = $subtotalLocal;
 
         DB::beginTransaction();
         try {
             $invoiceId = DB::table('invoices')->insertGetId([
-                'invoice_no'        => $invoiceNo,
-                'invoice_type'      => 'service', // kept as 'service' even with mixed items — this is still the Quick Receipt flow
-                'customer_name'     => $customerInfo->name,
-                'customer_phone'    => $customerInfo->phone,
-                'customer_email'    => $customerInfo->email,
-                'customer_address'  => $customerInfo->address,
-                'location'          => $saleLocation,
-                'currency_code'     => $currencyCode,
-                'subtotal_local'    => $subtotalLocal,
-                'subtotal_usd'      => $subtotalLocal, // kept for template compatibility
-                'payment_method'    => $paymentMethod,
-                'created_by'        => Session::get('staff_name') ?? 'Admin',
-                'notes'             => $request->notes ?? null,
-                'created_at'        => $createdAt,
-                'updated_at'        => $createdAt,
+                'invoice_no'       => $invoiceNo,
+                'invoice_type'     => 'service',
+                'customer_name'    => $customerInfo->name,
+                'customer_phone'   => $customerInfo->phone,
+                'customer_email'   => $customerInfo->email,
+                'customer_address' => $customerInfo->address,
+                'location'         => $saleLocation,
+                'currency_code'    => $currencyCode,
+                'subtotal_local'   => $subtotalLocal,
+                'subtotal_usd'     => $subtotalLocal,
+                'payment_method'   => $paymentMethod,
+                'created_by'       => Session::get('staff_name') ?? 'Admin',
+                'notes'            => $request->notes ?? null,
+                'created_at'       => $createdAt,
+                'updated_at'       => $createdAt,
             ]);
 
             foreach ($lineItems as $li) {
@@ -1040,12 +949,11 @@ class InvoiceController extends Controller
                     'condition_grade'  => $li->condition_grade,
                     'qty'              => $li->qty,
                     'unit_price_local' => $li->unit_price_local,
-                    'unit_price_usd'   => $li->unit_price_local, // kept for template compatibility
+                    'unit_price_usd'   => $li->unit_price_local,
                     'created_at'       => $createdAt,
                     'updated_at'       => $createdAt,
                 ]);
 
-                // Deduct stock for real parts, same as Manual Invoice
                 if ($li->part_id) {
                     $locked = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
                     $newQty = max(0, $locked->stock_qty - $li->qty);
@@ -1058,26 +966,167 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
+
+            // ── Phase 4: fire PartSold for real inventory parts ──────
+            foreach ($lineItems as $li) {
+                if ($li->part_id) {
+                    PartSold::dispatch(
+                        $li->part_id,
+                        $invoiceId,
+                        $li->line_local,
+                        $currencyCode,
+                        'invoice'
+                    );
+                }
+            }
+
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->with('error', 'Could not save receipt: ' . $e->getMessage());
         }
 
-        $location = $saleLocation;
+        $location    = $saleLocation;
+        $invoiceType = 'service';
 
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
-            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
+            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
         ));
     }
 
     // =========================================================
-    // GET /admin/invoices — Invoice listing page
+    // GET /admin/invoices/car-sale/create
+    // =========================================================
+    public function createCarSale()
+    {
+        $locations = [
+            'Waxahachie TX'   => 'Waxahachie TX — USD ($)',
+            'Kennedale TX'    => 'Kennedale TX — USD ($)',
+            'Elkhorn WI'      => 'Elkhorn WI — USD ($)',
+            'Ile-Ife Nigeria' => 'Ile-Ife, Nigeria — NGN (₦)',
+            'Ibadan Nigeria'  => 'Ibadan, Nigeria — NGN (₦)',
+            'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
+            'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
+            'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
+        ];
+
+        return view('admin.invoices.car-sale-create', [
+            'locations' => $locations,
+            'brands'    => \App\Support\VehicleBrands::all(),
+            'years'     => range(date('Y') + 1, 1990),
+        ]);
+    }
+
+    // =========================================================
+    // POST /admin/invoices/car-sale
+    // =========================================================
+    public function storeCarSale(Request $request)
+    {
+        $request->validate([
+            'customer_name'          => 'required|string|max:120',
+            'location'               => 'required|string',
+            'vehicles'               => 'required|array|min:1',
+            'vehicles.*.brand'       => 'required|string|max:60',
+            'vehicles.*.model'       => 'required|string|max:80',
+            'vehicles.*.year'        => 'required|integer|min:1990|max:' . (date('Y') + 1),
+            'vehicles.*.vin'         => 'nullable|string|max:17',
+            'vehicles.*.mileage'     => 'nullable|integer|min:0',
+            'vehicles.*.colour'      => 'nullable|string|max:50',
+            'vehicles.*.price'       => 'required|numeric|min:0',
+        ]);
+
+        $saleLocation = $request->location;
+        $currencyCode = self::currencyForLocation($saleLocation)['code'];
+        $businessInfo = $this->getBusinessInfo($saleLocation);
+
+        $lineItems = collect($request->vehicles)->map(function ($v) use ($currencyCode) {
+            $priceLocal = (float) $v['price'];
+            return (object)[
+                'brand'            => $v['brand'],
+                'model'            => $v['model'],
+                'vehicle_year'     => (int) $v['year'],
+                'vin'              => $v['vin'] ?? null,
+                'mileage'          => $v['mileage'] ?? null,
+                'colour'           => $v['colour'] ?? null,
+                'qty'              => 1,
+                'unit_price_local' => $priceLocal,
+                'unit_price_fmt'   => self::formatLocal($priceLocal, $currencyCode),
+                'total_fmt'        => self::formatLocal($priceLocal, $currencyCode),
+                'line_local'       => $priceLocal,
+            ];
+        });
+
+        $subtotalLocal = $lineItems->sum('line_local');
+        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
+        $currency      = self::currencyMeta($currencyCode);
+        $invoiceNo     = 'CAR-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+        $customerInfo  = (object)[
+            'name'    => $request->customer_name,
+            'phone'   => $request->customer_phone ?? '',
+            'email'   => $request->customer_email ?? '',
+            'address' => $request->customer_address ?? '',
+        ];
+        $createdAt     = now();
+        $paymentMethod = $request->payment_method ?? 'Cash';
+        $copyKey       = 'customer';
+        $subtotalUsd   = $subtotalLocal;
+
+        $invoiceId = DB::table('invoices')->insertGetId([
+            'invoice_no'       => $invoiceNo,
+            'invoice_type'     => 'vehicle',
+            'customer_name'    => $customerInfo->name,
+            'customer_phone'   => $customerInfo->phone,
+            'customer_email'   => $customerInfo->email,
+            'customer_address' => $customerInfo->address,
+            'location'         => $saleLocation,
+            'currency_code'    => $currencyCode,
+            'subtotal_local'   => $subtotalLocal,
+            'subtotal_usd'     => $subtotalLocal,
+            'payment_method'   => $paymentMethod,
+            'created_by'       => Session::get('staff_name') ?? 'Admin',
+            'notes'            => $request->notes ?? null,
+            'created_at'       => $createdAt,
+            'updated_at'       => $createdAt,
+        ]);
+
+        foreach ($lineItems as $li) {
+            DB::table('invoice_items')->insert([
+                'invoice_id'       => $invoiceId,
+                'part_id'          => null,
+                'part_name'        => "{$li->vehicle_year} {$li->brand} {$li->model}",
+                'part_code'        => $li->vin ?: 'N/A',
+                'brand'            => $li->brand,
+                'model'            => $li->model,
+                'vin'              => $li->vin,
+                'vehicle_year'     => $li->vehicle_year,
+                'mileage'          => $li->mileage,
+                'colour'           => $li->colour,
+                'condition_grade'  => 'N/A',
+                'qty'              => 1,
+                'unit_price_local' => $li->unit_price_local,
+                'unit_price_usd'   => $li->unit_price_local,
+                'created_at'       => $createdAt,
+                'updated_at'       => $createdAt,
+            ]);
+        }
+
+        $location    = $saleLocation;
+        $invoiceType = 'vehicle';
+
+        return view('admin.invoices.show', compact(
+            'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
+            'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
+            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
+        ));
+    }
+
+    // =========================================================
+    // GET /admin/invoices — Invoice listing
     // =========================================================
     public function index(Request $request)
     {
-        // ── Manual + service invoices (in-store / phone sales) ──────
         $invoiceRows = DB::table('invoices')
             ->whereNull('deleted_at')
             ->select('id', 'invoice_no as ref', 'customer_name', 'customer_phone',
@@ -1085,62 +1134,53 @@ class InvoiceController extends Controller
                      'invoice_type', 'payment_method', 'created_by', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
-                'id'            => $r->id,
-                'ref'           => $r->ref,
-                'customer_name' => $r->customer_name,
-                'customer_phone'=> $r->customer_phone,
-                'amount_local'  => $r->amount_local,
-                'currency_code' => $r->currency_code,
-                'location'      => $r->location,
-                'channel'       => 'In-Store',
-                'type'          => $r->invoice_type ?? 'parts',
-                'payment_method'=> $r->payment_method,
-                'staff'         => $r->created_by,
-                'doc_label'     => 'Receipt', // manual/POS sales are paid at the point of sale by definition
-                'created_at'    => $r->created_at,
-                'url'           => route('admin.invoices.show.manual', $r->id),
+                'id'             => $r->id,
+                'ref'            => $r->ref,
+                'customer_name'  => $r->customer_name,
+                'customer_phone' => $r->customer_phone,
+                'amount_local'   => $r->amount_local,
+                'currency_code'  => $r->currency_code,
+                'location'       => $r->location,
+                'channel'        => 'In-Store',
+                'type'           => $r->invoice_type ?? 'parts',
+                'payment_method' => $r->payment_method,
+                'staff'          => $r->created_by,
+                'doc_label'      => 'Receipt',
+                'created_at'     => $r->created_at,
+                'url'            => route('admin.invoices.show.manual', $r->id),
             ]);
 
-        // ── Orders (online checkout + staff-placed walk-in/phone) —
-        // channel comes from the orders.channel column itself now, so
-        // every sale shows its TRUE origin regardless of which tool
-        // created it. All orders populate here unconditionally.
         $orderRows = DB::table('orders')
+            ->whereNull('deleted_at')
             ->select('id', 'order_ref as ref', 'customer_name', 'customer_phone',
                      'total_amount_local', 'total_amount_ngn', 'total_amount_usd', 'currency_code as order_currency_code',
-                     'customer_country', 'payment_method', 'channel', 'payment_status', 'created_at')
+                     'customer_country', 'payment_method', 'channel', 'created_by', 'payment_status', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
-                'id'            => $r->id,
-                'ref'           => $r->ref,
-                'customer_name' => $r->customer_name,
-                'customer_phone'=> $r->customer_phone,
-                // Real fixed-currency total — falls back to the legacy
-                // NGN/USD columns only for orders placed before that fix.
-                'amount_local'  => $r->total_amount_local
+                'id'             => $r->id,
+                'ref'            => $r->ref,
+                'customer_name'  => $r->customer_name,
+                'customer_phone' => $r->customer_phone,
+                'amount_local'   => $r->total_amount_local
                     ?? ($r->order_currency_code === 'NGN' ? $r->total_amount_ngn : $r->total_amount_usd)
                     ?? $r->total_amount_ngn ?? $r->total_amount_usd ?? 0,
-                'currency_code' => $r->order_currency_code ?? ($r->total_amount_ngn ? 'NGN' : 'USD'),
-                'location'      => $r->customer_country,
-                'channel'       => match($r->channel ?? 'online') {
+                'currency_code'  => $r->order_currency_code ?? ($r->total_amount_ngn ? 'NGN' : 'USD'),
+                'location'       => $r->customer_country,
+                'channel'        => match($r->channel ?? 'online') {
                     'walk-in' => 'Walk-in',
                     'phone'   => 'Phone',
                     default   => 'Online',
                 },
-                'type'          => 'order',
-                'payment_method'=> $r->payment_method,
-                'staff'         => in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Staff' : 'Customer (online)',
-                // Once payment is confirmed, this is now a RECEIPT,
-                // not just an invoice — reflects what's actually true:
-                // money has changed hands.
-                'doc_label'     => in_array($r->payment_status, ['confirmed', 'paid', 'completed']) ? 'Receipt' : 'Invoice',
-                'created_at'    => $r->created_at,
-                'url'           => route('admin.invoices.show', $r->id),
+                'type'           => 'order',
+                'payment_method' => $r->payment_method,
+                'staff'          => $r->created_by ?? (in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Staff (unrecorded)' : 'Customer (online)'),
+                'doc_label'      => in_array($r->payment_status, ['confirmed', 'paid', 'completed']) ? 'Receipt' : 'Invoice',
+                'created_at'     => $r->created_at,
+                'url'            => route('admin.invoices.show', $r->id),
             ]);
 
         $all = $invoiceRows->concat($orderRows)->values();
 
-        // ── Search: ref/order#, customer name, phone ──────────────
         if ($q = trim($request->get('q', ''))) {
             $all = $all->filter(function ($r) use ($q) {
                 return str_contains(strtolower($r->ref ?? ''), strtolower($q))
@@ -1149,7 +1189,6 @@ class InvoiceController extends Controller
             })->values();
         }
 
-        // ── Date range filter ──────────────────────────────────────
         if ($from = $request->get('date_from')) {
             $all = $all->filter(fn($r) => \Carbon\Carbon::parse($r->created_at)->gte(\Carbon\Carbon::parse($from)->startOfDay()))->values();
         }
@@ -1157,23 +1196,20 @@ class InvoiceController extends Controller
             $all = $all->filter(fn($r) => \Carbon\Carbon::parse($r->created_at)->lte(\Carbon\Carbon::parse($to)->endOfDay()))->values();
         }
 
-        // ── Sort ─────────────────────────────────────────────────
         $sort = $request->get('sort', 'date_desc');
-        $all = match($sort) {
+        $all  = match($sort) {
             'date_asc'    => $all->sortBy('created_at')->values(),
             'name_asc'    => $all->sortBy(fn($r) => strtolower($r->customer_name ?? ''))->values(),
             'name_desc'   => $all->sortByDesc(fn($r) => strtolower($r->customer_name ?? ''))->values(),
             'amount_desc' => $all->sortByDesc('amount_local')->values(),
             'amount_asc'  => $all->sortBy('amount_local')->values(),
-            default       => $all->sortByDesc('created_at')->values(), // date_desc
+            default       => $all->sortByDesc('created_at')->values(),
         };
 
-        // Manual pagination since this is a merged in-memory collection
-        $perPage = 20;
-        $page    = (int) $request->get('page', 1);
-        $total   = $all->count();
-        $items   = $all->slice(($page - 1) * $perPage, $perPage)->values();
-
+        $perPage  = 20;
+        $page     = (int) $request->get('page', 1);
+        $total    = $all->count();
+        $items    = $all->slice(($page - 1) * $perPage, $perPage)->values();
         $invoices = new \Illuminate\Pagination\LengthAwarePaginator(
             $items, $total, $perPage, $page,
             ['path' => $request->url(), 'query' => $request->query()]
@@ -1190,16 +1226,13 @@ class InvoiceController extends Controller
         $invoice = DB::table('invoices')->where('id', $id)->first();
         if (!$invoice) abort(404);
 
-        $items = DB::table('invoice_items')
-            ->where('invoice_id', $id)
-            ->get();
-
+        $items        = DB::table('invoice_items')->where('invoice_id', $id)->get();
         $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
         $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($invoice->location);
 
         $lineItems = $items->map(function ($item) use ($currencyCode) {
-            $priceLocal = $item->unit_price_local ?? $item->unit_price_usd; // fallback for pre-migration rows
+            $priceLocal = $item->unit_price_local ?? $item->unit_price_usd;
             $lineLocal  = $priceLocal * $item->qty;
             return (object)[
                 'part_name'       => $item->part_name,
@@ -1211,19 +1244,18 @@ class InvoiceController extends Controller
                 'condition_grade' => $item->condition_grade,
                 'engine_code_oem' => '',
                 'qty'             => $item->qty,
-                'unit_price_usd'  => $priceLocal, // kept for template compatibility
+                'unit_price_usd'  => $priceLocal,
                 'unit_price_fmt'  => self::formatLocal($priceLocal, $currencyCode),
                 'total_fmt'       => self::formatLocal($lineLocal, $currencyCode),
             ];
         });
 
-        $customerInfo = (object)[
+        $customerInfo  = (object)[
             'name'    => $invoice->customer_name,
             'phone'   => $invoice->customer_phone,
             'email'   => $invoice->customer_email,
             'address' => $invoice->customer_address,
         ];
-
         $location      = $invoice->location;
         $saleLocation  = $invoice->location;
         $createdAt     = $invoice->created_at;
@@ -1231,168 +1263,137 @@ class InvoiceController extends Controller
         $copyKey       = 'customer';
         $invoiceNo     = $invoice->invoice_no;
         $subtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
-        $subtotalUsd   = $subtotalLocal; // kept for template compatibility
+        $subtotalUsd   = $subtotalLocal;
         $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
+        $invoiceType   = $invoice->invoice_type ?? 'parts';
 
         return view('admin.invoices.show', compact(
             'invoice', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
-            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey'
+            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
         ));
     }
 
     // =========================================================
-    // DELETE /admin/invoices/{id} — Admin only. Soft-delete, kept
-    // for audit purposes (#14) — hidden from normal lists, never
-    // fully erased, and the deleting admin is recorded.
+    // POST /admin/invoices/{id}/payments
     // =========================================================
-    public function destroy(Request $request, int $id)
-    {
-        $role = \Illuminate\Support\Facades\Session::get('staff_role');
-
-        // Admin can delete directly. Anyone else (Staff, Supervisor,
-        // Manager) must have gone through the Supervisor-or-above PIN
-        // override modal first — the form won't even submit without
-        // it client-side, and we re-verify a recent matching log
-        // entry exists server-side too, so this can't be bypassed by
-        // simply crafting a raw POST request.
-        if ($role !== 'admin') {
-            $request->validate(['override_token' => 'required|string']);
-            $validApproval = DB::table('override_logs')
-                ->where('action', 'delete_invoice')
-                ->where('context', 'like', "%invoice #{$id}%")
-                ->where('requested_by_staff_id', \Illuminate\Support\Facades\Session::get('staff_id'))
-                ->where('created_at', '>=', now()->subMinutes(5))
-                ->whereNotIn('approved_by_role', ['UNKNOWN'])
-                ->exists();
-
-            if (!$validApproval) {
-                return back()->with('error', 'A valid Supervisor/Manager/Admin PIN approval is required to delete an invoice.');
-            }
-        }
-
-        DB::table('invoices')->where('id', $id)->update([
-            'deleted_at'           => now(),
-            'deleted_by_staff_id'  => \Illuminate\Support\Facades\Session::get('staff_id'),
-        ]);
-
-        return redirect()->route('admin.invoices.index')->with('success', 'Invoice/receipt deleted.');
-    }
-
-    // =========================================================
-    // PARTIAL / MULTIPLE PAYMENTS — same pattern as orders. Covers
-    // Manual Invoice, Quick Receipt, and any invoice created from
-    // closing an Open Tab, since they all share the invoices table.
-    //
-    // NOTE: existing invoices created before this feature have NO
-    // payment records yet, so they'll show as "fully unpaid" here
-    // even if they were genuinely paid in full at the till. Use
-    // "Record a Payment" once to log that — it's a one-click backfill,
-    // not an assumption this system makes automatically (we never
-    // guess financial data on your behalf).
-    // =========================================================
-
-    public static function invoicePaymentSummary(int $invoiceId): array
-    {
-        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
-        $payments = DB::table('invoice_payments')->where('invoice_id', $invoiceId)->orderByDesc('created_at')->get();
-
-        $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_local');
-        $total = $invoice->subtotal_local ?? $invoice->subtotal_usd ?? 0;
-        $balanceDue = max(0, $total - $confirmedPaid);
-
-        return [
-            'payments'      => $payments,
-            'confirmedPaid' => $confirmedPaid,
-            'balanceDue'    => $balanceDue,
-            'total'         => $total,
-        ];
-    }
-
-    public function addInvoicePayment(Request $request, int $id)
+    public function addPayment(Request $request, int $invoiceId)
     {
         $request->validate([
             'amount_local'   => 'required|numeric|min:0.01',
-            'payment_method' => 'required|string|max:50',
-            'proof'          => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:8192',
-            'notes'          => 'nullable|string|max:500',
+            'payment_method' => 'required|string',
         ]);
 
-        $invoice = DB::table('invoices')->where('id', $id)->first();
-        abort_if(!$invoice, 404);
+        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        if (!$invoice) abort(404);
 
         $proofPath = null;
-        if ($request->hasFile('proof')) {
-            $proofPath = $request->file('proof')->store("invoice-payments/{$id}", 'public');
+        if ($request->hasFile('proof') && $request->file('proof')->isValid()) {
+            $proofPath = $request->file('proof')->store('payment-proofs', 'public');
         }
 
         DB::table('invoice_payments')->insert([
-            'invoice_id'     => $id,
+            'invoice_id'     => $invoiceId,
             'amount_local'   => $request->amount_local,
             'payment_method' => $request->payment_method,
             'proof_path'     => $proofPath,
+            'notes'          => $request->notes ?? null,
             'status'         => 'pending',
-            'notes'          => $request->notes,
+            'created_by'     => Session::get('staff_name') ?? 'Staff',
             'created_at'     => now(),
             'updated_at'     => now(),
         ]);
 
-        return back()->with('success', 'Payment recorded — pending confirmation.');
+        return back()->with('success', 'Payment recorded as pending. Confirm it to reduce the balance.');
     }
 
-    public function confirmInvoicePayment(int $id, int $paymentId)
+    // =========================================================
+    // POST /admin/invoices/{id}/payments/{pid}/confirm
+    // =========================================================
+    public function confirmPayment(int $invoiceId, int $paymentId)
     {
-        DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $id)->update([
-            'status'                => 'confirmed',
-            'confirmed_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'),
-            'confirmed_at'          => now(),
-            'updated_at'            => now(),
-        ]);
+        DB::table('invoice_payments')
+            ->where('id', $paymentId)
+            ->where('invoice_id', $invoiceId)
+            ->update(['status' => 'confirmed', 'updated_at' => now()]);
 
         return back()->with('success', 'Payment confirmed.');
     }
 
-    public function rejectInvoicePayment(int $id, int $paymentId)
+    // =========================================================
+    // POST /admin/invoices/{id}/payments/{pid}/reject
+    // =========================================================
+    public function rejectPayment(int $invoiceId, int $paymentId)
     {
-        DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $id)->update([
-            'status' => 'rejected', 'updated_at' => now(),
-        ]);
-        return back()->with('success', 'Payment marked as rejected.');
+        DB::table('invoice_payments')
+            ->where('id', $paymentId)
+            ->where('invoice_id', $invoiceId)
+            ->update(['status' => 'rejected', 'updated_at' => now()]);
+
+        return back()->with('success', 'Payment rejected.');
     }
 
-    public function sendInvoiceReminder(int $id)
+    // =========================================================
+    // POST /admin/invoices/{id}/send-reminder
+    // =========================================================
+    public function sendReminder(int $invoiceId)
     {
-        $invoice = DB::table('invoices')->where('id', $id)->first();
-        abort_if(!$invoice, 404);
+        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        if (!$invoice) abort(404);
 
-        $summary = self::invoicePaymentSummary($id);
-        if ($summary['balanceDue'] <= 0) {
-            return back()->with('error', 'This invoice has no outstanding balance.');
-        }
-
-        $currencyCode = $invoice->currency_code ?? 'NGN';
-        $balanceFmt = self::formatLocal($summary['balanceDue'], $currencyCode);
-        $message = "Hi {$invoice->customer_name}, this is Auto Zenith Parts. Your invoice {$invoice->invoice_no} has an outstanding balance of {$balanceFmt}. Please complete payment at your earliest convenience.";
-
-        if ($invoice->customer_phone) {
-            app(\App\Services\SmsService::class)->send($invoice->customer_phone, $message);
-            DB::table('invoice_payment_reminders')->insert([
-                'invoice_id' => $id, 'channel' => 'sms',
-                'sent_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'), 'created_at' => now(),
-            ]);
-        }
-
-        if ($invoice->customer_email) {
-            try {
-                \Illuminate\Support\Facades\Mail::to($invoice->customer_email)
-                    ->send(new \App\Mail\InvoicePaymentReminderMail($invoice, $summary['balanceDue'], $balanceFmt));
-                DB::table('invoice_payment_reminders')->insert([
-                    'invoice_id' => $id, 'channel' => 'email',
-                    'sent_by_staff_id' => \Illuminate\Support\Facades\Session::get('staff_id'), 'created_at' => now(),
-                ]);
-            } catch (\Exception $e) { /* logged by mail config */ }
-        }
+        DB::table('invoice_payment_reminders')->insert([
+            'invoice_id' => $invoiceId,
+            'sent_by'    => Session::get('staff_name') ?? 'Staff',
+            'sent_at'    => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return back()->with('success', 'Payment reminder sent.');
+    }
+
+    // =========================================================
+    // DELETE /admin/invoices/{id}
+    // =========================================================
+    public function destroy(Request $request, int $id)
+    {
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            abort(403);
+        }
+
+        DB::table('invoices')->where('id', $id)->update([
+            'deleted_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $returnTo = $request->input('return_to', route('admin.invoices.index'));
+        return redirect($returnTo)->with('success', 'Invoice moved to recycle bin.');
+    }
+
+    // =========================================================
+    // POST /admin/invoices/bulk-destroy
+    // =========================================================
+    public function bulkDestroy(Request $request)
+    {
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            return response()->json(['success' => false, 'error' => 'Not authorised.'], 403);
+        }
+
+        $items = $request->input('items', []);
+        if (empty($items)) {
+            return response()->json(['success' => false, 'error' => 'No items selected.']);
+        }
+
+        $invoiceIds = collect($items)->where('type', 'invoice')->pluck('id')->map('intval')->filter()->values();
+        $orderIds   = collect($items)->where('type', 'order')->pluck('id')->map('intval')->filter()->values();
+
+        if ($invoiceIds->isNotEmpty()) {
+            DB::table('invoices')->whereIn('id', $invoiceIds)->update(['deleted_at' => now(), 'updated_at' => now()]);
+        }
+        if ($orderIds->isNotEmpty()) {
+            DB::table('orders')->whereIn('id', $orderIds)->update(['deleted_at' => now(), 'updated_at' => now()]);
+        }
+
+        return response()->json(['success' => true]);
     }
 }
