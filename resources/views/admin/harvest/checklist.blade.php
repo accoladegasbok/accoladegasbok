@@ -134,8 +134,17 @@
                     @endif
                 </div>
 
-                {{-- Price input --}}
+                {{-- Part label badges (major component / legal trace) --}}
+                @php
+                    $pRule = $partTypeRules->get($part['label']) ?? null;
+                    $isMajor = $pRule && $pRule->is_major_component;
+                    $isLegal = $pRule && $pRule->legal_trace_required;
+                    $defaultWholesaleMargin = $pRule ? $pRule->wholesale_margin_pct : null;
+                @endphp
+
+                {{-- Price input (Retail) --}}
                 <div class="flex items-center gap-1 min-w-[140px]">
+                    <span class="text-slate-400 text-xs">Retail</span>
                     <span class="text-slate-400 text-sm currency-sym">{{ $currency['symbol'] }}</span>
                     <input type="number"
                            name="prices[{{ $part['key'] }}]"
@@ -143,10 +152,27 @@
                            min="0"
                            placeholder="{{ $currency['code'] === 'NGN' ? '0' : '0.00' }}"
                            class="w-28 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-sm text-white
-                                  focus:outline-none focus:border-[#C8960C] price-input"
+                                  focus:outline-none focus:border-[#C8960C] price-input retail-price-input"
+                           data-key="{{ $part['key'] }}"
+                           data-wholesale-margin="{{ $defaultWholesaleMargin ?? '' }}"
+                           {{ $alreadyHarvested ? 'disabled' : '' }}
+                           oninput="autoFillWholesale(this)">
+                    <span class="text-xs text-slate-500">{{ $currency['code'] }}</span>
+                </div>
+
+                {{-- Wholesale price input --}}
+                <div class="flex items-center gap-1 min-w-[130px]">
+                    <span class="text-[10px] text-[#C8960C]">Trade</span>
+                    <span class="text-slate-400 text-sm">{{ $currency['symbol'] }}</span>
+                    <input type="number"
+                           name="price_wholesale[{{ $part['key'] }}]"
+                           step="{{ $currency['code'] === 'NGN' ? '1000' : '0.01' }}"
+                           min="0"
+                           placeholder="{{ $currency['code'] === 'NGN' ? '0' : '0.00' }}"
+                           class="w-24 bg-[#1e293b] border border-[#C8960C]/40 rounded-lg px-2 py-1.5 text-sm text-[#C8960C]
+                                  focus:outline-none focus:border-[#C8960C] wholesale-price-input"
                            data-key="{{ $part['key'] }}"
                            {{ $alreadyHarvested ? 'disabled' : '' }}>
-                    <span class="text-xs text-slate-500">{{ $currency['code'] }}</span>
                 </div>
 
                 {{-- Quantity — only for parts that occur multiple times
@@ -244,6 +270,35 @@
                            class="text-xs text-slate-400 w-full file:bg-[#1e293b] file:border file:border-[#334155] file:rounded file:px-2 file:py-1 file:text-slate-300 file:text-xs"
                            {{ $alreadyHarvested ? 'disabled' : '' }}>
                 </div>
+
+                {{-- Conditions & options (Powerlink style — 36 char structured field) --}}
+                <div class="flex items-center gap-1 min-w-[160px]">
+                    <input type="text"
+                           name="conditions_and_options[{{ $part['key'] }}]"
+                           maxlength="36"
+                           placeholder="Condition detail (e.g. crack on corner)"
+                           class="w-44 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-xs text-slate-300
+                                  focus:outline-none focus:border-[#C8960C] placeholder-slate-600"
+                           {{ $alreadyHarvested ? 'disabled' : '' }}>
+                </div>
+
+                {{-- Major component + legal trace badges --}}
+                @if($isMajor || $isLegal)
+                <div class="flex items-center gap-1">
+                    @if($isMajor)
+                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                          title="Major component — supervisor PIN required">
+                        🔐 MAJOR
+                    </span>
+                    @endif
+                    @if($isLegal)
+                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30"
+                          title="Legal trace required — documentation needed at harvest and sale">
+                        ⚠ LEGAL TRACE
+                    </span>
+                    @endif
+                </div>
+                @endif
 
                 {{-- Notes --}}
                 <div class="w-full mt-1 pl-7">
@@ -479,6 +534,45 @@ function addCustomRow() {
 document.addEventListener('input', function(e) {
     if (e.target.matches('input[name^="prices["]') || e.target.matches('.custom-price')) {
         updateTotal();
+    }
+});
+
+// ── Auto-fill wholesale price from retail + margin ────────────────
+// When staff types a retail price, auto-fills the trade/wholesale
+// input based on part_type_rules.wholesale_margin_pct (passed via
+// data-wholesale-margin). Staff can override the auto-filled value.
+// Only fills if the wholesale field is currently empty or unchanged
+// from a previous auto-fill (tracked via data-auto-filled flag).
+function autoFillWholesale(retailInput) {
+    const key    = retailInput.dataset.key;
+    const margin = parseFloat(retailInput.dataset.wholesaleMargin || 0);
+    if (!margin || !key) return;
+
+    const retail    = parseFloat(retailInput.value || 0);
+    const wInput    = document.querySelector(`input[name="price_wholesale[${key}]"]`);
+    if (!wInput) return;
+
+    // Only auto-fill if field is empty or was previously auto-filled
+    if (wInput.value === '' || wInput.dataset.autoFilled === '1') {
+        if (retail > 0) {
+            const step = {{ $currency['code'] === 'NGN' ? '1000' : '0.01' }};
+            const raw  = retail * (1 - margin / 100);
+            // Round to nearest step
+            wInput.value = step >= 1000
+                ? Math.round(raw / 1000) * 1000
+                : parseFloat(raw.toFixed(2));
+            wInput.dataset.autoFilled = '1';
+        } else {
+            wInput.value = '';
+            wInput.dataset.autoFilled = '1';
+        }
+    }
+}
+
+// If staff manually edits wholesale price, clear the auto-filled flag
+document.addEventListener('input', function(e) {
+    if (e.target.matches('.wholesale-price-input')) {
+        e.target.dataset.autoFilled = '0';
     }
 });
 

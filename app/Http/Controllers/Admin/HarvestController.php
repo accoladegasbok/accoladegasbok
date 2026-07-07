@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Log;
 use App\Data\OemDatabase;
 use App\Services\InterchangeService;
-use App\Support\Locations;
 
 class HarvestController extends Controller
 {
@@ -47,38 +46,6 @@ class HarvestController extends Controller
             return (float) $m[1];
         }
         return 0;
-    }
-
-    // =========================================================
-    // Guesses the cylinder count from an engine string so that
-    // Spark Plug / Ignition Coil qty on the harvest checklist
-    // defaults to the right number without staff having to type
-    // it manually. Examples: "1.8L 4-cyl 2ZR-FE" → 4,
-    // "3.5L V6" → 6, "5.0L V8" → 8, "2.0T" → 4 (inline default).
-    // Returns 0 if nothing is recognisable (blade falls back to
-    // the part's own qty_default instead).
-    // =========================================================
-    private function guessCylinderCount(string $engineStr): int
-    {
-        $s = strtoupper($engineStr);
-
-        // Explicit cylinder patterns: "4-CYL", "V6", "V8", "I4",
-        // "W12", "H4" (Subaru boxer), "3CYL" etc.
-        if (preg_match('/\b(V|W|H|I|L|R|B)?(\d{1,2})\s*[-\s]?\s*CYL\b/i', $s, $m)) return (int) $m[2];
-        if (preg_match('/\b[VI](\d{1,2})\b/', $s, $m)) return (int) $m[1];
-        if (preg_match('/\b(W|H|F)(\d{1,2})\b/', $s, $m)) return (int) $m[2];
-
-        // Common shorthand: "4CYL", "V6", "V8", "INLINE-4" etc.
-        if (preg_match('/INLINE[-\s]?(\d)/i', $s, $m)) return (int) $m[1];
-
-        // Engine codes that imply cylinder count:
-        // 2ZR-FE = 4-cyl, 1GR-FE = 6-cyl, 2UZ-FE = 8-cyl etc.
-        // First digit of Toyota/Honda/Nissan codes is cyl count
-        if (preg_match('/\b([1-9])(?:ZR|GR|UZ|ZZ|NZ|SZ|GD|GE|VK|VQ|VG|KA|CA|SR|RB|VH|FJ|Z|G|K)\b/i', $s, $m)) {
-            return (int) $m[1];
-        }
-
-        return 0; // unknown — blade falls back to qty_default
     }
 
     private function getOemSuggest(string $make, string $model, int $year, float $engineL = 0): array
@@ -130,14 +97,17 @@ class HarvestController extends Controller
     {
         return view('admin.harvest.create', [
             'staffLocation' => Session::get('staff_location'),
-            // ── Single source of truth (#Locations fix) — this list
-            // used to be hardcoded here AND in InventoryController AND
-            // checkout/index.blade.php, and they drifted out of sync
-            // (checkout had "Oshodi Lagos" while this had "Lagos Nigeria"),
-            // which caused the donor_vehicles.location enum mismatch and
-            // 500 error on every Lagos harvest. Adding/renaming a location
-            // now only requires editing App\Support\Locations.
-            'locations'     => Locations::all(),
+            'locations'     => [
+                'Waxahachie TX',
+                'Kennedale TX',
+                'Elkhorn WI',
+                'Ile-Ife Nigeria',
+                'Ibadan Nigeria',
+                'Lagos Nigeria',
+                'Abuja Nigeria',
+                'Akure Nigeria',
+                'Accra Ghana',
+            ],
         ]);
     }
 
@@ -289,15 +259,6 @@ class HarvestController extends Controller
             'location'  => 'required|string|max:60',
         ]);
 
-        // ── Validate against the single source of truth BEFORE it ever
-        // reaches the database. Catches a location mismatch here with a
-        // clear message, instead of a cryptic MySQL "Data truncated"
-        // exception surfacing as a raw 500 error to staff — this is
-        // exactly the class of bug that broke Lagos harvesting before.
-        if (!Locations::isValid($request->location)) {
-            return back()->withInput()->with('error', "\"{$request->location}\" is not a recognized location. Please select one from the dropdown.");
-        }
-
         // Manual entry with no VIN — generate a 17-char placeholder so it
         // fits the vin column constraint, and so downstream donor_vin
         // linking (parts_inventory, harvest_sessions) still works.
@@ -337,29 +298,61 @@ class HarvestController extends Controller
                 ->with('success', 'This VIN was already registered — starting a new harvest session for it.');
         }
 
+        // ── Vehicle acquisition cost breakdown (Powerlink: VEHICLE_COST_PAYMENT) ─
+        $salvageCost    = (float) ($request->salvage_cost    ?? 0);
+        $towingCost     = (float) ($request->towing_cost     ?? 0);
+        $processingCost = (float) ($request->processing_cost ?? 0);
+        $otherCost      = (float) ($request->other_cost      ?? 0);
+        $totalCost      = $salvageCost + $towingCost + $processingCost + $otherCost;
+        $currency       = InvoiceController::currencyForLocation($request->location);
+
         $dvId = DB::table('donor_vehicles')->insertGetId([
-            'vin'             => $vin,
-            'year'            => $request->year,
-            'make'            => $request->make,
-            'model'           => $request->model,
-            'trim'            => $request->trim,
-            'colour'          => $request->colour,
-            'engine'          => $request->engine,
-            'mileage'         => $request->mileage,
-            'date_acquired'   => today(),
-            'source'          => $request->source,
-            'condition'       => $request->condition,
-            'location'        => $request->location,
-            'parts_harvested' => 0,
-            'notes'           => $request->notes,
-            'created_at'      => now(),
-            'updated_at'      => now(),
+            'vin'                   => $vin,
+            'year'                  => $request->year,
+            'make'                  => $request->make,
+            'model'                 => $request->model,
+            'trim'                  => $request->trim,
+            'colour'                => $request->colour,
+            'engine'                => $request->engine,
+            'mileage'               => $request->mileage,
+            'date_acquired'         => today(),
+            'source'                => $request->source,
+            'condition'             => $request->condition,
+            'location'              => $request->location,
+            'parts_harvested'       => 0,
+            'notes'                 => $request->notes,
+            // ── Phase 1 Powerlink cost fields ──
+            'salvage_cost'          => $salvageCost,
+            'towing_cost'           => $towingCost,
+            'processing_cost'       => $processingCost,
+            'other_cost'            => $otherCost,
+            'total_cost'            => $totalCost,
+            'currency_code'         => $currency['code'],
+            'break_even_days'       => $request->break_even_days ?: null,
+            'vehicle_status'        => $request->vehicle_status ?? 'Parts',
+            'primary_damage_code'   => $request->primary_damage_code   ? strtoupper(substr($request->primary_damage_code, 0, 3))   : null,
+            'secondary_damage_code' => $request->secondary_damage_code ? strtoupper(substr($request->secondary_damage_code, 0, 3)) : null,
+            'created_at'            => now(),
+            'updated_at'            => now(),
+        ]);
+
+        // ── Create blank ROI projection row for this vehicle ──────────────
+        // Staff can fill in projected revenue per category on the checklist.
+        // actual_total updates automatically as parts sell (Phase 4B listener).
+        DB::table('vehicle_revenue_projections')->insert([
+            'donor_vehicle_id' => $dvId,
+            'location'         => $request->location,
+            'currency_code'    => $currency['code'],
+            'proj_total'       => 0,
+            'actual_total'     => 0,
+            'created_at'       => now(),
+            'updated_at'       => now(),
         ]);
 
         $sessionId = DB::table('harvest_sessions')->insertGetId([
             'donor_vehicle_id' => $dvId,
             'staff_id'         => Session::get('staff_id'),
-            'location'         => $request->location,   // ← store harvest location
+            'location'         => $request->location,
             'status'           => 'in_progress',
             'created_at'       => now(),
             'updated_at'       => now(),
@@ -400,11 +393,8 @@ class HarvestController extends Controller
         $currency        = InvoiceController::currencyForLocation($harvestLocation);
         // ─────────────────────────────────────────────────────────
 
-        // ── Cylinder count — derived from the engine string so that
-        // Spark Plug / Ignition Coil qty defaults match the actual
-        // vehicle (a 4-cylinder defaults to 4, a V6 to 6, etc.).
-        // Staff can still edit the number before saving.
-        $cylinderCount = $this->guessCylinderCount($session->engine ?? '');
+        // ── Load part_type_rules keyed by part_name for O(1) blade lookup ─
+        $partTypeRules = DB::table('part_type_rules')->get()->keyBy('part_name');
 
         return view('admin.harvest.checklist', [
             'session'         => $session,
@@ -414,7 +404,7 @@ class HarvestController extends Controller
             'currency'        => $currency,
             'harvestLocation' => $harvestLocation,
             'oemSuggest'      => $oemSuggest,
-            'cylinderCount'   => $cylinderCount,
+            'partTypeRules'   => $partTypeRules,
         ]);
     }
 
@@ -441,15 +431,16 @@ class HarvestController extends Controller
         $currency        = InvoiceController::currencyForLocation($harvestLocation);
         // ─────────────────────────────────────────────────────────
 
-        $parts   = $request->input('parts', []);
-        $prices  = $request->input('prices', []);
-        $grades  = $request->input('grades', []);
+        $parts      = $request->input('parts', []);
+        $prices     = $request->input('prices', []);
+        $grades     = $request->input('grades', []);
         $notes      = $request->input('part_notes', []);
         $oemEng     = $request->input('oem_engine', []);
         $oemTrns    = $request->input('oem_transmission', []);
         $pins       = $request->input('pin_count', []);
-        $driveTypes = $request->input('drive_type', []);
-        $qtys       = $request->input('qtys', []);
+        // ── Phase 3 new fields ────────────────────────────────────────────
+        $conditions = $request->input('conditions_and_options', []);   // short condition detail per part
+        $wholesale  = $request->input('price_wholesale', []);          // trade/dealer price per part
 
         if (empty($parts)) {
             return back()->with('error', 'Please tick at least one part before saving.');
@@ -460,13 +451,15 @@ class HarvestController extends Controller
         if (!empty($customPartsInput) && !in_array(Session::get('staff_role'), ['admin', 'manager'])) {
             return back()->with('error', 'Only admin or manager can add custom part names. Please select a part from the standard list, or ask them to add it.');
         }
-
-        // Custom parts each need their own bin (#A). Photos are now
-        // OPTIONAL — if none are uploaded, the customer-facing screen
-        // falls back to the AutoZenith default "photo coming soon" image.
+        // Custom parts also each need their own bin (#A) and at least 1 photo
         foreach ($customPartsInput as $idx => $cp) {
             if (empty($cp['bin_id'])) {
                 return back()->with('error', 'Every custom part needs a bin selected before saving.');
+            }
+            $cpPhotoFiles = $request->file("custom_parts.{$idx}.photos") ?? [];
+            $cpValidCount = count(array_filter($cpPhotoFiles, fn($f) => $f && $f->isValid()));
+            if ($cpValidCount < 1) {
+                return back()->with('error', 'Every custom part needs at least 1 photo before saving.');
             }
         }
 
@@ -485,13 +478,9 @@ class HarvestController extends Controller
             return back()->with('error', 'Every ticked part needs a bin selected before saving — missing for: ' . implode(', ', $missingBins));
         }
 
-        // ── A bin can only go to ONE item per submission by default —
-        // UNLESS staff explicitly confirmed sharing it deliberately
-        // (the "are you sure?" prompt on selecting an already-taken
-        // bin client-side). Confirmed bin IDs are exempt from both
-        // checks below — a small group of genuinely related items CAN
-        // share one bin once staff has made that call.
-        //
+        // ── A bin can only go to ONE item per submission — the
+        // database-level exclusivity check (occupied bins disappearing
+        // from selection) only knows about parts already saved in a
         // Empty selections (unticked rows left blank) must be filtered
         // out first — otherwise multiple blank values look like
         // "duplicates" of each other and falsely trigger this error.
@@ -499,36 +488,27 @@ class HarvestController extends Controller
         // only assignment) are also excluded — many parts CAN share
         // the same room-only placeholder since none of them is
         // actually claiming a real physical bin.
-        $confirmedSharedBins = array_map('strval', $request->input('confirm_shared_bins', []));
-
         $allBinIdsThisBatch = array_values(array_filter($binsInput, fn($v) => !empty($v) && !str_starts_with($v, 'room:')));
         foreach ($customPartsInput as $cp) {
             if (!empty($cp['bin_id']) && !str_starts_with($cp['bin_id'], 'room:')) $allBinIdsThisBatch[] = $cp['bin_id'];
         }
-
-        // Duplicate-in-batch check — skip any bin ID staff confirmed sharing
-        $unconfirmedBinIds = array_diff($allBinIdsThisBatch, $confirmedSharedBins);
-        $duplicateBins = array_diff_assoc($unconfirmedBinIds, array_unique($unconfirmedBinIds));
+        $duplicateBins = array_diff_assoc($allBinIdsThisBatch, array_unique($allBinIdsThisBatch));
         if (!empty($duplicateBins)) {
             $dupeBinCodes = DB::table('storage_shelves')->whereIn('id', array_unique($duplicateBins))->pluck('full_bin_code')->implode(', ');
-            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part. Please choose a different bin for one of them, or confirm sharing it deliberately.");
+            return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part. Please choose a different bin for one of them.");
         }
 
-        // ── Also re-check against bins already occupied by PREVIOUSLY
-        // SAVED parts in the database — the dropdown marks these at
-        // page-load time, but if this harvest session has been open a
-        // while, another part may have claimed one of these bins since
-        // then. Confirmed shared bins are exempt here too.
-        $unconfirmedForDbCheck = array_diff($allBinIdsThisBatch, $confirmedSharedBins);
-        if (!empty($unconfirmedForDbCheck)) {
-            $alreadyOccupied = DB::table('parts_inventory')
-                ->whereIn('storage_shelf_id', $unconfirmedForDbCheck)
-                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
-                ->get();
-            if ($alreadyOccupied->count() > 0) {
-                $conflicts = $alreadyOccupied->map(fn($p) => "{$p->part_name} ({$p->part_code})")->implode(', ');
-                return back()->with('error', "One or more selected bins are already occupied by another part: {$conflicts}. Please choose different bins, or confirm sharing deliberately — someone may have claimed it since this page loaded.");
+        // ── At least 1 photo required per ticked part — server-side too.
+        $missingPhotos = [];
+        foreach ($parts as $partKey) {
+            $photoFiles = $request->file("photos.{$partKey}") ?? [];
+            $validCount = count(array_filter($photoFiles, fn($f) => $f && $f->isValid()));
+            if ($validCount < 1) {
+                $missingPhotos[] = $partKey;
             }
+        }
+        if (!empty($missingPhotos)) {
+            return back()->with('error', 'Every ticked part needs at least 1 photo before saving — missing for: ' . implode(', ', $missingPhotos));
         }
 
         // Preload all referenced bins' full_bin_code in one query
@@ -547,6 +527,9 @@ class HarvestController extends Controller
         $interchange  = new InterchangeService();
         $flatTemplate = collect($this->getPartsList())->flatten(1);
         $oemSuggest   = $this->suggestOemCodes($session->model, (int) $session->year, $this->parseEngineSize($session->engine ?? null));
+
+        // ── Load part_type_rules for auto-flagging at save time ───────────
+        $partTypeRules = DB::table('part_type_rules')->get()->keyBy('part_name');
 
         DB::beginTransaction();
         try {
@@ -585,25 +568,53 @@ class HarvestController extends Controller
                 $transCode  = null;
                 $pinCount   = null;
                 $gearAlias  = null;
-                $driveType  = $driveTypes[$key] ?? null;
-                // Qty — for countable parts (spark plugs, ignition coils).
-                // Defaults to cylinder count if set; staff can override.
-                $partQty = isset($tpl['qty']) ? max(1, (int) ($qtys[$key] ?? $tpl['qty_default'] ?? 1)) : 1;
 
                 if ($tpl['category'] === 'Engine') {
                     $engineCode = strtoupper(trim($oemEng[$key] ?? $oemSuggest['engine_code'] ?? '')) ?: null;
                 }
-                if ($tpl['category'] === 'Transmission' || $tpl['label'] === 'Complete Engine And Gear With Accessories') {
+                if ($tpl['category'] === 'Transmission') {
                     $transCode = strtoupper(trim($oemTrns[$key] ?? $oemSuggest['transmission_code'] ?? '')) ?: null;
                     $pinCount  = (int) ($pins[$key] ?? $oemSuggest['pin_count'] ?? 0) ?: null;
                     if ($pinCount) {
-                        $gearAlias = "{$pinCount}-pin";
-                        if ($driveType) $gearAlias .= " {$driveType}";
+                        $gearAlias = "{$pinCount}-pin gear";
                         if ($session->model) $gearAlias .= " ({$session->make} {$session->model})";
-                    } elseif ($driveType) {
-                        $gearAlias = $driveType;
                     }
                 }
+
+                // ── Quantity per vehicle — most parts are qty 1, but
+                // ignition coils and spark plugs physically occur
+                // multiple times per vehicle (varies by cylinder
+                // count). Staff enters the actual count directly on
+                // the checklist row via a "qty" input — simpler and
+                // more reliable than auto-deriving it from an OEM
+                // engine-code lookup, since it works even when the
+                // donor vehicle's engine code is unknown or unset.
+                $stockQty = 1;
+                if (in_array($key, ['ignition_coil', 'spark_plug'])) {
+                    $qtyInput = $request->input('qty', []);
+                    $stockQty = max(1, (int) ($qtyInput[$key] ?? 1));
+                }
+
+                // ── Powerlink Phase 3: auto-set flags from part_type_rules ──
+                $rule                = $partTypeRules->get($tpl['label']);
+                $legalTraceRequired  = $rule ? (int) $rule->legal_trace_required  : 0;
+                $isMajorComponent    = $rule ? (int) $rule->is_major_component    : 0;
+
+                // Wholesale price — from form input if staff entered one,
+                // otherwise auto-calc from part_type_rules.wholesale_margin_pct.
+                // Falls back to null if no margin is defined for this part.
+                $rawWholesale = isset($wholesale[$key]) && $wholesale[$key] !== ''
+                    ? (float) $wholesale[$key]
+                    : null;
+
+                if ($rawWholesale === null && $rule && $rule->wholesale_margin_pct > 0 && $rawPrice > 0) {
+                    $rawWholesale = round($rawPrice * (1 - ($rule->wholesale_margin_pct / 100)), 2);
+                }
+
+                // Conditions & options — max 36 chars matching Powerlink spec
+                $condAndOpts = isset($conditions[$key])
+                    ? substr(trim($conditions[$key]), 0, 36)
+                    : null;
 
                 $compatFrom = (int) $session->year;
                 $compatTo   = (int) $session->year;
@@ -642,20 +653,25 @@ class HarvestController extends Controller
                     'transmission_code_oem' => $transCode,
                     'pin_count'             => $pinCount,
                     'gear_alias'            => $gearAlias,
-                    'drive_type'            => $driveType,
                     'origin_market'         => 'N/A',
-                    'price_usd'             => $priceUsd,
-                    'price_local'           => $rawPrice,
+                    'price_usd'             => $priceUsd,          // ← frozen snapshot only, never recalculated
+                    'price_local'           => $rawPrice,         // ← authoritative price, fixed currency
                     'currency_code'         => $currency['code'],
                     'location'              => $session->location,
-                    'storage_shelf_id'      => $itemShelfId,
-                    'bin_location'          => $itemBinCode,
-                    'stock_qty'             => $partQty,
-                    'status'                => 'Available',
-                    'description'           => $partNote,
-                    'photos'                => '[]',
-                    'created_at'            => now(),
-                    'updated_at'            => now(),
+                    'storage_shelf_id'        => $itemShelfId,
+                    'bin_location'            => $itemBinCode,
+                    'stock_qty'               => $stockQty,
+                    'status'                  => 'Available',
+                    'description'             => $partNote,
+                    'photos'                  => '[]',
+                    // ── Powerlink Phase 3 fields ──────────────────────────
+                    'price_wholesale'         => $rawWholesale,
+                    'conditions_and_options'  => $condAndOpts,
+                    'legal_trace_required'    => $legalTraceRequired,
+                    'is_major_component'      => $isMajorComponent,
+                    // ─────────────────────────────────────────────────────
+                    'created_at'              => now(),
+                    'updated_at'              => now(),
                 ]);
 
                 // ── Auto-join an existing interchange group if this part's
@@ -669,9 +685,7 @@ class HarvestController extends Controller
                     $interchange->assignPartToGroup($newPartId, $matchedGroup->id);
                 }
 
-                // ── Photo upload — OPTIONAL now, per item. If none
-                // uploaded, photos stays '[]' and the customer-facing
-                // screen shows the AutoZenith default image instead.
+                // ── Photo upload — required, per item (shown to customers) ──
                 if ($request->hasFile("photos.{$key}")) {
                     $uploaded = [];
                     foreach ($request->file("photos.{$key}") as $photoFile) {
@@ -756,7 +770,7 @@ class HarvestController extends Controller
                     $interchange->assignPartToGroup($newCpId, $matchedGroupCp->id);
                 }
 
-                // ── Photo upload — OPTIONAL now, per custom item ──
+                // ── Photo upload — required 3-10, per custom item ──
                 if ($request->hasFile("custom_parts.{$cpIdx}.photos")) {
                     $cpUploaded = [];
                     foreach ($request->file("custom_parts.{$cpIdx}.photos") as $photoFile) {
@@ -833,103 +847,203 @@ class HarvestController extends Controller
     // =========================================================
     // PARTS LIST
     // =========================================================
-    // =========================================================
-    // Builds the harvest checklist from App\Data\PartNames::all()
-    // — the SINGLE source of truth for all part names across the
-    // system. Adding a name to PartNames.php now automatically
-    // makes it appear on both Manual Add AND the harvest checklist.
-    // No more double-maintenance between two separate lists.
-    //
-    // Special overrides (qty, category remapping) are handled via
-    // the small lookup tables below rather than hardcoding them
-    // into every individual array entry.
-    // =========================================================
     private function getPartsList(): array
     {
-        // ── Category remapping — PartNames.php uses display-friendly
-        // category names; harvest needs the short internal category
-        // strings used for filtering the checklist sections.
-        $categoryMap = [
-            'Engine & Drivetrain'    => 'Engine',
-            'Transmission & Gearbox' => 'Transmission',
-            'Cooling System'         => 'Cooling',
-            'Fuel & Exhaust'         => 'Exhaust',
-            'Brakes'                 => 'Brakes',
-            'Suspension & Steering'  => 'Suspension',
-            'Electrical & Electronics' => 'Electrical',
-            'Interior'               => 'Interior',
-            'Body & Exterior'        => 'Body',
-            'Wheels & Tyres'         => 'Wheels',
-            'Generic / Consumable'   => 'Consumable',
+        return [
+            'Engine & Powertrain' => [
+                ['key'=>'engine',              'label'=>'Complete Engine Assembly',         'category'=>'Engine'],
+                ['key'=>'engine_gear_complete','label'=>'Complete Engine And Gear With Accessories', 'category'=>'Engine'],
+                ['key'=>'engine_block',        'label'=>'Engine Block',                     'category'=>'Engine'],
+                ['key'=>'cylinder_head',       'label'=>'Cylinder Head',                    'category'=>'Engine'],
+                ['key'=>'intake_manifold',     'label'=>'Intake Manifold',                  'category'=>'Engine'],
+                ['key'=>'throttle_body',       'label'=>'Throttle Body',                    'category'=>'Engine'],
+                ['key'=>'fuel_injectors',      'label'=>'Fuel Injectors (Set)',             'category'=>'Engine'],
+                ['key'=>'alternator',          'label'=>'Alternator',                       'category'=>'Engine'],
+                ['key'=>'starter',             'label'=>'Starter Motor',                    'category'=>'Engine'],
+                ['key'=>'power_steering_pump', 'label'=>'Power Steering Pump',              'category'=>'Engine'],
+                ['key'=>'ac_compressor',       'label'=>'A/C Compressor',                   'category'=>'Engine'],
+                ['key'=>'turbocharger',        'label'=>'Turbocharger / Supercharger',      'category'=>'Engine'],
+                ['key'=>'engine_harness',      'label'=>'Engine Wiring Harness',            'category'=>'Electrical'],
+                ['key'=>'ecm',                 'label'=>'Engine Control Module (ECM/PCM)',  'category'=>'Electrical'],
+                ['key'=>'transmission',        'label'=>'Transmission / Gearbox (Auto)',    'category'=>'Transmission'],
+                ['key'=>'transmission_manual', 'label'=>'Transmission / Gearbox (Manual)', 'category'=>'Transmission'],
+                ['key'=>'transfer_case',       'label'=>'Transfer Case',                    'category'=>'Transmission'],
+                ['key'=>'differential_front',  'label'=>'Front Differential',               'category'=>'Transmission'],
+                ['key'=>'differential_rear',   'label'=>'Rear Differential',                'category'=>'Transmission'],
+                ['key'=>'driveshaft_front',    'label'=>'Driveshaft — Front',               'category'=>'Transmission'],
+                ['key'=>'driveshaft_rear',     'label'=>'Driveshaft — Rear',                'category'=>'Transmission'],
+                ['key'=>'axle_fl',             'label'=>'Axle / CV Shaft — Front Left',     'category'=>'Transmission'],
+                ['key'=>'axle_fr',             'label'=>'Axle / CV Shaft — Front Right',    'category'=>'Transmission'],
+                ['key'=>'axle_rl',             'label'=>'Axle / CV Shaft — Rear Left',      'category'=>'Transmission'],
+                ['key'=>'axle_rr',             'label'=>'Axle / CV Shaft — Rear Right',     'category'=>'Transmission'],
+                ['key'=>'oil_pan',             'label'=>'Oil Pan',                          'category'=>'Engine'],
+                ['key'=>'valve_cover',         'label'=>'Valve Cover / Cam Cover',          'category'=>'Engine'],
+                ['key'=>'timing_chain_kit',    'label'=>'Timing Chain / Belt Kit',          'category'=>'Engine'],
+                ['key'=>'flywheel',            'label'=>'Flywheel / Flexplate',             'category'=>'Engine'],
+                ['key'=>'ignition_coil',       'label'=>'Ignition Coil',                    'category'=>'Engine'],
+                ['key'=>'spark_plug',          'label'=>'Spark Plug',                       'category'=>'Engine'],
+            ],
+            'Cooling System' => [
+                ['key'=>'radiator',           'label'=>'Radiator',                          'category'=>'Cooling'],
+                ['key'=>'cooling_fan',        'label'=>'Cooling Fan Assembly',              'category'=>'Cooling'],
+                ['key'=>'fan_clutch',         'label'=>'Fan Clutch',                        'category'=>'Cooling'],
+                ['key'=>'intercooler',        'label'=>'Intercooler',                       'category'=>'Cooling'],
+                ['key'=>'coolant_reservoir',  'label'=>'Coolant Reservoir / Overflow Tank', 'category'=>'Cooling'],
+                ['key'=>'thermostat_housing', 'label'=>'Thermostat Housing',                'category'=>'Cooling'],
+                ['key'=>'water_pump',         'label'=>'Water Pump',                        'category'=>'Cooling'],
+                ['key'=>'ac_condenser',       'label'=>'A/C Condenser',                    'category'=>'Cooling'],
+                ['key'=>'ac_evaporator',      'label'=>'A/C Evaporator',                   'category'=>'Cooling'],
+                ['key'=>'heater_core',        'label'=>'Heater Core',                       'category'=>'Cooling'],
+                ['key'=>'blower_motor',       'label'=>'Blower Motor',                      'category'=>'Cooling'],
+            ],
+            'Suspension & Steering' => [
+                ['key'=>'steering_rack',      'label'=>'Steering Rack and Pinion',          'category'=>'Suspension'],
+                ['key'=>'steering_column',    'label'=>'Steering Column',                   'category'=>'Suspension'],
+                ['key'=>'steering_wheel',     'label'=>'Steering Wheel',                    'category'=>'Interior'],
+                ['key'=>'control_arm_fl',     'label'=>'Control Arm — Front Left',          'category'=>'Suspension'],
+                ['key'=>'control_arm_fr',     'label'=>'Control Arm — Front Right',         'category'=>'Suspension'],
+                ['key'=>'control_arm_rl',     'label'=>'Control Arm — Rear Left',           'category'=>'Suspension'],
+                ['key'=>'control_arm_rr',     'label'=>'Control Arm — Rear Right',          'category'=>'Suspension'],
+                ['key'=>'knuckle_fl',         'label'=>'Spindle / Knuckle — Front Left',    'category'=>'Suspension'],
+                ['key'=>'knuckle_fr',         'label'=>'Spindle / Knuckle — Front Right',   'category'=>'Suspension'],
+                ['key'=>'strut_fl',           'label'=>'Strut Assembly — Front Left',       'category'=>'Suspension'],
+                ['key'=>'strut_fr',           'label'=>'Strut Assembly — Front Right',      'category'=>'Suspension'],
+                ['key'=>'strut_rl',           'label'=>'Strut Assembly — Rear Left',        'category'=>'Suspension'],
+                ['key'=>'strut_rr',           'label'=>'Strut Assembly — Rear Right',       'category'=>'Suspension'],
+                ['key'=>'shock_fl',           'label'=>'Shock Absorber — Front Left',       'category'=>'Suspension'],
+                ['key'=>'shock_fr',           'label'=>'Shock Absorber — Front Right',      'category'=>'Suspension'],
+                ['key'=>'shock_rl',           'label'=>'Shock Absorber — Rear Left',        'category'=>'Suspension'],
+                ['key'=>'shock_rr',           'label'=>'Shock Absorber — Rear Right',       'category'=>'Suspension'],
+                ['key'=>'coil_spring_front',  'label'=>'Coil Spring — Front',               'category'=>'Suspension'],
+                ['key'=>'coil_spring_rear',   'label'=>'Coil Spring — Rear',                'category'=>'Suspension'],
+                ['key'=>'sway_bar_front',     'label'=>'Sway Bar — Front',                  'category'=>'Suspension'],
+                ['key'=>'sway_bar_rear',      'label'=>'Sway Bar — Rear',                   'category'=>'Suspension'],
+                ['key'=>'hub_bearing_fl',     'label'=>'Wheel Hub & Bearing — Front Left',  'category'=>'Suspension'],
+                ['key'=>'hub_bearing_fr',     'label'=>'Wheel Hub & Bearing — Front Right', 'category'=>'Suspension'],
+                ['key'=>'hub_bearing_rl',     'label'=>'Wheel Hub & Bearing — Rear Left',   'category'=>'Suspension'],
+                ['key'=>'hub_bearing_rr',     'label'=>'Wheel Hub & Bearing — Rear Right',  'category'=>'Suspension'],
+                ['key'=>'subframe_front',     'label'=>'Subframe — Front',                  'category'=>'Suspension'],
+                ['key'=>'subframe_rear',      'label'=>'Subframe — Rear',                   'category'=>'Suspension'],
+            ],
+            'Brake System' => [
+                ['key'=>'caliper_fl',      'label'=>'Brake Caliper — Front Left',   'category'=>'Brakes'],
+                ['key'=>'caliper_fr',      'label'=>'Brake Caliper — Front Right',  'category'=>'Brakes'],
+                ['key'=>'caliper_rl',      'label'=>'Brake Caliper — Rear Left',    'category'=>'Brakes'],
+                ['key'=>'caliper_rr',      'label'=>'Brake Caliper — Rear Right',   'category'=>'Brakes'],
+                ['key'=>'master_cylinder', 'label'=>'Brake Master Cylinder',        'category'=>'Brakes'],
+                ['key'=>'abs_module',      'label'=>'ABS Module / Pump',            'category'=>'Brakes'],
+                ['key'=>'brake_booster',   'label'=>'Brake Booster / Servo',        'category'=>'Brakes'],
+                ['key'=>'rotor_fl',        'label'=>'Brake Rotor — Front Left',     'category'=>'Brakes'],
+                ['key'=>'rotor_fr',        'label'=>'Brake Rotor — Front Right',    'category'=>'Brakes'],
+                ['key'=>'rotor_rl',        'label'=>'Brake Rotor — Rear Left',      'category'=>'Brakes'],
+                ['key'=>'rotor_rr',        'label'=>'Brake Rotor — Rear Right',     'category'=>'Brakes'],
+            ],
+            'Electrical Components' => [
+                ['key'=>'fuse_box_engine',   'label'=>'Fuse Box — Engine Bay',                    'category'=>'Electrical'],
+                ['key'=>'fuse_box_cabin',    'label'=>'Fuse Box — Cabin / Interior',              'category'=>'Electrical'],
+                ['key'=>'bcm',               'label'=>'Body Control Module (BCM)',                 'category'=>'Electrical'],
+                ['key'=>'cluster',           'label'=>'Instrument Cluster / Speedometer',          'category'=>'Electrical'],
+                ['key'=>'ignition_switch',   'label'=>'Ignition Switch',                          'category'=>'Electrical'],
+                ['key'=>'window_motor_fl',   'label'=>'Window Motor — Front Left',                'category'=>'Electrical'],
+                ['key'=>'window_motor_fr',   'label'=>'Window Motor — Front Right',               'category'=>'Electrical'],
+                ['key'=>'window_motor_rl',   'label'=>'Window Motor — Rear Left',                 'category'=>'Electrical'],
+                ['key'=>'window_motor_rr',   'label'=>'Window Motor — Rear Right',                'category'=>'Electrical'],
+                ['key'=>'wiper_motor_front', 'label'=>'Wiper Motor — Front',                      'category'=>'Electrical'],
+                ['key'=>'sensor_maf',        'label'=>'Mass Air Flow Sensor (MAF)',                'category'=>'Electrical'],
+                ['key'=>'sensor_map',        'label'=>'MAP Sensor',                               'category'=>'Electrical'],
+                ['key'=>'sensor_crank',      'label'=>'Crankshaft Position Sensor',               'category'=>'Electrical'],
+                ['key'=>'sensor_cam',        'label'=>'Camshaft Position Sensor',                 'category'=>'Electrical'],
+                ['key'=>'sensor_o2_up',      'label'=>'Oxygen Sensor — Upstream',                 'category'=>'Electrical'],
+                ['key'=>'sensor_o2_dn',      'label'=>'Oxygen Sensor — Downstream',               'category'=>'Electrical'],
+                ['key'=>'radio',             'label'=>'Radio / Infotainment / Navigation',         'category'=>'Electrical'],
+                ['key'=>'climate_module',    'label'=>'Climate Control Module',                   'category'=>'Electrical'],
+                ['key'=>'reverse_camera',    'label'=>'Reverse / Backup Camera',                  'category'=>'Electrical'],
+                ['key'=>'battery',           'label'=>'Battery',                                  'category'=>'Electrical'],
+            ],
+            'Body Parts' => [
+                ['key'=>'hood',              'label'=>'Hood / Bonnet',             'category'=>'Body'],
+                ['key'=>'front_bumper',      'label'=>'Front Bumper Cover',        'category'=>'Body'],
+                ['key'=>'rear_bumper',       'label'=>'Rear Bumper Cover',         'category'=>'Body'],
+                ['key'=>'fender_l',          'label'=>'Front Fender — Left',       'category'=>'Body'],
+                ['key'=>'fender_r',          'label'=>'Front Fender — Right',      'category'=>'Body'],
+                ['key'=>'door_fl',           'label'=>'Door Shell — Front Left',   'category'=>'Body'],
+                ['key'=>'door_fr',           'label'=>'Door Shell — Front Right',  'category'=>'Body'],
+                ['key'=>'door_rl',           'label'=>'Door Shell — Rear Left',    'category'=>'Body'],
+                ['key'=>'door_rr',           'label'=>'Door Shell — Rear Right',   'category'=>'Body'],
+                ['key'=>'tailgate',          'label'=>'Tailgate',                  'category'=>'Body'],
+                ['key'=>'trunk_lid',         'label'=>'Trunk Lid / Boot Lid',      'category'=>'Body'],
+                ['key'=>'roof_panel',        'label'=>'Roof Panel',                'category'=>'Body'],
+                ['key'=>'quarter_panel_l',   'label'=>'Quarter Panel — Left',      'category'=>'Body'],
+                ['key'=>'quarter_panel_r',   'label'=>'Quarter Panel — Right',     'category'=>'Body'],
+                ['key'=>'grille',            'label'=>'Grille',                    'category'=>'Body'],
+                ['key'=>'mirror_l',          'label'=>'Side Mirror — Left',        'category'=>'Body'],
+                ['key'=>'mirror_r',          'label'=>'Side Mirror — Right',       'category'=>'Body'],
+            ],
+            'Lighting' => [
+                ['key'=>'headlight_l',      'label'=>'Headlight Assembly — Left',   'category'=>'Body'],
+                ['key'=>'headlight_r',      'label'=>'Headlight Assembly — Right',  'category'=>'Body'],
+                ['key'=>'tail_light_l',     'label'=>'Tail Light Assembly — Left',  'category'=>'Body'],
+                ['key'=>'tail_light_r',     'label'=>'Tail Light Assembly — Right', 'category'=>'Body'],
+                ['key'=>'fog_light_l',      'label'=>'Fog Light — Left',            'category'=>'Body'],
+                ['key'=>'fog_light_r',      'label'=>'Fog Light — Right',           'category'=>'Body'],
+                ['key'=>'third_brake_light','label'=>'Third Brake Light (CHMSL)',   'category'=>'Body'],
+            ],
+            'Glass' => [
+                ['key'=>'windshield',      'label'=>'Windshield / Front Glass',  'category'=>'Body'],
+                ['key'=>'door_glass_fl',   'label'=>'Door Glass — Front Left',   'category'=>'Body'],
+                ['key'=>'door_glass_fr',   'label'=>'Door Glass — Front Right',  'category'=>'Body'],
+                ['key'=>'door_glass_rl',   'label'=>'Door Glass — Rear Left',    'category'=>'Body'],
+                ['key'=>'door_glass_rr',   'label'=>'Door Glass — Rear Right',   'category'=>'Body'],
+                ['key'=>'rear_glass',      'label'=>'Rear Window Glass',         'category'=>'Body'],
+                ['key'=>'sunroof_glass',   'label'=>'Sunroof / Moonroof Glass',  'category'=>'Body'],
+            ],
+            'Interior' => [
+                ['key'=>'seat_driver',    'label'=>'Seat — Front Driver',           'category'=>'Seat'],
+                ['key'=>'seat_passenger', 'label'=>'Seat — Front Passenger',        'category'=>'Seat'],
+                ['key'=>'seat_rear_l',    'label'=>'Seat — Rear Left',              'category'=>'Seat'],
+                ['key'=>'seat_rear_r',    'label'=>'Seat — Rear Right',             'category'=>'Seat'],
+                ['key'=>'seatbelt_fl',    'label'=>'Seat Belt — Front Left',        'category'=>'Interior'],
+                ['key'=>'seatbelt_fr',    'label'=>'Seat Belt — Front Right',       'category'=>'Interior'],
+                ['key'=>'seatbelt_rear',  'label'=>'Seat Belt — Rear',              'category'=>'Interior'],
+                ['key'=>'dashboard',      'label'=>'Dashboard / Instrument Panel',  'category'=>'Interior'],
+                ['key'=>'center_console', 'label'=>'Center Console',                'category'=>'Interior'],
+                ['key'=>'door_panel_fl',  'label'=>'Door Panel — Front Left',       'category'=>'Interior'],
+                ['key'=>'door_panel_fr',  'label'=>'Door Panel — Front Right',      'category'=>'Interior'],
+                ['key'=>'door_panel_rl',  'label'=>'Door Panel — Rear Left',        'category'=>'Interior'],
+                ['key'=>'door_panel_rr',  'label'=>'Door Panel — Rear Right',       'category'=>'Interior'],
+                ['key'=>'carpet',         'label'=>'Carpet / Floor Mat Set',        'category'=>'Interior'],
+                ['key'=>'headliner',      'label'=>'Headliner / Roof Lining',       'category'=>'Interior'],
+                ['key'=>'glove_box',      'label'=>'Glove Box',                     'category'=>'Interior'],
+                ['key'=>'rearview_mirror','label'=>'Rearview Mirror (Interior)',    'category'=>'Interior'],
+                ['key'=>'gear_selector',  'label'=>'Gear Shift / Selector Assembly','category'=>'Interior'],
+            ],
+            'Airbags & Safety' => [
+                ['key'=>'airbag_driver',    'label'=>'Airbag — Driver (Steering Wheel)',  'category'=>'Airbag'],
+                ['key'=>'airbag_passenger', 'label'=>'Airbag — Passenger (Dashboard)',    'category'=>'Airbag'],
+                ['key'=>'airbag_curtain_l', 'label'=>'Airbag — Side Curtain Left',        'category'=>'Airbag'],
+                ['key'=>'airbag_curtain_r', 'label'=>'Airbag — Side Curtain Right',       'category'=>'Airbag'],
+                ['key'=>'airbag_knee',      'label'=>'Airbag — Knee',                     'category'=>'Airbag'],
+                ['key'=>'airbag_module',    'label'=>'Airbag Control Module (ACM)',        'category'=>'Airbag'],
+            ],
+            'Wheels & Tyres' => [
+                ['key'=>'wheels_set',   'label'=>'Alloy Wheel Rims (Set of 4)',  'category'=>'Wheels'],
+                ['key'=>'wheel_single', 'label'=>'Alloy Wheel Rim (Single)',     'category'=>'Wheels'],
+                ['key'=>'spare_wheel',  'label'=>'Spare Wheel / Spare Tyre',    'category'=>'Wheels'],
+                ['key'=>'tyres_set',    'label'=>'Tyres (Set of 4)',             'category'=>'Wheels'],
+            ],
+            'Fuel & Exhaust' => [
+                ['key'=>'fuel_tank',           'label'=>'Fuel Tank',             'category'=>'Fuel'],
+                ['key'=>'fuel_pump',           'label'=>'Fuel Pump',             'category'=>'Fuel'],
+                ['key'=>'catalytic_converter', 'label'=>'Catalytic Converter',   'category'=>'Exhaust'],
+                ['key'=>'exhaust_manifold',    'label'=>'Exhaust Manifold',      'category'=>'Exhaust'],
+                ['key'=>'muffler',             'label'=>'Muffler / Silencer',    'category'=>'Exhaust'],
+            ],
+            'Hybrid & EV' => [
+                ['key'=>'hv_battery',    'label'=>'High-Voltage Battery Pack',     'category'=>'Electrical'],
+                ['key'=>'inverter',      'label'=>'Inverter / Power Control Unit', 'category'=>'Electrical'],
+                ['key'=>'electric_motor','label'=>'Electric Motor',                'category'=>'Engine'],
+                ['key'=>'charging_port', 'label'=>'Charging Port Assembly',        'category'=>'Electrical'],
+            ],
         ];
-
-        // ── Section display names — how each category group is
-        // labelled on the harvest checklist page.
-        $sectionNames = [
-            'Engine & Drivetrain'    => 'Engine & Powertrain',
-            'Transmission & Gearbox' => 'Engine & Powertrain',
-            'Fuel & Exhaust'         => 'Fuel & Exhaust',
-            'Cooling System'         => 'Cooling System',
-            'Brakes'                 => 'Brake System',
-            'Suspension & Steering'  => 'Suspension & Steering',
-            'Electrical & Electronics' => 'Electrical Components',
-            'Interior'               => 'Interior',
-            'Body & Exterior'        => 'Body Parts',
-            'Wheels & Tyres'         => 'Wheels & Tyres',
-            'Generic / Consumable'   => 'Consumables',
-        ];
-
-        // ── Per-part overrides — only needed for parts with special
-        // harvest behaviour (e.g. qty input for countable small parts).
-        // Key is the exact part name string from PartNames.php.
-        // ── Per-part overrides — qty defaults to the donor vehicle's
-        // cylinder count for parts that are one-per-cylinder.
-        // The blade uses CYLINDER_COUNT (injected from the session)
-        // as the default value for these entries.
-        $overrides = [
-            // Spark plug / coil qty = number of cylinders
-            'Spark Plug (Single)'   => ['qty' => true, 'qty_source' => 'cylinders', 'qty_max' => 16],
-            'Spark Plug (Set of 4)' => ['qty' => true, 'qty_source' => 'cylinders', 'qty_max' => 16],
-            'Spark Plug (Set of 6)' => ['qty' => true, 'qty_source' => 'cylinders', 'qty_max' => 16],
-            'Ignition Coil'         => ['qty' => true, 'qty_source' => 'cylinders', 'qty_max' => 16],
-            'Glow Plug (Diesel)'    => ['qty' => true, 'qty_source' => 'cylinders', 'qty_max' => 16],
-            // Mounts — multiple per vehicle
-            'Engine Mount'          => ['qty' => true, 'qty_source' => 'count', 'qty_default' => 2, 'qty_max' => 6],
-            'Transmission Mount'    => ['qty' => true, 'qty_source' => 'count', 'qty_default' => 1, 'qty_max' => 4],
-        ];
-
-        $sections = [];
-
-        foreach (\App\Data\PartNames::all() as $partNamesCategory => $names) {
-            // Skip consumables — they're added separately via
-            // the Consumables module, not tick-listed at harvest
-            if ($partNamesCategory === 'Generic / Consumable') continue;
-
-            $sectionName = $sectionNames[$partNamesCategory] ?? $partNamesCategory;
-            $category    = $categoryMap[$partNamesCategory] ?? 'Engine';
-
-            if (!isset($sections[$sectionName])) {
-                $sections[$sectionName] = [];
-            }
-
-            foreach ($names as $label) {
-                // Auto-generate a unique key from the label — snake_case,
-                // stripped of punctuation, max 40 chars. Stable as long
-                // as the label itself doesn't change.
-                $key = substr(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $label)), 0, 40);
-                $key = trim($key, '_');
-
-                $entry = ['key' => $key, 'label' => $label, 'category' => $category];
-
-                // Apply any special overrides for this part
-                if (isset($overrides[$label])) {
-                    $entry = array_merge($entry, $overrides[$label]);
-                }
-
-                $sections[$sectionName][] = $entry;
-            }
-        }
-
-        return $sections;
     }
 }
