@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Events\PartSold;
 use App\Http\Controllers\Controller;
+use App\Services\LegalTraceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -670,6 +671,18 @@ class InvoiceController extends Controller
             return back()->withInput()->with('error', 'This discount exceeds your allowance cap. Please provide an override reason and resubmit.');
         }
 
+        // ── Phase 6: Legal trace enforcement ─────────────────────────
+        // If any part in this invoice requires legal documentation
+        // (catalytic converters, airbags, engines), a buyer document
+        // reference is mandatory before the sale can proceed.
+        [$legalOk, $legalErrors] = LegalTraceService::checkCart(
+            $lineItems,
+            $request->input('buyer_legal_doc')
+        );
+        if (!$legalOk) {
+            return back()->withInput()->with('error', implode(' ', $legalErrors));
+        }
+
         // Stock check
         $stockErrors = [];
         foreach ($request->items as $item) {
@@ -774,6 +787,13 @@ class InvoiceController extends Controller
                     );
                 }
             }
+
+            // ── Phase 6: record buyer documentation for legal trace parts ─
+            LegalTraceService::recordBuyerDoc(
+                $invoiceId,
+                'invoice_items',
+                $request->input('buyer_legal_doc', '')
+            );
 
         } catch (\Exception $e) {
             DB::rollBack();
