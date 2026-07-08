@@ -1,157 +1,37 @@
 <?php
-
-/**
- * ═══════════════════════════════════════════════════════════
- * THREE FIXES — add these to your existing files
- * ═══════════════════════════════════════════════════════════
- *
- *
- * ╔══════════════════════════════════════════════════════════╗
- * ║  FIX A — Room required, bin optional (restore original) ║
- * ╚══════════════════════════════════════════════════════════╝
- *
- * In resources/views/admin/harvest/checklist.blade.php,
- * the JS submit guard already enforces "a room or bin must be
- * selected" via the bins[] check. The issue is the dropdown
- * renders "room:ROOM NAME" as the placeholder value.
- *
- * In loadHarvestRooms(), ensure the room-only option always
- * appears FIRST in each optgroup so it's the default:
- *
- *   optionsHtml += `<optgroup label="${roomName}">`;
- *   // Room-only option FIRST (always available):
- *   optionsHtml += `<option value="room:${roomName}">📍 ${roomName} — room only (no bin yet)</option>`;
- *   // Then specific bins within the room:
- *   rooms[roomName].forEach(b => {
- *       optionsHtml += `<option value="${b.id}">${b.full_bin_code}</option>`;
- *   });
- *   optionsHtml += `</optgroup>`;
- *
- * In the JS submit guard (before form submits), enforce:
- *
- *   function validateHarvestForm() {
- *       const checkedParts = document.querySelectorAll('.part-checkbox:checked:not(:disabled)');
- *       const missingRoom = [];
- *       checkedParts.forEach(chk => {
- *           const key = chk.dataset.key;
- *           const binSel = document.querySelector(`select[name="bins[${key}]"]`);
- *           if (!binSel || !binSel.value) missingRoom.push(key);
- *       });
- *       if (missingRoom.length > 0) {
- *           alert('Every ticked part needs at least a ROOM selected before saving.\n'
- *               + 'You can select a specific bin too if it\'s ready, or just pick the room for now.');
- *           return false;
- *       }
- *       return true;
- *   }
- *
- * And on the form submit button:
- *   onclick="return validateHarvestForm()"
- *
- * The server-side saveParts() already handles the room: prefix
- * by setting storage_shelf_id = null and bin_location = "ROOM X — bin not yet assigned"
- *
- *
- * ╔══════════════════════════════════════════════════════════╗
- * ║  FIX B — Default coming-soon image for parts            ║
- * ╚══════════════════════════════════════════════════════════╝
- *
- * Place a default image at: public/images/coming-soon.jpg
- * (or use the existing one if you already have it — check with
- * ls public/images/ on your server)
- *
- * Wherever you render a part's photo (inventory list, part detail,
- * POS search results, harvest complete screen), replace the img src
- * with this Blade helper pattern:
- *
- *   @php
- *     $photos = is_string($part->photos) ? json_decode($part->photos, true) : ($part->photos ?? []);
- *     $firstPhoto = (!empty($photos) && is_array($photos)) ? $photos[0] : null;
- *   @endphp
- *
- *   <img src="{{ $firstPhoto
- *       ? asset(config('media.prefix', 'storage') . '/' . $firstPhoto)
- *       : asset('images/coming-soon.jpg') }}"
- *        alt="{{ $part->part_name }}"
- *        onerror="this.src='{{ asset('images/coming-soon.jpg') }}'">
- *
- * The onerror handler catches broken/missing image paths too,
- * so even if a photo path is stored but the file was deleted,
- * the coming-soon banner shows instead of a broken image icon.
- *
- * For the harvest checklist specifically — the photo upload input
- * shows a preview; once selected show the preview, otherwise show
- * the coming-soon banner as a placeholder:
- *
- *   <div class="photo-preview-wrap w-16 h-12 rounded overflow-hidden border border-dashed border-slate-600">
- *     <img id="preview-{{ $part['key'] }}"
- *          src="{{ asset('images/coming-soon.jpg') }}"
- *          class="w-full h-full object-cover"
- *          alt="No photo yet">
- *   </div>
- *
- * And in JS when a file is selected:
- *
- *   document.addEventListener('change', function(e) {
- *     if (e.target.matches('.harvest-photo-input')) {
- *       const key = e.target.dataset.partKey;
- *       const preview = document.getElementById('preview-' + key);
- *       if (preview && e.target.files[0]) {
- *         preview.src = URL.createObjectURL(e.target.files[0]);
- *       }
- *     }
- *   });
- *
- *
- * ╔══════════════════════════════════════════════════════════╗
- * ║  FIX C — Barcode label route + controller               ║
- * ╚══════════════════════════════════════════════════════════╝
- */
-
-// ── Add to InventoryController (or a new BarcodeController) ──────────────
+// FILE: app/Http/Controllers/Admin/BarcodeController.php
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
+use App\Services\InterchangeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-class BarcodeController extends \App\Http\Controllers\Controller
+/**
+ * Barcode Label Controller
+ *
+ * Two label sizes:
+ *   2x1 inches  — barcode only (shelf tag, bin label, gate scan)
+ *   4x6 inches  — full Powerlink-style label with:
+ *                  business info, part description, grade,
+ *                  Stock#, IC# (interchange code), bin location,
+ *                  compatibility / "also fits" vehicles, price, barcode
+ *
+ * Routes:
+ *   GET /admin/inventory/barcode-label?ids=1,2,3&size=large
+ *   GET /admin/inventory/{id}/barcode?size=small
+ */
+class BarcodeController extends Controller
 {
-    /**
-     * GET /admin/inventory/barcode-label?ids=1,2,3&size=large
-     *
-     * ids  = comma-separated parts_inventory IDs
-     * size = 'small' (2x1 barcode-only) | 'large' (4x6 with product info)
-     *
-     * Add to routes/web.php:
-     *   Route::get('/admin/inventory/barcode-label',
-     *       [\App\Http\Controllers\Admin\BarcodeController::class, 'show'])
-     *       ->name('admin.inventory.barcode-label');
-     *
-     * On the inventory list, add a "🏷 Label" button per row:
-     *   <a href="{{ route('admin.inventory.barcode-label', ['ids' => $part->id, 'size' => 'large']) }}"
-     *      target="_blank"
-     *      class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50">
-     *       🏷 Label
-     *   </a>
-     *
-     * For batch printing from the bulk-select checkbox system:
-     *   <a href="#" onclick="printSelectedLabels()" class="...">🏷 Print Labels</a>
-     *   <script>
-     *   function printSelectedLabels(size = 'large') {
-     *     const ids = Array.from(document.querySelectorAll('.bulk-row-checkbox:checked'))
-     *                      .map(cb => cb.dataset.id).join(',');
-     *     if (!ids) { alert('Select at least one part first'); return; }
-     *     window.open(`/admin/inventory/barcode-label?ids=${ids}&size=${size}`, '_blank');
-     *   }
-     *   </script>
-     */
+    public function __construct(private InterchangeService $interchange) {}
+
     public function show(Request $request)
     {
-        $ids  = array_filter(array_map('intval', explode(',', $request->get('ids', ''))));
-        $size = in_array($request->get('size', 'large'), ['small', 'large'])
-            ? $request->get('size', 'large')
-            : 'large';
+        // Support both ?ids=1,2,3 and route /{id}/barcode
+        $rawIds = $request->get('ids', $request->route('id'));
+        $ids    = array_filter(array_map('intval', explode(',', (string) $rawIds)));
+        $size   = in_array($request->get('size', 'large'), ['small', 'large']) ? $request->get('size', 'large') : 'large';
 
         if (empty($ids)) abort(400, 'No part IDs provided.');
 
@@ -160,18 +40,81 @@ class BarcodeController extends \App\Http\Controllers\Controller
             ->select(
                 'id', 'part_code', 'part_name', 'part_category',
                 'brand', 'model', 'year_from', 'year_to',
-                'engine_code_oem', 'transmission_code_oem', 'pin_count',
+                'compat_year_from', 'compat_year_to',
+                'engine_code_oem', 'transmission_code_oem', 'pin_count', 'gear_alias',
                 'condition_grade', 'conditions_and_options',
                 'price_local', 'price_wholesale', 'currency_code',
                 'bin_location', 'location', 'donor_vin',
-                'description', 'photos',
-                'is_major_component', 'legal_trace_required'
+                'description', 'photos', 'stock_qty',
+                'is_major_component', 'legal_trace_required',
+                'interchange_group_id', 'mileage', 'side',
+                'created_at'
             )
-            ->orderByRaw('FIELD(id, ' . implode(',', $ids) . ')') // preserve selection order
+            ->orderByRaw('FIELD(id, ' . implode(',', $ids) . ')')
             ->get();
 
         if ($parts->isEmpty()) abort(404, 'No matching parts found.');
 
-        return view('admin.inventory.barcode-label', compact('parts', 'size'));
+        // Enrich each part with interchange group + compatible vehicles
+        $parts = $parts->map(function ($part) {
+            // Interchange group (IC# in Powerlink)
+            $group    = null;
+            $vehicles = collect();
+
+            if ($part->interchange_group_id) {
+                $group    = DB::table('part_interchange_groups')
+                    ->where('id', $part->interchange_group_id)
+                    ->first();
+                $vehicles = $this->interchange->vehiclesForGroup($part->interchange_group_id);
+            } else {
+                // Try heuristic for "also fits" suggestion
+                $heuristic = $this->interchange->interchangeFor(
+                    $part->part_name,
+                    $part->engine_code_oem,
+                    $part->transmission_code_oem
+                );
+                if ($heuristic['found']) {
+                    $vehicles = $heuristic['vehicles']->take(4);
+                }
+            }
+
+            $part->interchange_group    = $group;
+            $part->interchange_vehicles = $vehicles;
+
+            // Business info for label header
+            $part->business = app(\App\Http\Controllers\Admin\InvoiceController::class)
+                ->getBusinessInfo($part->location ?? 'Waxahachie TX');
+
+            // Currency
+            $syms           = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
+            $part->sym      = $syms[$part->currency_code ?? 'NGN'] ?? '₦';
+            $part->price_fmt = $part->sym . ($part->currency_code === 'NGN'
+                ? number_format(round($part->price_local))
+                : number_format($part->price_local, 2));
+            $part->wholesale_fmt = $part->price_wholesale
+                ? $part->sym . ($part->currency_code === 'NGN'
+                    ? number_format(round($part->price_wholesale))
+                    : number_format($part->price_wholesale, 2))
+                : null;
+
+            // Photo
+            $photos       = json_decode($part->photos ?? '[]', true);
+            $part->photo  = !empty($photos) ? asset('storage/' . $photos[0]) : null;
+
+            // Vehicle string
+            $part->vehicle_str = trim(
+                ($part->brand ?? '') . ' ' .
+                ($part->model ?? '') . ' ' .
+                ($part->year_from ?? '') .
+                ($part->year_to && $part->year_to != $part->year_from ? '-' . $part->year_to : '')
+            );
+
+            return $part;
+        });
+
+        // Get business info for page title (use first part's location)
+        $businessInfo = $parts->first()?->business ?? [];
+
+        return view('admin.inventory.barcode-label', compact('parts', 'size', 'businessInfo'));
     }
 }

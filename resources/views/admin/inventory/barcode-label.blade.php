@@ -1,389 +1,316 @@
-{{-- FILE: resources/views/admin/inventory/barcode-label.blade.php
-     Prints barcode labels for parts inventory.
-     Two sizes:
-       - 2x1 inches: barcode only (plain tag, fast scan at gate/shelf)
-       - 4x6 inches: barcode + full product info (customer-facing label, dispatch)
-     Pass ?size=small for 2x1, ?size=large for 4x6 (default: large)
-     Pass ?ids=1,2,3 for batch printing multiple parts
---}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Barcode Label{{ count($parts) > 1 ? 's' : '' }} — {{ count($parts) }} item{{ count($parts) !== 1 ? 's' : '' }}</title>
+<title>Labels — {{ count($parts) }} part(s)</title>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: Arial, sans-serif; background: #f5f5f5; }
+@import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&family=Inter:wght@400;600;700;900&display=swap');
 
-/* ── Print controls (screen only) ──────────────────────────────── */
-.print-controls {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 999;
-    background: #0d1b2a; color: white; padding: 10px 20px;
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Inter', Arial, sans-serif; background:#f5f5f5; font-size:12px; }
+
+/* ── Screen controls ─────────────────────────────────────────── */
+.controls {
+    position:fixed; top:0; left:0; right:0; z-index:999;
+    background:#0d1b2a; color:white;
+    padding:10px 20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
 }
-.print-controls h2 { font-size: 13px; font-weight: 700; color: #c9a84c; }
+.controls h2 { font-size:13px; font-weight:700; color:#c9a84c; }
 .ctrl-btn {
-    padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 700;
-    cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
-    border: none; transition: all 0.2s;
+    padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700;
+    cursor:pointer; border:none; letter-spacing:0.5px; text-transform:uppercase;
 }
-.ctrl-btn.active { background: #c9a84c; color: #0d1b2a; }
-.ctrl-btn:not(.active) { background: #1e3a5f; color: #aaa; border: 1px solid #334; }
-.ctrl-btn:hover:not(.active) { background: #2a4a7f; color: white; }
-.print-btn { background: #1a6b3c; color: white; }
-.print-btn:hover { background: #22873d; }
-.labels-page { margin-top: 56px; padding: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.ctrl-btn.on  { background:#c9a84c; color:#0d1b2a; }
+.ctrl-btn.off { background:#1e3a5f; color:#aaa; border:1px solid #334; }
+.print-btn    { background:#1a6b3c; color:white; }
+.labels-wrap  { margin-top:58px; padding:16px; display:flex; flex-wrap:wrap; gap:8px; }
 
 /* ═══════════════════════════════════════════════════════════════
-   SMALL LABEL — 2 × 1 inches
-   Barcode only: part_code, brand/model/year, minimal text
-   Use for: shelf tags, gate-pass scanning, quick bin labels
+   2×1 LABEL — portrait, barcode only
+   Use for: shelf tags, bin labels, gate scanning
    ═══════════════════════════════════════════════════════════════ */
 .label-small {
-    width: 2in;
-    height: 1in;
-    background: white;
-    border: 1px solid #ddd;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3px 4px;
-    page-break-inside: avoid;
-    overflow: hidden;
+    width:2in; height:1in;
+    background:white; border:1px solid #ccc;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:3px 4px; page-break-inside:avoid; overflow:hidden;
 }
-.label-small .lbl-code {
-    font-family: 'Libre Barcode 128', monospace;
-    font-size: 38px;
-    line-height: 1;
-    letter-spacing: 0;
-    color: #000;
-    width: 100%;
-    text-align: center;
-}
-.label-small .lbl-ref {
-    font-size: 7px;
-    font-weight: 700;
-    color: #000;
-    letter-spacing: 0.5px;
-    margin-top: 1px;
-    text-align: center;
-}
-.label-small .lbl-vehicle {
-    font-size: 6px;
-    color: #555;
-    text-align: center;
-    margin-top: 1px;
-}
+.label-small .bc { font-family:'Libre Barcode 128',monospace; font-size:42px; line-height:1; color:#000; width:100%; text-align:center; }
+.label-small .code { font-size:7px; font-weight:700; color:#000; letter-spacing:1px; margin-top:1px; text-align:center; }
+.label-small .name { font-size:5.5px; color:#555; text-align:center; margin-top:1px; }
 
 /* ═══════════════════════════════════════════════════════════════
-   LARGE LABEL — 4 × 6 inches (landscape: 6w × 4h)
-   Barcode + full product info: customer-facing dispatch label
-   Use for: packing, dispatch, customer pickup, display shelves
+   4×6 LABEL — Powerlink Fenix style
+   Portrait: 4in wide × 6in tall
+   Use for: harvest tagging, dispatch, customer pickup
    ═══════════════════════════════════════════════════════════════ */
 .label-large {
-    width: 6in;
-    height: 4in;
-    background: white;
-    border: 1px solid #ccc;
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    padding: 0;
-    page-break-inside: avoid;
-    overflow: hidden;
-    position: relative;
+    width:4in; height:6in;
+    background:white; border:1px solid #999;
+    display:flex; flex-direction:column;
+    page-break-inside:avoid; overflow:hidden; position:relative;
 }
-.label-large .lbl-header {
-    background: #0d1b2a;
-    color: white;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 12px;
+
+/* Business header */
+.lbl-biz {
+    padding:10px 12px 8px;
+    border-bottom:1.5px solid #000;
 }
-.label-large .lbl-header .brand {
-    font-size: 14px;
-    font-weight: 900;
-    letter-spacing: 2px;
-    color: white;
+.lbl-biz .biz-name { font-size:13px; font-weight:900; letter-spacing:0.5px; }
+.lbl-biz .biz-addr { font-size:9px; color:#333; margin-top:1px; line-height:1.5; }
+
+/* Route / customer row */
+.lbl-route {
+    display:grid; grid-template-columns:1fr 1fr;
+    border-bottom:1px solid #999; font-size:9px;
 }
-.label-large .lbl-header .brand span { color: #c9a84c; }
-.label-large .lbl-header .inv-ref {
-    font-size: 11px;
-    font-weight: 700;
-    color: #c9a84c;
-    font-family: monospace;
+.lbl-route .cell { padding:4px 10px; }
+.lbl-route .cell:first-child { border-right:1px solid #999; }
+.lbl-route .cell label { display:block; font-size:7.5px; color:#777; margin-bottom:1px; text-transform:uppercase; }
+.lbl-route .cell .val { font-weight:700; }
+
+/* Part name + grade section */
+.lbl-part {
+    padding:10px 12px 8px;
+    border-bottom:1px solid #999;
+    display:flex; align-items:flex-start; gap:8px;
 }
-.label-large .lbl-body {
-    display: grid;
-    grid-template-columns: 2.6in 1fr;
-    gap: 0;
-    overflow: hidden;
+.lbl-part .part-info { flex:1; }
+.lbl-part .part-name { font-size:15px; font-weight:900; line-height:1.25; }
+.lbl-part .part-sub  { font-size:9.5px; color:#444; margin-top:3px; line-height:1.5; }
+.lbl-part .grade-box {
+    width:36px; height:36px; border:2.5px solid #000;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; font-weight:900; flex-shrink:0; margin-top:2px;
 }
-.label-large .lbl-barcode-col {
-    padding: 10px 8px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border-right: 1px dashed #ddd;
+.grade-box.A { border-color:#2e7d32; color:#2e7d32; }
+.grade-box.B { border-color:#e65100; color:#e65100; }
+.grade-box.C { border-color:#c62828; color:#c62828; }
+
+/* Stock / IC / Bin row — mirrors Powerlink exactly */
+.lbl-ids {
+    display:grid; grid-template-columns:1fr 1fr 1fr;
+    border-bottom:1px solid #999; font-size:9px;
 }
-.label-large .lbl-barcode-col .barcode-font {
-    font-family: 'Libre Barcode 128', monospace;
-    font-size: 64px;
-    line-height: 1;
-    color: #000;
-    text-align: center;
+.lbl-ids .cell { padding:5px 10px; border-right:1px solid #999; }
+.lbl-ids .cell:last-child { border-right:none; }
+.lbl-ids .cell label { display:block; font-size:7.5px; color:#777; margin-bottom:1px; text-transform:uppercase; }
+.lbl-ids .cell .val { font-weight:700; font-size:10px; font-family:monospace; }
+
+/* Also fits / interchange */
+.lbl-fits {
+    padding:6px 12px;
+    border-bottom:1px solid #999;
+    font-size:8.5px;
 }
-.label-large .lbl-barcode-col .barcode-text {
-    font-size: 9px;
-    font-weight: 700;
-    color: #333;
-    letter-spacing: 1px;
-    margin-top: 2px;
-    text-align: center;
+.lbl-fits label { font-size:7.5px; color:#777; text-transform:uppercase; display:block; margin-bottom:2px; }
+.lbl-fits .fits-val { line-height:1.6; color:#222; }
+.lbl-fits .ic-source { font-size:7px; color:#aaa; margin-top:1px; }
+
+/* Notes / conditions */
+.lbl-notes {
+    padding:5px 12px;
+    border-bottom:1px solid #999;
+    font-size:8px; color:#555; min-height:22px;
 }
-.label-large .lbl-info-col {
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.label-large .lbl-part-name {
-    font-size: 14px;
-    font-weight: 900;
-    color: #0d1b2a;
-    line-height: 1.2;
-}
-.label-large .lbl-vehicle-info {
-    font-size: 11px;
-    color: #555;
-    line-height: 1.5;
-}
-.label-large .lbl-vehicle-info strong { color: #0d1b2a; }
-.label-large .lbl-grade-row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    margin-top: 4px;
-    flex-wrap: wrap;
-}
-.grade-badge {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-}
-.grade-A { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
-.grade-B { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
-.grade-C { background: #fce4ec; color: #c62828; border: 1px solid #ef9a9a; }
+.lbl-notes label { font-size:7px; color:#aaa; text-transform:uppercase; margin-right:4px; }
+
+/* Price section */
 .lbl-price {
-    font-size: 20px;
-    font-weight: 900;
-    color: #0d1b2a;
-    margin-top: auto;
+    padding:8px 12px;
+    border-bottom:1px solid #999;
+    display:flex; align-items:center; justify-content:space-between;
 }
-.lbl-price .price-label { font-size: 9px; color: #888; font-weight: 400; }
-.lbl-price .trade-price { font-size: 13px; color: #c9a84c; margin-top: 1px; }
-.label-large .lbl-footer {
-    background: #f8f9fa;
-    border-top: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 5px 12px;
-}
-.label-large .lbl-footer .lbl-location {
-    font-size: 9px;
-    color: #666;
-}
-.label-large .lbl-footer .lbl-website {
-    font-size: 9px;
-    font-weight: 700;
-    color: #c9a84c;
-}
-.label-large .lbl-footer .lbl-condition {
-    font-size: 8px;
-    color: #888;
-    max-width: 2in;
-    text-align: right;
-}
-.legal-badge {
-    padding: 2px 6px; border-radius: 3px;
-    font-size: 8px; font-weight: 700;
-    background: #fce4ec; color: #c62828; border: 1px solid #ef9a9a;
-}
-.major-badge {
-    padding: 2px 6px; border-radius: 3px;
-    font-size: 8px; font-weight: 700;
-    background: #fff8e1; color: #f57f17; border: 1px solid #ffe082;
-}
+.lbl-price .retail { font-size:22px; font-weight:900; }
+.lbl-price .trade  { font-size:10px; color:#555; margin-top:2px; }
+.lbl-price .flags  { display:flex; flex-direction:column; gap:3px; align-items:flex-end; }
+.flag { font-size:7px; font-weight:700; padding:2px 5px; border-radius:3px; }
+.flag.major { background:#fff8e1; color:#e65100; border:1px solid #ffcc80; }
+.flag.legal { background:#fce4ec; color:#c62828; border:1px solid #ef9a9a; }
 
-/* ── Barcode font from Google (screen + print) ────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap');
+/* Barcode section */
+.lbl-barcode {
+    flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:8px 12px 6px;
+}
+.lbl-barcode .bc { font-family:'Libre Barcode 128',monospace; font-size:68px; line-height:1; color:#000; text-align:center; width:100%; }
+.lbl-barcode .bc-text { font-size:11px; font-weight:700; letter-spacing:2px; margin-top:2px; font-family:monospace; }
 
-/* ── PRINT RULES ────────────────────────────────────────────────
-   Each label prints true to its physical size.
-   The page size is set per label type via JS before printing.
-──────────────────────────────────────────────────────────────── */
+/* Footer */
+.lbl-footer {
+    padding:5px 12px;
+    border-top:1px solid #ccc;
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:7.5px; color:#888;
+    background:#fafafa;
+}
+.lbl-footer .website { font-weight:700; color:#c9a84c; }
+
+/* ── Print rules ───────────────────────────────────────────── */
 @media print {
-    body { background: white; }
-    .print-controls { display: none !important; }
-    .labels-page { margin: 0; padding: 0; gap: 0; }
+    body { background:white; }
+    .controls { display:none !important; }
+    .labels-wrap { margin:0; padding:0; gap:0; }
+    .label-small, .label-large { border:none !important; box-shadow:none !important; }
 }
-
-/* Small: print on 2x1 stock */
-body.print-small .labels-page { display: block; }
-body.print-small .label-large { display: none !important; }
-
-/* Large: print on 4x6 stock */
-body.print-large .labels-page { display: block; }
-body.print-large .label-small { display: none !important; }
-
 @media print {
-    body.print-small { size: 2in 1in; }
-    body.print-large { size: 6in 4in; }
-    body.print-small .label-small,
-    body.print-large .label-large {
-        border: none !important;
-        box-shadow: none !important;
-    }
+    body.size-small .label-large { display:none !important; }
+    body.size-large .label-small { display:none !important; }
+    body.size-small { size:2in 1in; }
+    body.size-large { size:4in 6in; }
 }
+body.size-small .label-large { display:none; }
+body.size-large .label-small { display:none; }
 </style>
 </head>
 <body id="labelBody">
 
-<div class="print-controls">
-    <h2>🏷 Barcode Label{{ count($parts) > 1 ? 's' : '' }} ({{ count($parts) }})</h2>
-    <span style="color:#aaa;font-size:11px;">Label size:</span>
-    <button class="ctrl-btn {{ $size === 'small' ? 'active' : '' }}" onclick="setSize('small')" id="btn-small">2×1" (Scan Only)</button>
-    <button class="ctrl-btn {{ $size === 'large' ? 'active' : '' }}" onclick="setSize('large')" id="btn-large">4×6" (Full Info)</button>
-    <span style="color:#444;">|</span>
+<div class="controls">
+    <h2>🏷 {{ count($parts) }} Label{{ count($parts) !== 1 ? 's' : '' }}</h2>
+    <span style="color:#aaa;font-size:11px;">Size:</span>
+    <button class="ctrl-btn {{ $size==='small'?'on':'off' }}" onclick="setSize('small')" id="btn-small">2×1" Scan Only</button>
+    <button class="ctrl-btn {{ $size==='large'?'on':'off' }}" onclick="setSize('large')" id="btn-large">4×6" Full Label</button>
+    <span style="color:#555;">|</span>
     <button class="ctrl-btn print-btn" onclick="window.print()">🖨 Print</button>
-    <a href="{{ url()->previous() }}" style="color:#aaa;font-size:11px;text-decoration:none;margin-left:8px;">← Back</a>
-    <span style="color:#555;font-size:10px;margin-left:auto;">
-        Tip: Set printer paper to match label size. Disable margins in print dialog.
-    </span>
+    <a href="javascript:history.back()" style="color:#aaa;font-size:11px;text-decoration:none;">← Back</a>
+    <span style="color:#444;font-size:10px;margin-left:auto;">Tip: Set printer media to match label size. Disable margins in print dialog.</span>
 </div>
 
-<div class="labels-page" id="labelsPage">
-    @foreach($parts as $part)
-    @php
-        $symbols = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
-        $sym     = $symbols[$part->currency_code ?? 'NGN'] ?? '₦';
-        $retail  = $sym . ($part->currency_code === 'NGN'
-            ? number_format(round($part->price_local))
-            : number_format($part->price_local, 2));
-        $wholesale = $part->price_wholesale
-            ? $sym . ($part->currency_code === 'NGN'
-                ? number_format(round($part->price_wholesale))
-                : number_format($part->price_wholesale, 2))
-            : null;
-        $vehicleStr = trim(($part->brand ?? '') . ' ' . ($part->model ?? '') . ' ' . ($part->year_from ?? ''));
-    @endphp
+<div class="labels-wrap">
+@foreach($parts as $part)
+@php
+    $group    = $part->interchange_group;
+    $vehicles = $part->interchange_vehicles;
+    $fitsStr  = $vehicles->map(fn($v) => trim(($v->make??'').' '.($v->model??'').' ('.($v->year_from??'').'-'.($v->year_to??'').')'))->implode(' · ');
+    $icCode   = $group?->group_code ?? $part->engine_code_oem ?? $part->transmission_code_oem ?? '—';
+    $binLoc   = $part->bin_location ?? '—';
+    $biz      = $part->business;
+    $partDesc = trim(($part->brand??'').' '.($part->model??'').' '.($part->year_from??'').($part->year_to && $part->year_to!=$part->year_from?'-'.$part->year_to:''));
+    $partDesc .= $part->engine_code_oem  ? ' · '.$part->engine_code_oem : '';
+    $partDesc .= $part->side && $part->side !== 'N/A' ? ' · '.$part->side : '';
+    $grade     = $part->condition_grade ?? 'B';
+@endphp
 
-    {{-- ── SMALL LABEL (2×1 inches) ───────────────────────────── --}}
-    <div class="label-small">
-        <div class="lbl-code">{{ $part->part_code }}</div>
-        <div class="lbl-ref">{{ $part->part_code }}</div>
-        <div class="lbl-vehicle">{{ $vehicleStr ?: 'Auto Zenith Parts' }}</div>
+{{-- 2×1 SMALL LABEL --}}
+<div class="label-small">
+    <div class="bc">{{ $part->part_code }}</div>
+    <div class="code">{{ $part->part_code }}</div>
+    <div class="name">{{ Str::limit($part->part_name, 40) }}</div>
+</div>
+
+{{-- 4×6 LARGE LABEL — Powerlink Fenix style --}}
+<div class="label-large">
+
+    {{-- Business header --}}
+    <div class="lbl-biz">
+        <div class="biz-name">{{ $biz['company'] ?? 'AUTO ZENITH PARTS' }}</div>
+        <div class="biz-addr">{{ $biz['address'] ?? '' }} · {{ $biz['phone'] ?? '' }}</div>
     </div>
 
-    {{-- ── LARGE LABEL (4×6 inches — landscape 6w×4h) ─────────── --}}
-    <div class="label-large">
-        <div class="lbl-header">
-            <div class="brand">AUTO <span>ZENITH</span> PARTS</div>
-            <div class="inv-ref">{{ $part->part_code }}</div>
+    {{-- Route / Customer row --}}
+    <div class="lbl-route">
+        <div class="cell">
+            <label>Location</label>
+            <div class="val">{{ $part->location ?? '—' }}</div>
         </div>
-
-        <div class="lbl-body">
-            {{-- Left column: barcode --}}
-            <div class="lbl-barcode-col">
-                <div class="barcode-font">{{ $part->part_code }}</div>
-                <div class="barcode-text">{{ $part->part_code }}</div>
-                @if($part->bin_location)
-                <div style="margin-top:6px;font-size:9px;color:#666;text-align:center;">
-                    📦 {{ $part->bin_location }}
-                </div>
-                @endif
-                @if($part->donor_vin)
-                <div style="margin-top:4px;font-family:monospace;font-size:7px;color:#aaa;text-align:center;">
-                    VIN: {{ $part->donor_vin }}
-                </div>
-                @endif
-            </div>
-
-            {{-- Right column: product info --}}
-            <div class="lbl-info-col">
-                <div class="lbl-part-name">{{ $part->part_name }}</div>
-
-                @if($vehicleStr)
-                <div class="lbl-vehicle-info">
-                    <strong>Vehicle:</strong> {{ $vehicleStr }}<br>
-                    @if(!empty($part->engine_code_oem))
-                    <strong>Engine:</strong> {{ $part->engine_code_oem }}<br>
-                    @endif
-                    @if(!empty($part->transmission_code_oem))
-                    <strong>Gearbox:</strong> {{ $part->transmission_code_oem }}
-                    @if($part->pin_count) ({{ $part->pin_count }}-pin)@endif<br>
-                    @endif
-                    @if(!empty($part->part_category))
-                    <strong>Category:</strong> {{ $part->part_category }}<br>
-                    @endif
-                    @if(!empty($part->conditions_and_options))
-                    <strong>Condition Note:</strong> {{ $part->conditions_and_options }}
-                    @endif
-                </div>
-                @endif
-
-                <div class="lbl-grade-row">
-                    @if($part->condition_grade)
-                    <span class="grade-badge grade-{{ $part->condition_grade }}">Grade {{ $part->condition_grade }}</span>
-                    @endif
-                    @if($part->is_major_component ?? false)
-                    <span class="major-badge">⚡ Major Component</span>
-                    @endif
-                    @if($part->legal_trace_required ?? false)
-                    <span class="legal-badge">⚠ Legal Trace</span>
-                    @endif
-                </div>
-
-                <div class="lbl-price" style="margin-top:auto;">
-                    <div class="price-label">RETAIL PRICE</div>
-                    {{ $retail }}
-                    @if($wholesale)
-                    <div class="trade-price">Trade: {{ $wholesale }}</div>
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        <div class="lbl-footer">
-            <div class="lbl-location">{{ $part->location ?? 'Auto Zenith' }}</div>
-            <div class="lbl-condition">{{ $part->conditions_and_options ?? ($part->description ? substr($part->description, 0, 60) : '') }}</div>
-            <div class="lbl-website">autozenithparts.com</div>
+        <div class="cell">
+            <label>Printed</label>
+            <div class="val">{{ now()->format('m/d/y g:i A') }}</div>
         </div>
     </div>
 
-    @endforeach
+    {{-- Part name + grade --}}
+    <div class="lbl-part">
+        <div class="part-info">
+            <div class="part-name">{{ $part->part_name }}</div>
+            <div class="part-sub">{{ $partDesc ?: '—' }}</div>
+            @if($part->mileage)<div class="part-sub">Mileage: {{ number_format($part->mileage) }} mi</div>@endif
+        </div>
+        <div class="grade-box {{ $grade }}">{{ $grade }}</div>
+    </div>
+
+    {{-- Stock # / IC # / Bin --}}
+    <div class="lbl-ids">
+        <div class="cell">
+            <label>Stock #</label>
+            <div class="val">{{ $part->part_code }}</div>
+        </div>
+        <div class="cell">
+            <label>IC #</label>
+            <div class="val">{{ $icCode }}</div>
+        </div>
+        <div class="cell">
+            <label>Located</label>
+            <div class="val">{{ $binLoc }}</div>
+        </div>
+    </div>
+
+    {{-- Also fits / interchange vehicles --}}
+    <div class="lbl-fits">
+        <label>Also Fits (Interchange)</label>
+        @if($fitsStr)
+            <div class="fits-val">{{ $fitsStr }}</div>
+            <div class="ic-source">
+                {{ $group ? '✓ Confirmed group: '.$group->group_code : '~ Suggested via OEM code (not yet confirmed)' }}
+            </div>
+        @else
+            <div class="fits-val" style="color:#bbb;">No interchange data — see compatibility checker</div>
+        @endif
+    </div>
+
+    {{-- Conditions / notes --}}
+    <div class="lbl-notes">
+        <label>Condition Note:</label>
+        {{ $part->conditions_and_options ?? $part->description ?? '—' }}
+        @if($part->donor_vin)
+            &nbsp;·&nbsp;<span style="font-family:monospace;">VIN: {{ $part->donor_vin }}</span>
+        @endif
+    </div>
+
+    {{-- Price + flags --}}
+    <div class="lbl-price">
+        <div>
+            <div class="retail">{{ $part->price_fmt }}</div>
+            @if($part->wholesale_fmt)
+            <div class="trade">Trade: {{ $part->wholesale_fmt }}</div>
+            @endif
+        </div>
+        <div class="flags">
+            @if($part->is_major_component)<span class="flag major">⚡ MAJOR COMPONENT</span>@endif
+            @if($part->legal_trace_required)<span class="flag legal">⚠ LEGAL TRACE REQ.</span>@endif
+            <span style="font-size:7px;color:#aaa;margin-top:4px;">Qty in stock: {{ $part->stock_qty }}</span>
+        </div>
+    </div>
+
+    {{-- Barcode --}}
+    <div class="lbl-barcode">
+        <div class="bc">{{ $part->part_code }}</div>
+        <div class="bc-text">{{ $part->part_code }}</div>
+    </div>
+
+    {{-- Footer --}}
+    <div class="lbl-footer">
+        <span>autozenithparts.com</span>
+        <span>{{ $biz['phone'] ?? '' }}</span>
+        <span class="website">AUTO ZENITH PARTS</span>
+    </div>
+
+</div>
+@endforeach
 </div>
 
 <script>
-const CURRENT_SIZE = '{{ $size }}';
-
 function setSize(size) {
-    document.getElementById('btn-small').classList.toggle('active', size === 'small');
-    document.getElementById('btn-large').classList.toggle('active', size === 'large');
-    document.body.classList.remove('print-small', 'print-large');
-    document.body.classList.add('print-' + size);
-    // Update URL so page reload keeps the choice
+    document.getElementById('btn-small').className = 'ctrl-btn ' + (size==='small'?'on':'off');
+    document.getElementById('btn-large').className = 'ctrl-btn ' + (size==='large'?'on':'off');
+    document.body.className = 'size-' + size;
     const url = new URL(window.location.href);
     url.searchParams.set('size', size);
     window.history.replaceState({}, '', url);
 }
-
-// Apply on load
-setSize(CURRENT_SIZE || 'large');
+setSize('{{ $size }}');
 </script>
 </body>
 </html>

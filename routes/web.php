@@ -118,6 +118,9 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
     // ═══════════════════════════════════════════════════════════════
     Route::get('/storage',                        [\App\Http\Controllers\Admin\StorageController::class, 'index'])->name('admin.storage.index');
     Route::post('/storage',                       [\App\Http\Controllers\Admin\StorageController::class, 'store'])->name('admin.storage.store');
+    Route::get('/storage/bin-labels',             [\App\Http\Controllers\Admin\BinLabelController::class, 'batch'])->name('admin.storage.bin-labels');
+    Route::get('/storage/bin-label/{shelfId}',    [\App\Http\Controllers\Admin\BinLabelController::class, 'single'])->name('admin.storage.bin-label');
+    Route::get('/storage/room-labels/{roomId}',   [\App\Http\Controllers\Admin\BinLabelController::class, 'room'])->name('admin.storage.room-labels');
     Route::get('/storage/{id}',                   [\App\Http\Controllers\Admin\StorageController::class, 'show'])->name('admin.storage.show');
     Route::post('/storage/rooms',                 [\App\Http\Controllers\Admin\StorageController::class, 'storeRoom'])->name('admin.storage.rooms.store');
     Route::put('/storage/rooms/{id}',             [\App\Http\Controllers\Admin\StorageController::class, 'updateRoom'])->name('admin.storage.rooms.update');
