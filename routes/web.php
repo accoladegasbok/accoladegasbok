@@ -9,8 +9,12 @@
 use Illuminate\Support\Facades\Route;
 
 // ── Root ──────────────────────────────────────────────────────────
+// Production (autozenithparts.com) → public parts page
+// Local development → admin login
 Route::get('/', function () {
-    return redirect()->route('admin.login');
+    return app()->environment('production')
+        ? redirect('/parts', 301)
+        : redirect()->route('admin.login');
 });
 
 // ── Public auth aliases (used in public layout nav) ───────────────
@@ -231,6 +235,55 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
     Route::get('/harvest/engine-options',
         [\App\Http\Controllers\Admin\HarvestController::class, 'engineOptions'])
         ->name('admin.harvest.engine-options');
+
+    // ── OEM lookup AJAX — for manual-add form ─────────────────────
+    // Returns engine code, transmission code, pin count for a vehicle
+    Route::get('/inventory/oem-lookup', function(\Illuminate\Http\Request $request) {
+        $make    = strtoupper(trim($request->get('make', '')));
+        $model   = strtoupper(trim($request->get('model', '')));
+        $year    = (int) $request->get('year', 0);
+        $engineL = (float) $request->get('engine_l', 0);
+        if (!$make || !$model || !$year) return response()->json(['source' => null]);
+
+        // Check existing inventory first (most accurate — real stock data)
+        $fromStock = \Illuminate\Support\Facades\DB::table('parts_inventory')
+            ->where('brand', $make)->where('model', $model)
+            ->where('year_from', '<=', $year)->where('year_to', '>=', $year)
+            ->whereNotNull('engine_code_oem')
+            ->select('engine_code_oem','transmission_code_oem','pin_count','gear_alias')
+            ->first();
+
+        if ($fromStock) {
+            return response()->json([
+                'engine_code'       => $fromStock->engine_code_oem,
+                'transmission_code' => $fromStock->transmission_code_oem,
+                'pin_count'         => $fromStock->pin_count,
+                'gear_alias'        => $fromStock->gear_alias,
+                'source'            => 'inventory',
+                'match_count'       => \Illuminate\Support\Facades\DB::table('parts_inventory')
+                    ->where('brand',$make)->where('model',$model)
+                    ->whereNotNull('engine_code_oem')->count(),
+            ]);
+        }
+
+        // Fall back to OemDatabase (Ladipo algorithm)
+        $cyl = $engineL >= 2.9 ? 6 : 4;
+        $oem = \App\Data\OemDatabase::lookup($make, $model, $year, $cyl, $engineL);
+
+        if (!$oem['engine_code'] && !$oem['transmission_code']) {
+            return response()->json(['source' => null]);
+        }
+
+        return response()->json([
+            'engine_code'       => $oem['engine_code'],
+            'transmission_code' => $oem['transmission_code'],
+            'pin_count'         => $oem['pin_count'],
+            'gear_alias'        => $oem['gear_alias'],
+            'source'            => 'oem_database',
+            'multiple_engines'  => $oem['multiple_engines'] ?? false,
+            'market_note'       => $oem['market_note'] ?? null,
+        ]);
+    })->name('admin.inventory.oem-lookup');
 
     // ── Inventory photos & video ───────────────────────────────────
     Route::post('/inventory/{id}/photos',

@@ -8,60 +8,53 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Bin / Shelf Location Labels — 12×4 inches landscape
- * Paste on the physical shelf column for warehouse navigation.
+ * Bin & Room Labels — 12×4 inches landscape
  *
- * Routes to add in web.php:
- *   // Print one bin
- *   Route::get('/storage/bin-label/{shelfId}',
- *       [\App\Http\Controllers\Admin\BinLabelController::class, 'single'])
- *       ->name('admin.storage.bin-label');
- *
- *   // Print all bins in a room
- *   Route::get('/storage/room-labels/{roomId}',
- *       [\App\Http\Controllers\Admin\BinLabelController::class, 'room'])
- *       ->name('admin.storage.room-labels');
- *
- *   // Print selected bins by IDs (?ids=1,2,3)
- *   Route::get('/storage/bin-labels',
- *       [\App\Http\Controllers\Admin\BinLabelController::class, 'batch'])
- *       ->name('admin.storage.bin-labels');
+ * Routes:
+ *   GET /admin/storage/bin-label/{shelfId}   → single bin
+ *   GET /admin/storage/room-labels/{roomId}  → all bins in room + room label
+ *   GET /admin/storage/bin-labels?ids=1,2,3  → batch bins
  */
 class BinLabelController extends Controller
 {
-    // ── Single bin label ──────────────────────────────────────────
+    // ── Single bin ────────────────────────────────────────────────
     public function single(int $shelfId)
     {
         $shelf = $this->enrichShelf(
             DB::table('storage_shelves as ss')
                 ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
                 ->where('ss.id', $shelfId)
-                ->select('ss.*', 'sr.name as room_name', 'sr.location')
+                ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
                 ->first()
         );
-
         if (!$shelf) abort(404);
-
-        return view('admin.storage.bin-label', ['shelves' => collect([$shelf])]);
+        return view('admin.storage.bin-label', [
+            'shelves' => collect([$shelf]),
+            'rooms'   => collect(),
+        ]);
     }
 
-    // ── All bins in a room ────────────────────────────────────────
+    // ── All bins in a room + the room label itself ─────────────────
     public function room(int $roomId)
     {
+        $room = DB::table('storage_rooms')->where('id', $roomId)->first();
+        if (!$room) abort(404);
+
         $shelves = DB::table('storage_shelves as ss')
             ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
             ->where('ss.room_id', $roomId)
-            ->select('ss.*', 'sr.name as room_name', 'sr.location')
+            ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
             ->orderBy('ss.full_bin_code')
             ->get()
             ->map(fn($s) => $this->enrichShelf($s));
 
-        if ($shelves->isEmpty()) abort(404, 'No bins in this room.');
-
-        return view('admin.storage.bin-label', compact('shelves'));
+        return view('admin.storage.bin-label', [
+            'shelves' => $shelves,
+            'rooms'   => collect([$room]),
+        ]);
     }
 
-    // ── Batch — ?ids=1,2,3 ───────────────────────────────────────
+    // ── Batch bins (?ids=1,2,3) ───────────────────────────────────
     public function batch(Request $request)
     {
         $ids = array_filter(array_map('intval', explode(',', $request->get('ids', ''))));
@@ -70,28 +63,45 @@ class BinLabelController extends Controller
         $shelves = DB::table('storage_shelves as ss')
             ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
             ->whereIn('ss.id', $ids)
-            ->select('ss.*', 'sr.name as room_name', 'sr.location')
+            ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
             ->orderByRaw('FIELD(ss.id, ' . implode(',', $ids) . ')')
             ->get()
             ->map(fn($s) => $this->enrichShelf($s));
 
-        if ($shelves->isEmpty()) abort(404);
-
-        return view('admin.storage.bin-label', compact('shelves'));
+        return view('admin.storage.bin-label', [
+            'shelves' => $shelves,
+            'rooms'   => collect(),
+        ]);
     }
 
-    // ── Enrich shelf with extra display fields ────────────────────
+    // ── All rooms in a location (?location=Ile-Ife Nigeria) ────────
+    public function allRooms(Request $request)
+    {
+        $location = $request->get('location', '');
+        $query    = DB::table('storage_rooms');
+        if ($location) $query->where('location', $location);
+        $rooms = $query->orderBy('name')->get();
+
+        $shelves = collect();
+        if ($request->boolean('include_bins')) {
+            $shelves = DB::table('storage_shelves as ss')
+                ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
+                ->when($location, fn($q) => $q->where('sr.location', $location))
+                ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
+                ->orderBy('sr.name')->orderBy('ss.full_bin_code')
+                ->get()
+                ->map(fn($s) => $this->enrichShelf($s));
+        }
+
+        return view('admin.storage.bin-label', compact('rooms', 'shelves'));
+    }
+
     private function enrichShelf(?object $shelf): ?object
     {
         if (!$shelf) return null;
-
-        // Parse bin code into parts for large display
-        // full_bin_code format is typically "RM2-B3" or "MODULAR ROOM 2-B3"
-        // bin_code is just the shelf part e.g. "B3"
-        $shelf->bin_code    = $shelf->bin_code ?? $shelf->full_bin_code;
+        $shelf->bin_code    = $shelf->bin_code    ?? $shelf->full_bin_code;
         $shelf->shelf_label = $shelf->shelf_label ?? null;
         $shelf->row_label   = $shelf->row_label   ?? null;
-
         return $shelf;
     }
 }

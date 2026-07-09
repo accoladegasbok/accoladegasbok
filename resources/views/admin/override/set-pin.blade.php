@@ -34,13 +34,21 @@
                 <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
                     New 4-Digit PIN
                 </label>
-                <input type="password" name="pin" maxlength="4" inputmode="numeric"
-                       pattern="[0-9]{4}" required autocomplete="new-password"
-                       class="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-3xl font-mono tracking-widest focus:outline-none focus:border-yellow-400"
-                       placeholder="••••">
+                <div class="relative">
+                    <input type="password" name="pin" id="pinInput" maxlength="4" inputmode="numeric"
+                           pattern="[0-9]{4}" required autocomplete="new-password"
+                           class="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-3xl font-mono tracking-widest focus:outline-none focus:border-yellow-400 pr-16"
+                           placeholder="••••"
+                           oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,4)">
+                    <button type="button" id="pinToggle"
+                            onclick="togglePin()"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-600 text-gray-400 hover:text-navy transition-colors px-2 py-1 rounded border border-gray-200">
+                        SHOW
+                    </button>
+                </div>
                 <p class="text-[10px] text-gray-400 mt-1.5">
-                    Must be exactly 4 digits. Never share your PIN.
-                    Your PIN is hashed — even admins cannot view it, only reset it.
+                    Must be exactly 4 digits. Your PIN is hashed — even admins cannot view it, only reset it.
+                    Never share your PIN with anyone.
                 </p>
             </div>
 
@@ -60,4 +68,22 @@
     </div>
 
 </div>
+
+<script>
+function togglePin() {
+    const input  = document.getElementById('pinInput');
+    const toggle = document.getElementById('pinToggle');
+    if (input.type === 'password') {
+        input.type   = 'text';
+        toggle.textContent = 'HIDE';
+        toggle.classList.add('text-navy');
+        toggle.classList.remove('text-gray-400');
+    } else {
+        input.type   = 'password';
+        toggle.textContent = 'SHOW';
+        toggle.classList.remove('text-navy');
+        toggle.classList.add('text-gray-400');
+    }
+}
+</script>
 @endsection

@@ -5,123 +5,80 @@
 <title>Labels — {{ count($parts) }} part(s)</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&family=Inter:wght@400;600;700;900&display=swap');
-
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Inter', Arial, sans-serif; background:#f5f5f5; font-size:12px; }
+body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px; }
 
-/* ── Screen controls ─────────────────────────────────────────── */
 .controls {
     position:fixed; top:0; left:0; right:0; z-index:999;
     background:#0d1b2a; color:white;
     padding:10px 20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
 }
 .controls h2 { font-size:13px; font-weight:700; color:#c9a84c; }
-.ctrl-btn {
-    padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700;
-    cursor:pointer; border:none; letter-spacing:0.5px; text-transform:uppercase;
-}
+.ctrl-btn { padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; border:none; letter-spacing:0.5px; text-transform:uppercase; }
 .ctrl-btn.on  { background:#c9a84c; color:#0d1b2a; }
 .ctrl-btn.off { background:#1e3a5f; color:#aaa; border:1px solid #334; }
 .print-btn    { background:#1a6b3c; color:white; }
 .labels-wrap  { margin-top:58px; padding:16px; display:flex; flex-wrap:wrap; gap:8px; }
 
-/* ═══════════════════════════════════════════════════════════════
-   2×1 LABEL — portrait, barcode only
-   Use for: shelf tags, bin labels, gate scanning
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   2×1 — scan-only shelf tag with year/make/model
+═══════════════════════════════════════════════════════ */
 .label-small {
     width:2in; height:1in;
     background:white; border:1px solid #ccc;
     display:flex; flex-direction:column;
     align-items:center; justify-content:center;
-    padding:3px 4px; page-break-inside:avoid; overflow:hidden;
+    padding:2px 4px; page-break-inside:avoid; overflow:hidden;
 }
-.label-small .bc { font-family:'Libre Barcode 128',monospace; font-size:42px; line-height:1; color:#000; width:100%; text-align:center; }
+.label-small .vehicle { font-size:6px; font-weight:700; color:#555; text-align:center; margin-bottom:1px; white-space:nowrap; overflow:hidden; }
+.label-small .bc { font-family:'Libre Barcode 128',monospace; font-size:40px; line-height:1; color:#000; width:100%; text-align:center; }
 .label-small .code { font-size:7px; font-weight:700; color:#000; letter-spacing:1px; margin-top:1px; text-align:center; }
-.label-small .name { font-size:5.5px; color:#555; text-align:center; margin-top:1px; }
+.label-small .name { font-size:5px; color:#777; text-align:center; margin-top:1px; }
 
-/* ═══════════════════════════════════════════════════════════════
-   4×6 LABEL — Powerlink Fenix style
-   Portrait: 4in wide × 6in tall
-   Use for: harvest tagging, dispatch, customer pickup
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   4×6 — Powerlink Fenix style, Auto Zenith branding
+═══════════════════════════════════════════════════════ */
 .label-large {
     width:4in; height:6in;
     background:white; border:1px solid #999;
     display:flex; flex-direction:column;
-    page-break-inside:avoid; overflow:hidden; position:relative;
+    page-break-inside:avoid; overflow:hidden;
 }
+.lbl-biz { padding:10px 12px 8px; border-bottom:1.5px solid #000; }
+.lbl-biz .biz-name { font-size:14px; font-weight:900; letter-spacing:1px; color:#0d1b2a; }
+.lbl-biz .biz-name span { color:#c9a84c; }
+.lbl-biz .biz-addr { font-size:9px; color:#555; margin-top:2px; line-height:1.5; }
 
-/* Business header */
-.lbl-biz {
-    padding:10px 12px 8px;
-    border-bottom:1.5px solid #000;
-}
-.lbl-biz .biz-name { font-size:13px; font-weight:900; letter-spacing:0.5px; }
-.lbl-biz .biz-addr { font-size:9px; color:#333; margin-top:1px; line-height:1.5; }
-
-/* Route / customer row */
-.lbl-route {
-    display:grid; grid-template-columns:1fr 1fr;
-    border-bottom:1px solid #999; font-size:9px;
-}
+.lbl-route { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid #999; font-size:9px; }
 .lbl-route .cell { padding:4px 10px; }
 .lbl-route .cell:first-child { border-right:1px solid #999; }
 .lbl-route .cell label { display:block; font-size:7.5px; color:#777; margin-bottom:1px; text-transform:uppercase; }
 .lbl-route .cell .val { font-weight:700; }
 
-/* Part name + grade section */
-.lbl-part {
-    padding:10px 12px 8px;
-    border-bottom:1px solid #999;
-    display:flex; align-items:flex-start; gap:8px;
-}
+.lbl-part { padding:10px 12px 8px; border-bottom:1px solid #999; display:flex; align-items:flex-start; gap:8px; }
 .lbl-part .part-info { flex:1; }
 .lbl-part .part-name { font-size:15px; font-weight:900; line-height:1.25; }
 .lbl-part .part-sub  { font-size:9.5px; color:#444; margin-top:3px; line-height:1.5; }
-.lbl-part .grade-box {
-    width:36px; height:36px; border:2.5px solid #000;
-    display:flex; align-items:center; justify-content:center;
-    font-size:22px; font-weight:900; flex-shrink:0; margin-top:2px;
-}
+.lbl-part .grade-box { width:36px; height:36px; border:2.5px solid #000; display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900; flex-shrink:0; margin-top:2px; }
 .grade-box.A { border-color:#2e7d32; color:#2e7d32; }
 .grade-box.B { border-color:#e65100; color:#e65100; }
 .grade-box.C { border-color:#c62828; color:#c62828; }
 
-/* Stock / IC / Bin row — mirrors Powerlink exactly */
-.lbl-ids {
-    display:grid; grid-template-columns:1fr 1fr 1fr;
-    border-bottom:1px solid #999; font-size:9px;
-}
+.lbl-ids { display:grid; grid-template-columns:1fr 1fr 1fr; border-bottom:1px solid #999; font-size:9px; }
 .lbl-ids .cell { padding:5px 10px; border-right:1px solid #999; }
 .lbl-ids .cell:last-child { border-right:none; }
 .lbl-ids .cell label { display:block; font-size:7.5px; color:#777; margin-bottom:1px; text-transform:uppercase; }
 .lbl-ids .cell .val { font-weight:700; font-size:10px; font-family:monospace; }
 
-/* Also fits / interchange */
-.lbl-fits {
-    padding:6px 12px;
-    border-bottom:1px solid #999;
-    font-size:8.5px;
-}
+.lbl-fits { padding:6px 12px; border-bottom:1px solid #999; font-size:8.5px; }
 .lbl-fits label { font-size:7.5px; color:#777; text-transform:uppercase; display:block; margin-bottom:2px; }
 .lbl-fits .fits-val { line-height:1.6; color:#222; }
 .lbl-fits .ic-source { font-size:7px; color:#aaa; margin-top:1px; }
 
-/* Notes / conditions */
-.lbl-notes {
-    padding:5px 12px;
-    border-bottom:1px solid #999;
-    font-size:8px; color:#555; min-height:22px;
-}
+.lbl-notes { padding:5px 12px; border-bottom:1px solid #999; font-size:8px; color:#555; min-height:22px; }
 .lbl-notes label { font-size:7px; color:#aaa; text-transform:uppercase; margin-right:4px; }
 
-/* Price section */
-.lbl-price {
-    padding:8px 12px;
-    border-bottom:1px solid #999;
-    display:flex; align-items:center; justify-content:space-between;
-}
+.lbl-price { padding:8px 12px; border-bottom:1px solid #999; display:flex; align-items:center; justify-content:space-between; }
 .lbl-price .retail { font-size:22px; font-weight:900; }
 .lbl-price .trade  { font-size:10px; color:#555; margin-top:2px; }
 .lbl-price .flags  { display:flex; flex-direction:column; gap:3px; align-items:flex-end; }
@@ -129,31 +86,18 @@ body { font-family: 'Inter', Arial, sans-serif; background:#f5f5f5; font-size:12
 .flag.major { background:#fff8e1; color:#e65100; border:1px solid #ffcc80; }
 .flag.legal { background:#fce4ec; color:#c62828; border:1px solid #ef9a9a; }
 
-/* Barcode section */
-.lbl-barcode {
-    flex:1; display:flex; flex-direction:column;
-    align-items:center; justify-content:center;
-    padding:8px 12px 6px;
-}
+.lbl-barcode { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 12px 6px; }
 .lbl-barcode .bc { font-family:'Libre Barcode 128',monospace; font-size:68px; line-height:1; color:#000; text-align:center; width:100%; }
 .lbl-barcode .bc-text { font-size:11px; font-weight:700; letter-spacing:2px; margin-top:2px; font-family:monospace; }
 
-/* Footer */
-.lbl-footer {
-    padding:5px 12px;
-    border-top:1px solid #ccc;
-    display:flex; justify-content:space-between; align-items:center;
-    font-size:7.5px; color:#888;
-    background:#fafafa;
-}
+.lbl-footer { padding:5px 12px; border-top:1px solid #ccc; display:flex; justify-content:space-between; align-items:center; font-size:7.5px; color:#888; background:#fafafa; }
 .lbl-footer .website { font-weight:700; color:#c9a84c; }
 
-/* ── Print rules ───────────────────────────────────────────── */
 @media print {
     body { background:white; }
     .controls { display:none !important; }
     .labels-wrap { margin:0; padding:0; gap:0; }
-    .label-small, .label-large { border:none !important; box-shadow:none !important; }
+    .label-small, .label-large { border:none !important; }
 }
 @media print {
     body.size-small .label-large { display:none !important; }
@@ -186,30 +130,39 @@ body.size-large .label-small { display:none; }
     $fitsStr  = $vehicles->map(fn($v) => trim(($v->make??'').' '.($v->model??'').' ('.($v->year_from??'').'-'.($v->year_to??'').')'))->implode(' · ');
     $icCode   = $group?->group_code ?? $part->engine_code_oem ?? $part->transmission_code_oem ?? '—';
     $binLoc   = $part->bin_location ?? '—';
-    $biz      = $part->business;
-    $partDesc = trim(($part->brand??'').' '.($part->model??'').' '.($part->year_from??'').($part->year_to && $part->year_to!=$part->year_from?'-'.$part->year_to:''));
-    $partDesc .= $part->engine_code_oem  ? ' · '.$part->engine_code_oem : '';
-    $partDesc .= $part->side && $part->side !== 'N/A' ? ' · '.$part->side : '';
-    $grade     = $part->condition_grade ?? 'B';
+    $sym      = $part->sym;
+    $grade    = $part->condition_grade ?? 'B';
+    $vehicle  = trim(($part->brand??'').' '.($part->model??'').' '.($part->year_from ?? '').($part->year_to && $part->year_to!=$part->year_from?'–'.$part->year_to:''));
 @endphp
 
-{{-- 2×1 SMALL LABEL --}}
+{{-- 2×1 SMALL — barcode + vehicle + part name --}}
 <div class="label-small">
+    <div class="vehicle">{{ $vehicle ?: 'UNIVERSAL' }}</div>
     <div class="bc">{{ $part->part_code }}</div>
     <div class="code">{{ $part->part_code }}</div>
-    <div class="name">{{ Str::limit($part->part_name, 40) }}</div>
+    <div class="name">{{ Str::limit($part->part_name, 35) }}</div>
 </div>
 
-{{-- 4×6 LARGE LABEL — Powerlink Fenix style --}}
+{{-- 4×6 LARGE — Powerlink Fenix style, AUTO ZENITH branding --}}
 <div class="label-large">
 
-    {{-- Business header --}}
+    {{-- Auto Zenith header (not Gasbok) --}}
     <div class="lbl-biz">
-        <div class="biz-name">{{ $biz['company'] ?? 'AUTO ZENITH PARTS' }}</div>
-        <div class="biz-addr">{{ $biz['address'] ?? '' }} · {{ $biz['phone'] ?? '' }}</div>
+        <div class="biz-name">AUTO <span>ZENITH</span> PARTS</div>
+        <div class="biz-addr">
+            {{ $part->location ?? '' }}
+            @php
+                $phone = match(true) {
+                    str_contains($part->location ?? '', 'Nigeria') ||
+                    str_contains($part->location ?? '', 'Ghana')   => '+234 915 568 8804',
+                    default                                         => '+1 (682) 256-3201',
+                };
+            @endphp
+            · {{ $phone }} · autozenithparts.com
+        </div>
     </div>
 
-    {{-- Route / Customer row --}}
+    {{-- Location / Printed row --}}
     <div class="lbl-route">
         <div class="cell">
             <label>Location</label>
@@ -225,7 +178,11 @@ body.size-large .label-small { display:none; }
     <div class="lbl-part">
         <div class="part-info">
             <div class="part-name">{{ $part->part_name }}</div>
-            <div class="part-sub">{{ $partDesc ?: '—' }}</div>
+            <div class="part-sub">
+                {{ $vehicle ?: 'Universal' }}
+                @if($part->engine_code_oem) · {{ $part->engine_code_oem }} @endif
+                @if($part->side && $part->side !== 'N/A') · {{ $part->side }} @endif
+            </div>
             @if($part->mileage)<div class="part-sub">Mileage: {{ number_format($part->mileage) }} mi</div>@endif
         </div>
         <div class="grade-box {{ $grade }}">{{ $grade }}</div>
@@ -247,25 +204,25 @@ body.size-large .label-small { display:none; }
         </div>
     </div>
 
-    {{-- Also fits / interchange vehicles --}}
+    {{-- Also fits --}}
     <div class="lbl-fits">
         <label>Also Fits (Interchange)</label>
         @if($fitsStr)
             <div class="fits-val">{{ $fitsStr }}</div>
             <div class="ic-source">
-                {{ $group ? '✓ Confirmed group: '.$group->group_code : '~ Suggested via OEM code (not yet confirmed)' }}
+                {{ $group ? '✓ Confirmed group: '.$group->group_code : '~ Suggested via OEM code' }}
             </div>
         @else
-            <div class="fits-val" style="color:#bbb;">No interchange data — see compatibility checker</div>
+            <div class="fits-val" style="color:#bbb;">No interchange data on file — see compatibility checker</div>
         @endif
     </div>
 
-    {{-- Conditions / notes --}}
+    {{-- Conditions --}}
     <div class="lbl-notes">
-        <label>Condition Note:</label>
+        <label>Note:</label>
         {{ $part->conditions_and_options ?? $part->description ?? '—' }}
         @if($part->donor_vin)
-            &nbsp;·&nbsp;<span style="font-family:monospace;">VIN: {{ $part->donor_vin }}</span>
+            &nbsp;·&nbsp;<span style="font-family:monospace;font-size:7px;">VIN: {{ $part->donor_vin }}</span>
         @endif
     </div>
 
@@ -280,7 +237,7 @@ body.size-large .label-small { display:none; }
         <div class="flags">
             @if($part->is_major_component)<span class="flag major">⚡ MAJOR COMPONENT</span>@endif
             @if($part->legal_trace_required)<span class="flag legal">⚠ LEGAL TRACE REQ.</span>@endif
-            <span style="font-size:7px;color:#aaa;margin-top:4px;">Qty in stock: {{ $part->stock_qty }}</span>
+            <span style="font-size:7px;color:#aaa;margin-top:4px;">Qty: {{ $part->stock_qty }}</span>
         </div>
     </div>
 
@@ -293,7 +250,7 @@ body.size-large .label-small { display:none; }
     {{-- Footer --}}
     <div class="lbl-footer">
         <span>autozenithparts.com</span>
-        <span>{{ $biz['phone'] ?? '' }}</span>
+        <span>{{ $phone }}</span>
         <span class="website">AUTO ZENITH PARTS</span>
     </div>
 
