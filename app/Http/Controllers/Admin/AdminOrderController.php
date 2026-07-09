@@ -18,13 +18,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
 use App\Http\Controllers\Admin\InvoiceController;
+use App\Support\Locations;
 
 class AdminOrderController extends Controller
 {
-    const LOCATIONS = [
-        'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
-        'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
-    ];
+    // Single source of truth — see App\Support\Locations. This used
+    // to be its own hardcoded copy (a third one, alongside Harvest
+    // and Inventory), which is exactly the drift pattern that caused
+    // the Lagos harvest 500 error earlier.
 
     private function liveRates(): array
     {
@@ -43,7 +44,7 @@ class AdminOrderController extends Controller
     // =========================================================
     public function create()
     {
-        return view('admin.orders.place', ['locations' => self::LOCATIONS]);
+        return view('admin.orders.place', ['locations' => Locations::all()]);
     }
 
     // =========================================================
@@ -203,6 +204,15 @@ class AdminOrderController extends Controller
             $orderId = DB::table('orders')->insertGetId([
                 'order_ref'           => $orderRef,
                 'channel'             => $request->fulfillment_type === 'Collection' ? 'walk-in' : 'phone',
+                // #3 fix — real staff name now saved to its own real,
+                // queryable column (orders.created_by, added via
+                // migration 2026_07_06_000000_add_created_by_to_orders),
+                // matching the same pattern invoices.created_by already
+                // used. This is what InvoiceController::index() reads
+                // in the merged Invoices/Receipts list — previously it
+                // had nowhere to pull a real name from and fell back to
+                // a hardcoded 'Staff' string for every walk-in/phone order.
+                'created_by'          => Session::get('staff_name') ?? 'Admin',
                 'customer_name'       => $request->customer_name,
                 'customer_phone'      => $request->customer_phone,
                 'customer_whatsapp'   => $request->customer_whatsapp ?: $request->customer_phone,

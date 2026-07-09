@@ -11,22 +11,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * Compatibility Checker — Powerlink-style vehicle-centric search.
  *
- * Resolution order (mirrors Powerlink EDEN compatibility lookup):
- *
- *   1. INTERCHANGE GROUPS (most reliable) — checks part_interchange_groups
- *      → part_interchange_vehicles for any group whose vehicle year range
- *      covers the searched vehicle. Returns all parts in matching groups,
- *      with combined stock across interchangeable years.
- *      e.g. "2007 Camry" finds a group covering 2005–2010 Camry → shows
- *      parts from 2005, 2007, 2009 Camrys all as compatible.
- *
- *   2. DIRECT INVENTORY MATCH — checks parts_inventory.compat_year_from /
- *      compat_year_to set at harvest time. Catches parts not yet in an
- *      interchange group.
- *
- *   3. AUTO HEURISTIC — uses InterchangeService::interchangeFor() to
- *      suggest additional compatible vehicles based on shared OEM engine
- *      or gearbox codes. Surfaced as suggested, not confirmed.
+ * Resolution order:
+ *   1. INTERCHANGE GROUPS — part_interchange_groups → part_interchange_vehicles
+ *   2. DIRECT INVENTORY MATCH — compat_year_from / compat_year_to
+ *   3. AUTO HEURISTIC — InterchangeService OEM-code matching (Ladipo algorithm)
  */
 class CompatibilityController extends Controller
 {
@@ -85,13 +73,15 @@ class CompatibilityController extends Controller
             'year'  => 'required|integer|min:1980|max:2030',
         ]);
 
-        $make  = strtoupper(trim($request->make));
-        $model = strtoupper(trim($request->model));
-        $year  = (int) $request->year;
+        $make      = strtoupper(trim($request->make));
+        $model     = strtoupper(trim($request->model));
+        $year      = (int) $request->year;
+        $partName  = trim($request->get('part_name', ''));
+        $category  = trim($request->get('category', ''));
 
         $results = collect();
 
-        // 1. INTERCHANGE GROUPS
+        // ── Tier 1: Interchange Groups ─────────────────────────────
         $matchingGroups = DB::table('part_interchange_groups as g')
             ->join('part_interchange_vehicles as v', 'v.group_id', '=', 'g.id')
             ->where('v.make',      $make)
@@ -103,45 +93,44 @@ class CompatibilityController extends Controller
             ->get();
 
         foreach ($matchingGroups as $group) {
-            $parts    = DB::table('parts_inventory')
+            $query = DB::table('parts_inventory')
                 ->where('interchange_group_id', $group->id)
-                ->where('status', 'Available')
-                ->whereNull('deleted_at')
-                ->get();
-
-            $vehicles       = $this->interchange->vehiclesForGroup($group->id);
-            $stockBreakdown = $this->interchange->aggregatedStockBreakdown($group->id);
-
+                ->where('status', 'Available');
+            if ($partName) $query->where('part_name', 'like', "%{$partName}%");
+            if ($category) $query->where('part_category', $category);
+            $parts    = $query->get();
+            $vehicles = $this->interchange->vehiclesForGroup($group->id);
+            $stock    = $this->interchange->aggregatedStockBreakdown($group->id);
             foreach ($parts as $part) {
-                $results->push($this->formatResult($part, 'interchange', $group, $vehicles, $stockBreakdown));
+                $results->push($this->formatResult($part, 'interchange', $group, $vehicles, $stock));
             }
         }
 
-        // 2. DIRECT INVENTORY MATCH (not in interchange group)
-        $directPartIds = $results->pluck('id')->toArray();
-        $direct = DB::table('parts_inventory')
+        // ── Tier 2: Direct inventory year-range match ──────────────
+        $directIds = $results->pluck('id')->toArray();
+        $directQuery = DB::table('parts_inventory')
             ->where('brand',            $make)
             ->where('model',            $model)
             ->where('compat_year_from', '<=', $year)
             ->where('compat_year_to',   '>=', $year)
             ->where('status',           'Available')
-            ->whereNull('deleted_at')
             ->whereNull('interchange_group_id')
-            ->whereNotIn('id', $directPartIds)
-            ->get();
-
-        foreach ($direct as $part) {
+            ->whereNotIn('id', $directIds);
+        if ($partName) $directQuery->where('part_name', 'like', "%{$partName}%");
+        if ($category) $directQuery->where('part_category', $category);
+        foreach ($directQuery->get() as $part) {
             $results->push($this->formatResult($part, 'direct', null, collect(), null));
         }
 
-        // 3. AUTO HEURISTIC
-        $oemParts = DB::table('parts_inventory')
+        // ── Tier 3: OEM-code heuristic (Ladipo algorithm) ──────────
+        $oemQuery = DB::table('parts_inventory')
             ->where('brand', $make)->where('model', $model)
             ->where('year_from', '<=', $year)->where('year_to', '>=', $year)
             ->whereNotNull('engine_code_oem')
             ->whereNull('interchange_group_id')
-            ->whereNull('deleted_at')
-            ->select('part_name', 'engine_code_oem', 'transmission_code_oem')
+            ->where('status', 'Available');
+        if ($partName) $oemQuery->where('part_name', 'like', "%{$partName}%");
+        $oemParts = $oemQuery->select('part_name', 'engine_code_oem', 'transmission_code_oem')
             ->distinct()->limit(5)->get();
 
         $heuristicSuggestions = collect();
@@ -163,11 +152,29 @@ class CompatibilityController extends Controller
             }
         }
 
+        // ── OemDatabase interchange reference — check both trans + engine ──
+        $oem = \App\Data\OemDatabase::lookup($make, $model, $year);
+        $allInterchange = \App\Data\OemDatabase::interchange();
+        $interchangeReference = collect();
+
+        // Check transmission code first
+        if ($oem['transmission_code'] && isset($allInterchange[$oem['transmission_code']])) {
+            $interchangeReference = $interchangeReference->merge($allInterchange[$oem['transmission_code']]);
+        }
+        // Also check engine code — merge to get the full picture
+        if ($oem['engine_code'] && isset($allInterchange[$oem['engine_code']])) {
+            $interchangeReference = $interchangeReference->merge($allInterchange[$oem['engine_code']]);
+        }
+        // Deduplicate
+        $interchangeReference = $interchangeReference->unique()->values()->toArray();
+
         return response()->json([
-            'count'       => $results->count(),
-            'results'     => $results->values(),
-            'suggestions' => $heuristicSuggestions->values(),
-            'search'      => "{$year} {$make} {$model}",
+            'count'                 => $results->count(),
+            'results'               => $results->values(),
+            'suggestions'           => $heuristicSuggestions->values(),
+            'interchange_reference' => $interchangeReference,
+            'oem'                   => $oem,
+            'search'                => "{$year} {$make} {$model}" . ($partName ? " · {$partName}" : ''),
         ]);
     }
 
@@ -224,7 +231,6 @@ class CompatibilityController extends Controller
                 'updated_at' => now(),
             ]);
         }
-
         return response()->json(['success' => true, 'method' => 'flat_table']);
     }
 

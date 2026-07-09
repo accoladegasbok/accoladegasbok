@@ -427,7 +427,7 @@
 
                             {{-- Photo --}}
                             <a href="{{ route('parts.show', $part->id) }}" class="block relative bg-gray-100 aspect-[4/3] overflow-hidden">
-                                <img src="{{ $thumb ?: asset('images/coming-soon.jpg') }}" alt="{{ $part->part_name }}"
+                                <img src="{{ $thumb }}" alt="{{ $part->part_name }}"
                                     class="w-full h-full {{ $hasRealPhoto ? 'object-cover hover:scale-105' : 'object-contain p-4' }} transition-transform duration-300"
                                     loading="lazy">
 
@@ -572,7 +572,7 @@
                         <div class="part-card bg-white rounded-xl border border-gray-200 shadow-sm flex gap-4 p-4 items-start">
                             {{-- Thumb --}}
                             <a href="{{ route('parts.show', $part->id) }}" class="w-24 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                                <img src="{{ $thumb ?: asset('images/coming-soon.jpg') }}" alt="{{ $part->part_name }}"
+                                <img src="{{ $thumb }}" alt="{{ $part->part_name }}"
                                     class="w-full h-full {{ $hasRealPhoto ? 'object-cover' : 'object-contain p-2' }}">
                             </a>
                             {{-- Info --}}

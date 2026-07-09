@@ -6,6 +6,10 @@
 
 @section('header-actions')
 <div class="flex gap-2">
+  <a href="{{ route('admin.recycle-bin.index') }}"
+     class="border border-gray-200 text-gray-500 font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+    🗑 Recycle Bin
+  </a>
   <a href="{{ route('admin.invoices.service.create') }}"
      class="border border-gray-200 text-gray-600 font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
     Quick Receipt
@@ -37,10 +41,31 @@
   <button type="submit" class="bg-navy text-white font-display font-700 text-sm rounded-lg px-3 py-2 hover:bg-navy-light transition-colors">Filter</button>
 </form>
 
+{{-- Bulk action bar — admin/manager only. Hidden until at least one
+     row is checked (see JS toggleBulkBar below). --}}
+@if(in_array(session('staff_role'), ['admin','manager']))
+<div id="bulkActionBar" class="hidden bg-navy text-white rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+  <div class="text-sm font-body"><span id="bulkSelectedCount">0</span> selected</div>
+  <div class="flex gap-2">
+    <button onclick="bulkDeleteSelected()" class="bg-red-500 hover:bg-red-600 text-white text-xs font-display font-700 px-4 py-2 rounded-lg transition-colors">
+      🗑 Delete Selected
+    </button>
+    <button onclick="clearBulkSelection()" class="border border-white border-opacity-30 text-white text-xs font-body px-4 py-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+      Clear
+    </button>
+  </div>
+</div>
+@endif
+
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
   <table class="w-full">
     <thead class="bg-navy text-white">
       <tr>
+        @if(in_array(session('staff_role'), ['admin','manager']))
+        <th class="px-4 py-3 w-8">
+          <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)" class="accent-gold">
+        </th>
+        @endif
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Ref</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Customer</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Channel</th>
@@ -63,6 +88,11 @@
             : number_format($inv->amount_local, 2));
       @endphp
       <tr class="hover:bg-gray-50">
+        @if(in_array(session('staff_role'), ['admin','manager']))
+        <td class="px-4 py-3">
+          <input type="checkbox" class="bulk-row-checkbox accent-gold" data-type="{{ $inv->type }}" data-id="{{ $inv->id }}" onchange="updateBulkBar()">
+        </td>
+        @endif
         <td class="px-4 py-3 font-mono text-sm font-700 text-navy">{{ $inv->ref }}</td>
         <td class="px-4 py-3">
           <div class="font-500 text-sm text-gray-800">{{ $inv->customer_name }}</div>
@@ -130,6 +160,11 @@
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 const STAFF_ROLE = '{{ session("staff_role") }}';
 
+// ── Single-row delete — now passes return_to so the redirect (fixed
+// in InvoiceController::destroy() / OrderAdminController::destroy())
+// brings the user back to THIS Invoices/Receipts page, instead of
+// bouncing them to the Orders page whenever the deleted row happened
+// to be an order under the hood. This was improvement #2.
 function deleteInvoiceRow(type, id) {
     if (!confirm('Permanently delete this ' + (type === 'order' ? 'order' : 'invoice') + '? This cannot be undone from the normal interface.')) return;
 
@@ -151,9 +186,63 @@ function submitDeleteRow(type, id, overrideToken) {
         <input type="hidden" name="_token" value="${CSRF}">
         <input type="hidden" name="_method" value="DELETE">
         ${overrideToken ? `<input type="hidden" name="override_token" value="${overrideToken}">` : ''}
+        <input type="hidden" name="return_to" value="${window.location.pathname + window.location.search}">
     `;
     document.body.appendChild(form);
     form.submit();
+}
+
+// ── Bulk delete — admin/manager only (no PIN-override path for bulk;
+// staff/supervisor still use the single-row delete above with PIN).
+// Posts a list of {type, id} pairs to one endpoint that soft-deletes
+// each in its correct table.
+function toggleSelectAll(checkbox) {
+    document.querySelectorAll('.bulk-row-checkbox').forEach(cb => cb.checked = checkbox.checked);
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const checked = document.querySelectorAll('.bulk-row-checkbox:checked');
+    const bar = document.getElementById('bulkActionBar');
+    const count = document.getElementById('bulkSelectedCount');
+    if (!bar) return;
+    if (checked.length > 0) {
+        bar.classList.remove('hidden');
+        count.textContent = checked.length;
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+function clearBulkSelection() {
+    document.querySelectorAll('.bulk-row-checkbox').forEach(cb => cb.checked = false);
+    const selectAll = document.getElementById('selectAllCheckbox');
+    if (selectAll) selectAll.checked = false;
+    updateBulkBar();
+}
+
+async function bulkDeleteSelected() {
+    const checked = document.querySelectorAll('.bulk-row-checkbox:checked');
+    if (checked.length === 0) return;
+    if (!confirm(`Permanently delete ${checked.length} selected item(s)? This cannot be undone from the normal interface.`)) return;
+
+    const items = Array.from(checked).map(cb => ({ type: cb.dataset.type, id: parseInt(cb.dataset.id) }));
+
+    try {
+        const res = await fetch(`{{ route('admin.invoices.bulk-destroy') }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+            body: JSON.stringify({ items }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Could not delete selected items.');
+        }
+    } catch (e) {
+        alert('Network error — please try again.');
+    }
 }
 </script>
 

@@ -1,41 +1,76 @@
 {{-- FILE: resources/views/admin/tickets/create.blade.php --}}
 @extends('admin.layouts.admin')
-@section('title','Raise a Ticket')
-@section('page-title','Raise a Ticket')
-@section('page-sub','Request something from admin/manager — they\'ll be notified by email and SMS')
+@section('title', 'New Ticket')
+@section('page-title', 'Submit a Ticket')
+@section('page-sub', 'Request an admin or manager action — delete invoice, edit price, approve discount etc.')
 
 @section('content')
-<form method="POST" action="{{ route('admin.tickets.store') }}" class="max-w-2xl">
-@csrf
+<div class="max-w-xl">
+    <form method="POST" action="{{ route('admin.tickets.store') }}">
+        @csrf
 
-@if($errors->any())
-<div class="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 font-body mb-4">
-  @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
-</div>
-@endif
+        @if($errors->any())
+        <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 text-sm text-red-700">
+            @foreach($errors->all() as $e)<p>{{ $e }}</p>@endforeach
+        </div>
+        @endif
 
-<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
-  <div>
-    <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Category *</label>
-    <select name="category" required class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-gold">
-      @foreach($categories as $c)<option value="{{ $c }}">{{ $c }}</option>@endforeach
-    </select>
-  </div>
-  <div>
-    <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Subject *</label>
-    <input type="text" name="subject" required placeholder="Short summary, e.g. Delete invoice INV-2026-0042 (wrong customer)"
-      class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold">
-  </div>
-  <div>
-    <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Description</label>
-    <textarea name="description" rows="4" placeholder="Explain what you need and why..."
-      class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-gold"></textarea>
-  </div>
-</div>
+        <div class="stat-card space-y-4">
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Category *</label>
+                <select name="category" required
+                        class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:border-yellow-400">
+                    <option value="">Select a category...</option>
+                    @foreach($categories as $cat)
+                    <option value="{{ $cat }}" {{ old('category') === $cat ? 'selected' : '' }}>{{ $cat }}</option>
+                    @endforeach
+                </select>
+            </div>
 
-<div class="flex gap-3 justify-end mt-5 pb-8">
-  <a href="{{ route('admin.tickets.index') }}" class="border border-gray-200 text-gray-600 font-body font-500 text-sm px-6 py-3 rounded-xl hover:bg-gray-50 transition-colors">Cancel</a>
-  <button type="submit" class="bg-gold hover:bg-yellow-500 text-navy font-display font-700 text-sm px-8 py-3 rounded-xl transition-colors shadow-lg">Submit Ticket</button>
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Subject *</label>
+                <input type="text" name="subject" value="{{ old('subject') }}" required
+                       placeholder="Brief description of what you need..."
+                       class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-yellow-400">
+            </div>
+
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Details</label>
+                <textarea name="description" rows="4"
+                          placeholder="Explain what you need and why, include relevant invoice/order numbers..."
+                          class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-yellow-400 resize-none">{{ old('description') }}</textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Reference Type</label>
+                    <select name="reference_type"
+                            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:border-yellow-400">
+                        <option value="">None</option>
+                        <option value="invoice">Invoice</option>
+                        <option value="order">Order</option>
+                        <option value="inventory">Inventory Part</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Reference ID / Number</label>
+                    <input type="text" name="reference_id" value="{{ old('reference_id') }}"
+                           placeholder="e.g. AZP-20240901-AB12"
+                           class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-yellow-400">
+                </div>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+                <button type="submit"
+                        class="flex-1 bg-gold text-navy font-display font-700 text-sm py-3 rounded-xl hover:bg-yellow-500 transition-colors">
+                    Submit Ticket
+                </button>
+                <a href="{{ route('admin.tickets.index') }}"
+                   class="border border-gray-200 text-gray-500 text-sm px-5 py-3 rounded-xl hover:bg-gray-50 transition-colors">
+                    Cancel
+                </a>
+            </div>
+        </div>
+    </form>
 </div>
-</form>
 @endsection

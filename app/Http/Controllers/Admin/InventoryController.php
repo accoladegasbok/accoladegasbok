@@ -180,6 +180,7 @@ class InventoryController extends Controller
             'compat_year_to'      => 'nullable|integer|min:1986|max:2027',
             'compatible_trims'    => 'nullable|string|max:200',
             'not_compatible_note' => 'nullable|string|max:200',
+            'source_ref'          => 'nullable|string|max:6',
         ]);
 
         // ── Part name guard (admin-only for unlisted names) ──────────
@@ -244,6 +245,7 @@ class InventoryController extends Controller
             'location'               => $request->location,
             'description'            => $request->description,
             'oem_part_number'        => $request->oem_part_number,
+            'source_ref'             => $request->source_ref ? substr(trim($request->source_ref), 0, 6) : null,
             'mileage'                => $request->mileage,
             'colour'                 => $request->colour,
             'bin_location'           => $request->bin_location,
@@ -389,6 +391,63 @@ class InventoryController extends Controller
         ]);
     }
 
+    // =========================================================
+    // GET /admin/inventory/backfill-drive-type — one-time cleanup
+    // tool (admin/manager only). Lists every Transmission /
+    // "Complete Engine And Gear With Accessories" part missing
+    // drive_type, since that field never had a real form input
+    // anywhere until the Harvest/Manual Add fixes — existing parts
+    // saved before that simply never had a chance to capture it.
+    // No auto-fill possible here (no OEM data source for 2WD vs
+    // 4WD), so this is purely a faster way to fill it in by hand
+    // than opening 50+ individual Edit pages one at a time.
+    // =========================================================
+    public function backfillDriveTypeForm()
+    {
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            abort(403, 'Only admin or manager accounts can use this tool.');
+        }
+
+        $parts = DB::table('parts_inventory')
+            ->where(function ($q) {
+                $q->where('part_category', 'Transmission')
+                  ->orWhere('part_name', 'Complete Engine And Gear With Accessories');
+            })
+            ->whereNull('drive_type')
+            ->orderBy('brand')->orderBy('model')->orderBy('year_from')
+            ->get(['id', 'part_code', 'part_name', 'brand', 'model', 'year_from', 'year_to',
+                   'transmission_code_oem', 'pin_count', 'gear_alias']);
+
+        return view('admin.inventory.backfill-drive-type', compact('parts'));
+    }
+
+    // =========================================================
+    // POST /admin/inventory/backfill-drive-type — saves only the
+    // rows that were actually set; anything left blank is skipped
+    // so this can be done across multiple sessions without forcing
+    // a value on parts you haven't gotten to yet.
+    // =========================================================
+    public function backfillDriveTypeSave(Request $request)
+    {
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            abort(403, 'Only admin or manager accounts can use this tool.');
+        }
+
+        $driveTypes = $request->input('drive_type', []); // [part_id => value]
+        $updated = 0;
+
+        foreach ($driveTypes as $partId => $value) {
+            if (empty($value)) continue; // skip rows left blank — do them later
+            DB::table('parts_inventory')->where('id', $partId)->update([
+                'drive_type' => $value,
+                'updated_at' => now(),
+            ]);
+            $updated++;
+        }
+
+        return back()->with('success', "{$updated} part(s) updated. Reload this page to see what's left.");
+    }
+
     // ── Create form ───────────────────────────────────────────────
     public function create()
     {
@@ -532,6 +591,7 @@ class InventoryController extends Controller
             'photos'         => 'nullable|array',
             'photos.*'       => 'image|max:8192',
             'video'          => 'nullable|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
+            'source_ref'     => 'nullable|string|max:6',
         ];
 
         if ($isConsumable) {
@@ -539,8 +599,16 @@ class InventoryController extends Controller
             $rules['stock_qty'] = 'nullable|integer|min:1';
         } else {
             $rules['model']     = 'required|string|max:80';
-            $rules['year_from'] = 'required|integer|min:1986|max:2027';
-            $rules['year_to']   = 'required|integer|min:1986|max:2027';
+            // #16 fix — only the ACTUAL year of the vehicle this part was
+            // pulled from is required (a single value), matching Harvest's
+            // pattern (donor vehicle has one real year). Compatibility
+            // RANGE is a separate, optional concept below — previously
+            // this form conflated the two by requiring a "Year From" /
+            // "Year To" pair here, which had staff typing a compatibility
+            // guess into what should have been the actual donor year.
+            $rules['year']            = 'required|integer|min:1986|max:2027';
+            $rules['compat_year_from'] = 'nullable|integer|min:1986|max:2027';
+            $rules['compat_year_to']   = 'nullable|integer|min:1986|max:2027';
         }
 
         $request->validate($rules);
@@ -591,8 +659,15 @@ class InventoryController extends Controller
 
         // Consumables don't have a real vehicle year — use a wide placeholder
         // range since year_from/year_to are NOT NULL columns.
-        $yearFrom = $isConsumable ? 1990 : $request->year_from;
-        $yearTo   = $isConsumable ? 2030 : $request->year_to;
+        //
+        // #16 fix — for real parts, year_from/year_to now both store the
+        // SAME single actual donor-vehicle year (matching what Harvest
+        // does), not a staff-guessed range. The compatibility range shown
+        // to customers is the separate compat_year_from/compat_year_to
+        // pair below, defaulting to the actual year if left blank.
+        $actualYear = $isConsumable ? null : (int) $request->year;
+        $yearFrom = $isConsumable ? 1990 : $actualYear;
+        $yearTo   = $isConsumable ? 2030 : $actualYear;
 
         $partId = DB::table('parts_inventory')->insertGetId([
             'part_code'              => $partCode,
@@ -600,8 +675,8 @@ class InventoryController extends Controller
             'model'                  => $isConsumable ? ($request->model ?: 'Universal') : $request->model,
             'year_from'              => $yearFrom,
             'year_to'                => $yearTo,
-            'compat_year_from'       => $isConsumable ? null : ($request->compat_year_from ?? $yearFrom),
-            'compat_year_to'         => $isConsumable ? null : ($request->compat_year_to   ?? $yearTo),
+            'compat_year_from'       => $isConsumable ? null : ($request->compat_year_from ?? $actualYear),
+            'compat_year_to'         => $isConsumable ? null : ($request->compat_year_to   ?? $actualYear),
             'part_name'              => $request->part_name,
             'unit_size'              => $request->unit_size,
             'compatibility_note'     => $request->compatibility_note,
@@ -615,6 +690,7 @@ class InventoryController extends Controller
             'storage_shelf_id'       => $request->storage_shelf_id ?: null,
             'bin_location'           => $request->bin_location,
             'oem_part_number'        => $request->oem_part_number,
+            'source_ref'             => $request->source_ref ? substr(trim($request->source_ref), 0, 6) : null,
             'engine_code_oem'        => $request->engine_code_oem
                                           ? strtoupper(trim($request->engine_code_oem)) : null,
             'transmission_code_oem'  => $request->transmission_code_oem

@@ -87,7 +87,7 @@
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3.75H6.912a2.25 2.25 0 00-2.25 2.25v13.5a2.25 2.25 0 002.25 2.25h10.176a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H15M9 3.75c0 .621.504 1.125 1.125 1.125h3.75c.621 0 1.125-.504 1.125-1.125M9 3.75c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125m-5 9 1.5 1.5 3-3.5"/></svg>
         Consumables
       </a>
-      <a href="{{ route('parts.compatibility') }}" target="_blank" class="sidebar-link {{ request()->routeIs('parts.compatibility') ? 'active' : '' }}">
+      <a href="{{ route('admin.compatibility.index') }}" class="sidebar-link {{ request()->routeIs('parts.compatibility') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         Compatibility Checker
       </a>
@@ -103,6 +103,14 @@
       <a href="{{ route('admin.invoices.service.create') }}" class="sidebar-link {{ request()->routeIs('admin.invoices.service*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
         Quick Receipt
+      </a>
+      <a href="{{ route('admin.invoices.car-sale.create') }}" class="sidebar-link {{ request()->routeIs('admin.invoices.car-sale*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
+        Car Sale Receipt
+      </a>
+      <a href="{{ route('admin.recycle-bin.index') }}" class="sidebar-link {{ request()->routeIs('admin.recycle-bin*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+        Recycle Bin
       </a>
       <a href="{{ route('admin.service-rates.index') }}" class="sidebar-link {{ request()->routeIs('admin.service-rates*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.02-.397-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a7.65 7.65 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/></svg>
@@ -172,6 +180,26 @@
           <span class="ml-auto bg-red-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pending }}</span>
         @endif
       </a>
+
+      {{-- ── Security — override PIN. Visible to every role eligible to
+           APPROVE an override (supervisor/manager/admin), matching
+           OverrideController::ELIGIBLE_ROLES exactly. This was the
+           actual gap in improvement #9: the whole backend (verify,
+           setOwnPin, clearPin, logs, audit trail) already existed —
+           there was just no link anywhere pointing to it. --}}
+      @if(in_array(session('staff_role'), ['supervisor','manager','admin']))
+      <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Security</div>
+      <a href="{{ route('admin.override.set-pin-page') }}" class="sidebar-link {{ request()->routeIs('admin.override.set-pin-page') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+        Set My Override PIN
+      </a>
+      @if(in_array(session('staff_role'), ['admin','manager']))
+      <a href="{{ route('admin.override.logs') }}" class="sidebar-link {{ request()->routeIs('admin.override.logs') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 12.75c1.148 0 2.278.08 3.383.235 1.037.146 1.866.966 1.866 2.013 0 3.728-2.35 6.75-5.25 6.75S6.75 18.726 6.75 15c0-1.046.83-1.867 1.866-2.013A24.204 24.204 0 0112 12.75zm0 0c1.472 0 2.882.265 4.185.75M12 12.75c-1.472 0-2.882.265-4.185.75m0 0V9.375c0-1.036.84-1.875 1.875-1.875h4.62c1.036 0 1.875.84 1.875 1.875v4.125"/></svg>
+        Override Logs
+      </a>
+      @endif
+      @endif
 
       @if(in_array(session('staff_role'), ['admin','manager']))
       <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Admin</div>

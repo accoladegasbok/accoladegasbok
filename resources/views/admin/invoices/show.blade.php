@@ -6,21 +6,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Invoice {{ $invoiceNo }} — Auto Zenith Parts</title>
 <style>
-/* ── Reset & Base ─────────────────────────────────────── */
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; background: #f0f2f5; }
-
-/* ── Print Controls (screen only) ────────────────────── */
+body { font-family: 'Arial', sans-serif; font-size: 13px; color: #1a1a2e; background: #f0f2f5; }
 .print-controls {
     position: fixed; top: 0; left: 0; right: 0; z-index: 999;
     background: #0d1b2a; color: white; padding: 12px 24px;
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
     box-shadow: 0 2px 12px rgba(0,0,0,0.3);
 }
-.print-controls h2 { font-size: 14px; font-weight: 700; color: #c9a84c; margin-right: 8px; }
+.print-controls h2 { font-size: 15px; font-weight: 700; color: #c9a84c; margin-right: 8px; }
 .copy-btn {
     padding: 7px 16px; border-radius: 6px; border: 2px solid transparent;
-    font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;
     text-transform: uppercase; letter-spacing: 0.5px;
 }
 .copy-btn.active { background: #c9a84c; color: #0d1b2a; border-color: #c9a84c; }
@@ -28,31 +25,24 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
 .copy-btn:hover:not(.active) { border-color: #c9a84c; color: #c9a84c; }
 .print-all-btn {
     padding: 7px 16px; background: #1a6b3c; color: white; border: none;
-    border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;
+    border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;
     text-transform: uppercase; letter-spacing: 0.5px;
 }
 .print-all-btn:hover { background: #22873d; }
 .print-single-btn {
     padding: 7px 16px; background: #0d47a1; color: white; border: none;
-    border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer;
+    border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;
     text-transform: uppercase; letter-spacing: 0.5px;
 }
 .print-single-btn:hover { background: #1565c0; }
 .sep { color: #444; }
-
-/* ── Invoice Page Wrapper ─────────────────────────────── */
 .invoice-pages { margin-top: 64px; padding: 20px; }
-
-/* ── Payments panel — normal block, NOT fixed/overlay like .print-controls.
-     Sits right below the fixed toolbar, never covers anything. ── */
 .payments-panel {
     max-width: 560px; margin: 84px auto 0; padding: 16px 20px;
     background: #fff; border: 1px solid #e2e2e2; border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.06); position: relative; z-index: 1;
 }
 @media print { .payments-panel { display: none !important; } }
-
-/* ── Single Invoice Card ──────────────────────────────── */
 .invoice {
     background: white; width: 210mm; min-height: 148mm;
     margin: 0 auto 20px; padding: 16mm 14mm;
@@ -60,11 +50,9 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
     position: relative; page-break-after: always;
 }
 .invoice:last-child { page-break-after: auto; }
-
-/* ── Copy Banner ──────────────────────────────────────── */
 .copy-banner {
     position: absolute; top: 0; right: 0;
-    padding: 6px 20px; font-size: 9px; font-weight: 700;
+    padding: 6px 20px; font-size: 10px; font-weight: 700;
     letter-spacing: 1.5px; text-transform: uppercase; color: white;
     border-bottom-left-radius: 8px;
 }
@@ -72,8 +60,6 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
 .copy-warehouse .copy-banner { background: #1a6b3c; }
 .copy-accounts  .copy-banner { background: #6a1b9a; }
 .copy-gate      .copy-banner { background: #b71c1c; }
-
-/* ── Watermark ────────────────────────────────────────── */
 .watermark {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%) rotate(-35deg);
@@ -85,147 +71,129 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
 .copy-warehouse .watermark { color: #1a6b3c; }
 .copy-accounts  .watermark { color: #6a1b9a; }
 .copy-gate      .watermark { color: #b71c1c; }
-
-/* ── Content above watermark ──────────────────────────── */
 .invoice-content { position: relative; z-index: 1; }
 
-/* ── Header ───────────────────────────────────────────── */
-.inv-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 2px solid #0d1b2a; padding-bottom: 12px; }
-.brand-block .brand-name { font-size: 22px; font-weight: 900; color: #0d1b2a; letter-spacing: 2px; }
+/* ── HEADER ─────────────────────────────────────────────────────── */
+.inv-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 2.5px solid #0d1b2a; padding-bottom: 12px; }
+.brand-block .brand-name { font-size: 26px; font-weight: 900; color: #0d1b2a; letter-spacing: 2px; }
 .brand-block .brand-name span { color: #c9a84c; }
-.brand-block .tagline { font-size: 8px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 1px; }
-.brand-block .company { font-size: 9px; color: #444; margin-top: 3px; }
-.brand-block .address { font-size: 8.5px; color: #555; margin-top: 2px; line-height: 1.5; }
-.brand-block .contact { font-size: 8.5px; color: #555; margin-top: 3px; }
+.brand-block .tagline { font-size: 10px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+.brand-block .company { font-size: 11px; color: #444; margin-top: 4px; font-weight: 600; }
+.brand-block .address { font-size: 10.5px; color: #555; margin-top: 2px; line-height: 1.6; }
+.brand-block .contact { font-size: 10.5px; color: #555; margin-top: 4px; }
 
+/* ── META (right side of header) ────────────────────────────────── */
 .inv-meta { text-align: right; }
-.inv-meta .inv-title { font-size: 18px; font-weight: 900; color: #0d1b2a; letter-spacing: 3px; text-transform: uppercase; }
+.inv-meta .inv-title { font-size: 22px; font-weight: 900; color: #0d1b2a; letter-spacing: 3px; text-transform: uppercase; }
 .inv-meta table { margin-top: 6px; }
-.inv-meta td { padding: 1.5px 0; font-size: 9px; }
+.inv-meta td { padding: 2px 0; font-size: 11px; }
 .inv-meta td:first-child { color: #777; padding-right: 10px; }
 .inv-meta td:last-child { font-weight: 700; color: #0d1b2a; }
 
-/* ── Customer & Payment Info ──────────────────────────── */
+/* ── BILL TO / PAYMENT DETAILS ──────────────────────────────────── */
 .inv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-.info-box { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 10px; }
-.info-box h4 { font-size: 8px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; }
-.info-box p { font-size: 9.5px; line-height: 1.6; color: #333; }
+.info-box { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 9px 11px; }
+.info-box h4 { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; }
+.info-box p { font-size: 11px; line-height: 1.7; color: #333; }
 .info-box strong { color: #0d1b2a; }
 
-/* ── Items Table ──────────────────────────────────────── */
+/* ── LINE ITEMS TABLE ───────────────────────────────────────────── */
 .items-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .items-table thead tr { background: #0d1b2a; color: white; }
-.items-table thead th { padding: 7px 8px; text-align: left; font-size: 8.5px; letter-spacing: 0.8px; text-transform: uppercase; }
+.items-table thead th { padding: 8px 9px; text-align: left; font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase; }
 .items-table thead th:last-child { text-align: right; }
 .items-table tbody tr:nth-child(even) { background: #f8f9fa; }
 .items-table tbody tr { border-bottom: 1px solid #eee; }
-.items-table tbody td { padding: 7px 8px; font-size: 9.5px; vertical-align: top; }
+.items-table tbody td { padding: 8px 9px; font-size: 11.5px; vertical-align: top; }
 .items-table tbody td:last-child { text-align: right; font-weight: 700; }
-.part-name { font-weight: 700; color: #0d1b2a; }
-.part-sub { font-size: 8px; color: #888; margin-top: 1px; }
-.grade-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 7.5px; font-weight: 700; }
+.part-name { font-weight: 700; color: #0d1b2a; font-size: 12px; }
+.part-sub { font-size: 9.5px; color: #888; margin-top: 2px; }
+.grade-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; }
 .grade-A { background: #e8f5e9; color: #2e7d32; }
 .grade-B { background: #fff3e0; color: #e65100; }
 .grade-C { background: #fce4ec; color: #c62828; }
 .grade-New { background: #e3f2fd; color: #1565c0; }
 
-/* ── Totals ───────────────────────────────────────────── */
+/* ── TOTALS ─────────────────────────────────────────────────────── */
 .inv-totals { display: flex; justify-content: flex-end; margin-bottom: 14px; }
-.totals-box { width: 220px; }
+.totals-box { width: 240px; }
 .totals-box table { width: 100%; }
-.totals-box td { padding: 4px 8px; font-size: 10px; }
+.totals-box td { padding: 5px 9px; font-size: 12px; }
 .totals-box td:last-child { text-align: right; font-weight: 700; }
 .totals-box .total-row { background: #0d1b2a; color: white; border-radius: 4px; }
-.totals-box .total-row td { font-size: 12px; padding: 6px 8px; }
+.totals-box .total-row td { font-size: 14px; padding: 7px 9px; }
 
-/* ── Payment & Bank ───────────────────────────────────── */
+/* ── PAYMENT SECTION ────────────────────────────────────────────── */
 .inv-payment { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-.payment-box { border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 10px; }
-.payment-box h4 { font-size: 8px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; }
-.payment-box p { font-size: 9px; line-height: 1.7; color: #333; }
+.payment-box { border: 1px solid #e0e0e0; border-radius: 6px; padding: 9px 11px; }
+.payment-box h4 { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; }
+.payment-box p { font-size: 11px; line-height: 1.8; color: #333; }
 
-/* ── Warranty & Notes ─────────────────────────────────── */
-.inv-warranty { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; }
-.inv-warranty p { font-size: 8.5px; color: #5d4037; line-height: 1.5; }
+/* ── WARRANTY BOX ───────────────────────────────────────────────── */
+.inv-warranty { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 8px 11px; margin-bottom: 12px; }
+.inv-warranty p { font-size: 10px; color: #5d4037; line-height: 1.6; }
 .inv-warranty strong { color: #3e2723; }
 
-/* ── Gate Pass Section (copy 4 only) ─────────────────── */
+/* ── GATE PASS ──────────────────────────────────────────────────── */
 .gate-pass-section { border: 2px dashed #b71c1c; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
-.gate-pass-section h3 { font-size: 12px; font-weight: 900; color: #b71c1c; text-align: center; letter-spacing: 3px; margin-bottom: 8px; }
+.gate-pass-section h3 { font-size: 13px; font-weight: 900; color: #b71c1c; text-align: center; letter-spacing: 3px; margin-bottom: 8px; }
 .gate-pass-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .gate-field { border-bottom: 1px solid #999; padding-bottom: 16px; }
-.gate-field label { font-size: 8px; color: #666; display: block; margin-bottom: 2px; text-transform: uppercase; }
+.gate-field label { font-size: 9px; color: #666; display: block; margin-bottom: 2px; text-transform: uppercase; }
 
-/* ── Signatures ───────────────────────────────────────── */
+/* ── SIGNATURES ─────────────────────────────────────────────────── */
 .inv-signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 8px; }
 .sig-box { text-align: center; }
-.sig-line { border-top: 1px solid #999; margin-top: 28px; padding-top: 4px; }
-.sig-label { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.8px; }
+.sig-line { border-top: 1px solid #999; margin-top: 28px; padding-top: 5px; }
+.sig-label { font-size: 9.5px; color: #777; text-transform: uppercase; letter-spacing: 0.8px; }
 
-/* ── Footer ───────────────────────────────────────────── */
+/* ── FOOTER ─────────────────────────────────────────────────────── */
 .inv-footer { text-align: center; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; }
-.inv-footer p { font-size: 8px; color: #999; line-height: 1.6; }
+.inv-footer p { font-size: 9.5px; color: #999; line-height: 1.7; }
 .inv-footer .website { font-weight: 700; color: #c9a84c; }
 
-/* ── Hidden copies ────────────────────────────────────── */
 .hidden { display: none !important; }
-
-/* ── PRINT STYLES ─────────────────────────────────────── */
 @media print {
-    body { background: white; }
+    body { background: white; font-size: 13px; }
     .print-controls { display: none !important; }
     .invoice-pages { margin-top: 0; padding: 0; }
     .invoice { box-shadow: none; margin: 0; page-break-after: always; }
     .hidden { display: none !important; }
+    /* Ensure font sizes are preserved on print */
+    .part-name { font-size: 12px !important; }
+    .items-table tbody td { font-size: 11.5px !important; }
+    .totals-box .total-row td { font-size: 14px !important; }
 }
 </style>
 </head>
 <body>
 
-{{-- ── Print Controls ──────────────────────────────────── --}}
 <div class="print-controls" id="printControls">
     <h2>INVOICE {{ $invoiceNo }}</h2>
     @if(isset($invoice) && in_array(session('staff_role'), ['admin', 'manager']))
-    <a href="{{ route('admin.invoices.manual.edit', $invoice->id) }}" style="background:#c9a84c;color:#0d1b2a;padding:7px 16px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:0.5px;">
+    <a href="{{ route('admin.invoices.manual.edit', $invoice->id) }}" style="background:#c9a84c;color:#0d1b2a;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:0.5px;">
         ✎ Edit Invoice
     </a>
     @endif
     <span class="sep">|</span>
-    <span style="font-size:11px;color:#aaa;">Select copy to print:</span>
-    <button class="copy-btn active" onclick="showCopy('customer')" id="btn-customer">
-        📄 Customer Copy
-    </button>
-    <button class="copy-btn" onclick="showCopy('warehouse')" id="btn-warehouse">
-        🏭 Warehouse Copy
-    </button>
-    <button class="copy-btn" onclick="showCopy('accounts')" id="btn-accounts">
-        📊 Accounts Copy
-    </button>
-    <button class="copy-btn" onclick="showCopy('gate')" id="btn-gate">
-        🚧 Gate Pass
-    </button>
-    <button class="copy-btn active" onclick="showCopy('all')" id="btn-all" style="border-color:#c9a84c;color:#c9a84c;">
-        📋 All 4 Copies
-    </button>
-
+    <span style="font-size:12px;color:#aaa;">Select copy to print:</span>
+    <button class="copy-btn active" onclick="showCopy('customer')" id="btn-customer">📄 Customer Copy</button>
+    <button class="copy-btn" onclick="showCopy('warehouse')" id="btn-warehouse">🏭 Warehouse Copy</button>
+    <button class="copy-btn" onclick="showCopy('accounts')" id="btn-accounts">📊 Accounts Copy</button>
+    <button class="copy-btn" onclick="showCopy('gate')" id="btn-gate">🚧 Gate Pass</button>
+    <button class="copy-btn active" onclick="showCopy('all')" id="btn-all" style="border-color:#c9a84c;color:#c9a84c;">📋 All 4 Copies</button>
     <span class="sep">|</span>
     <button class="print-single-btn" onclick="window.print()">🖨 Print</button>
-    <a href="{{ url()->previous() }}" style="color:#aaa;font-size:11px;text-decoration:none;">← Back</a>
+    <a href="{{ url()->previous() }}" style="color:#aaa;font-size:12px;text-decoration:none;">← Back</a>
 </div>
 
-{{-- ── Payments — partial/multiple payments, proof upload, balance ──
-     Hidden when printing (.print-controls is already display:none in
-     @media print, and this panel reuses that same class so it never
-     shows up on a printed/saved copy). ── --}}
 @php
     $resolvedInvoiceId = $invoice->id ?? $invoiceId ?? null;
     $paySummary = ($resolvedInvoiceId && !isset($order)) ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
 @endphp
 @if(isset($order) && $order)
-{{-- Order-derived invoice — payment actions live on the order's own
-     detail page (correctly scoped to order_payments), not here. ── --}}
 <div class="payments-panel" style="text-align:center;">
-    <a href="{{ route('admin.orders.show', $order->id) }}" style="display:inline-block; background:#0d1b2a; color:#fff; font-weight:700; font-size:12px; padding:10px 20px; border-radius:8px; text-decoration:none;">
+    <a href="{{ route('admin.orders.show', $order->id) }}" style="display:inline-block; background:#0d1b2a; color:#fff; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
         Manage Payments on Order {{ $order->order_ref }} →
     </a>
 </div>
@@ -233,30 +201,26 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
 <div class="payments-panel">
     <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px;">
         <div style="flex:1; background:#f5f5f5; border-radius:8px; padding:10px; text-align:center;">
-            <div style="font-size:10px; color:#999; text-transform:uppercase;">Total</div>
-            <div style="font-size:16px; font-weight:700; color:#0d1b2a;">{{ $subtotalFmt }}</div>
+            <div style="font-size:11px; color:#999; text-transform:uppercase;">Total</div>
+            <div style="font-size:18px; font-weight:700; color:#0d1b2a;">{{ $subtotalFmt }}</div>
         </div>
         <div style="flex:1; background:#e8f7ee; border-radius:8px; padding:10px; text-align:center;">
-            <div style="font-size:10px; color:#999; text-transform:uppercase;">Paid</div>
-            <div style="font-size:16px; font-weight:700; color:#1b9e5c;">{{ $currency['symbol'] }}{{ number_format($paySummary['confirmedPaid']) }}</div>
+            <div style="font-size:11px; color:#999; text-transform:uppercase;">Paid</div>
+            <div style="font-size:18px; font-weight:700; color:#1b9e5c;">{{ $currency['symbol'] }}{{ number_format($paySummary['confirmedPaid']) }}</div>
         </div>
         <div style="flex:1; background:{{ $paySummary['balanceDue'] > 0 ? '#fdecec' : '#e8f7ee' }}; border-radius:8px; padding:10px; text-align:center;">
-            <div style="font-size:10px; color:#999; text-transform:uppercase;">Balance</div>
-            <div style="font-size:16px; font-weight:700; color:{{ $paySummary['balanceDue'] > 0 ? '#c0392b' : '#1b9e5c' }};">{{ $currency['symbol'] }}{{ number_format($paySummary['balanceDue']) }}</div>
+            <div style="font-size:11px; color:#999; text-transform:uppercase;">Balance</div>
+            <div style="font-size:18px; font-weight:700; color:{{ $paySummary['balanceDue'] > 0 ? '#c0392b' : '#1b9e5c' }};">{{ $currency['symbol'] }}{{ number_format($paySummary['balanceDue']) }}</div>
         </div>
     </div>
-
     @if($paySummary['balanceDue'] > 0)
     <form method="POST" action="{{ route('admin.invoices.send-reminder', $resolvedInvoiceId) }}" onsubmit="return confirm('Send a payment reminder by SMS and email?')" style="margin-bottom:12px;">
         @csrf
-        <button type="submit" style="width:100%; background:#fff8e6; border:1px solid #e6c656; color:#8a6d1f; font-size:11px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">
-            📩 Send Payment Reminder (SMS + Email)
-        </button>
+        <button type="submit" style="width:100%; background:#fff8e6; border:1px solid #e6c656; color:#8a6d1f; font-size:12px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">📩 Send Payment Reminder (SMS + Email)</button>
     </form>
     @endif
-
     @if($paySummary['payments']->count())
-    <table style="width:100%; font-size:11px; margin-bottom:12px; border-collapse:collapse;">
+    <table style="width:100%; font-size:12px; margin-bottom:12px; border-collapse:collapse;">
         <thead><tr style="background:#f5f5f5; color:#999; text-transform:uppercase;"><th style="padding:6px; text-align:left;">Amount</th><th style="padding:6px; text-align:left;">Method</th><th style="padding:6px; text-align:left;">Proof</th><th style="padding:6px; text-align:left;">Status</th><th></th></tr></thead>
         <tbody>
         @foreach($paySummary['payments'] as $p)
@@ -264,13 +228,11 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
             <td style="padding:6px; font-weight:700;">{{ $currency['symbol'] }}{{ number_format($p->amount_local) }}</td>
             <td style="padding:6px;">{{ $p->payment_method }}</td>
             <td style="padding:6px;">@if($p->proof_path)<a href="{{ asset(config('media.prefix') . '/' . $p->proof_path) }}" target="_blank" style="color:#c9a84c;">View →</a>@else —@endif</td>
-            <td style="padding:6px;">
-                <span style="padding:2px 6px; border-radius:4px; font-size:10px; background:{{ $p->status==='confirmed' ? '#e8f7ee' : ($p->status==='rejected' ? '#fdecec' : '#fff8e6') }}; color:{{ $p->status==='confirmed' ? '#1b9e5c' : ($p->status==='rejected' ? '#c0392b' : '#8a6d1f') }};">{{ ucfirst($p->status) }}</span>
-            </td>
+            <td style="padding:6px;"><span style="padding:2px 6px; border-radius:4px; font-size:11px; background:{{ $p->status==='confirmed' ? '#e8f7ee' : ($p->status==='rejected' ? '#fdecec' : '#fff8e6') }}; color:{{ $p->status==='confirmed' ? '#1b9e5c' : ($p->status==='rejected' ? '#c0392b' : '#8a6d1f') }};">{{ ucfirst($p->status) }}</span></td>
             <td style="padding:6px; text-align:right;">
                 @if($p->status === 'pending')
-                <form method="POST" action="{{ route('admin.invoices.payments.confirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;">@csrf<button style="color:#1b9e5c; border:none; background:none; cursor:pointer; font-size:11px;">✓</button></form>
-                <form method="POST" action="{{ route('admin.invoices.payments.reject', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Reject this payment?')">@csrf<button style="color:#c0392b; border:none; background:none; cursor:pointer; font-size:11px;">✕</button></form>
+                <form method="POST" action="{{ route('admin.invoices.payments.confirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;">@csrf<button style="color:#1b9e5c; border:none; background:none; cursor:pointer; font-size:12px;">✓</button></form>
+                <form method="POST" action="{{ route('admin.invoices.payments.reject', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Reject this payment?')">@csrf<button style="color:#c0392b; border:none; background:none; cursor:pointer; font-size:12px;">✕</button></form>
                 @endif
             </td>
         </tr>
@@ -278,15 +240,13 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
         </tbody>
     </table>
     @endif
-
     @if($paySummary['balanceDue'] > 0)
     <form method="POST" action="{{ route('admin.invoices.payments.add', $resolvedInvoiceId) }}" enctype="multipart/form-data" style="border:2px solid #c9a84c; border-radius:8px; padding:12px;">
         @csrf
-        <div style="font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:8px; color:#0d1b2a;">Record a Payment (Full or Partial)</div>
+        <div style="font-size:12px; font-weight:700; text-transform:uppercase; margin-bottom:8px; color:#0d1b2a;">Record a Payment (Full or Partial)</div>
         <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <input type="number" name="amount_local" step="0.01" min="0.01" max="{{ $paySummary['balanceDue'] }}" required placeholder="Amount ({{ $currency['code'] }})"
-                style="flex:1; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:12px;">
-            <select name="payment_method" required style="flex:1; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:12px;">
+            <input type="number" name="amount_local" step="0.01" min="0.01" max="{{ $paySummary['balanceDue'] }}" required placeholder="Amount ({{ $currency['code'] }})" style="flex:1; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:13px;">
+            <select name="payment_method" required style="flex:1; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:13px;">
                 <option value="Cash">Cash</option>
                 <option value="Bank Transfer">Bank Transfer</option>
                 <option value="Card">Card</option>
@@ -295,18 +255,17 @@ body { font-family: 'Arial', sans-serif; font-size: 11px; color: #1a1a2e; backgr
                 <option value="Other">Other</option>
             </select>
         </div>
-        <input type="file" name="proof" accept="image/*,application/pdf" style="width:100%; margin-bottom:8px; font-size:11px;">
-        <input type="text" name="notes" placeholder="Notes (optional)" style="width:100%; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:12px; margin-bottom:8px;">
-        <button type="submit" style="width:100%; background:#c9a84c; color:#0d1b2a; font-weight:700; font-size:12px; padding:8px; border:none; border-radius:6px; cursor:pointer;">Record Payment</button>
-        <p style="font-size:10px; color:#999; margin-top:6px;">Recorded as "Pending" until a staff member confirms it — that's what actually reduces the balance.</p>
+        <input type="file" name="proof" accept="image/*,application/pdf" style="width:100%; margin-bottom:8px; font-size:12px;">
+        <input type="text" name="notes" placeholder="Notes (optional)" style="width:100%; border:1px solid #ddd; border-radius:6px; padding:6px 8px; font-size:13px; margin-bottom:8px;">
+        <button type="submit" style="width:100%; background:#c9a84c; color:#0d1b2a; font-weight:700; font-size:13px; padding:8px; border:none; border-radius:6px; cursor:pointer;">Record Payment</button>
+        <p style="font-size:11px; color:#999; margin-top:6px;">Recorded as "Pending" until a staff member confirms it — that's what actually reduces the balance.</p>
     </form>
     @else
-    <div style="text-align:center; color:#1b9e5c; font-weight:700; font-size:12px; padding:10px;">✓ Fully paid</div>
+    <div style="text-align:center; color:#1b9e5c; font-weight:700; font-size:13px; padding:10px;">✓ Fully paid</div>
     @endif
 </div>
 @endif
 
-{{-- ── Invoice Pages ────────────────────────────────────── --}}
 <div class="invoice-pages">
 
 @php
@@ -318,52 +277,43 @@ $copies = [
 ];
 $createdAt = $order->created_at ?? now();
 $paymentMethod = $order->payment_method ?? 'Cash';
-
-// ── QR code target — links back to wherever this invoice actually
-// lives, whether it's a manual/service invoice row or an order-
-// derived one. Same QR appears on all 4 copies.
 $qrUrl = isset($invoice)
     ? route('admin.invoices.show.manual', $invoice->id)
     : (isset($order) ? route('admin.invoices.show', $order->id) : url()->current());
+
+$isVehicleSale = ($invoiceType ?? null) === 'vehicle';
 @endphp
 
 @foreach($copies as $copyKey => $copyInfo)
 <div class="invoice copy-{{ $copyKey }}" id="copy-{{ $copyKey }}">
-
-    {{-- Watermark --}}
     <div class="watermark">{{ $copyInfo['label'] }}</div>
-
-    {{-- Copy banner --}}
     <div class="copy-banner">{{ $copyInfo['label'] }}</div>
-
     <div class="invoice-content">
 
-        {{-- Header --}}
         <div class="inv-header">
             <div class="brand-block">
                 <div class="brand-name">AUTO <span>ZENITH</span> PARTS</div>
-                <div class="tagline">Quality Used Auto Parts · Engine · Gearbox · Body</div>
+                <div class="tagline">{{ $isVehicleSale ? 'Quality Used Vehicles · Sold As-Is' : 'Quality Used Auto Parts · Engine · Gearbox · Body' }}</div>
                 <div class="company">{{ $businessInfo['company'] }}{{ $businessInfo['rc'] ? ' · ' . $businessInfo['rc'] : '' }}</div>
                 <div class="address">{{ $businessInfo['address'] }}</div>
                 <div class="contact">📞 {{ $businessInfo['phone'] }} · 🌐 autozenithparts.com</div>
             </div>
             <div class="inv-meta">
-                <div class="inv-title">INVOICE</div>
+                <div class="inv-title">{{ $isVehicleSale ? 'VEHICLE SALE RECEIPT' : 'INVOICE' }}</div>
                 <table>
-                    <tr><td>Invoice No:</td><td>{{ $invoiceNo }}</td></tr>
+                    <tr><td>{{ $isVehicleSale ? 'Receipt No:' : 'Invoice No:' }}</td><td>{{ $invoiceNo }}</td></tr>
                     <tr><td>Date:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }}</td></tr>
                     <tr><td>Time:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('h:i A') }}</td></tr>
                     <tr><td>Location:</td><td>{{ $location }}</td></tr>
                     <tr><td>Currency:</td><td>{{ $currency['code'] }}</td></tr>
                 </table>
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=60x60&data={{ urlencode($qrUrl) }}" alt="QR" style="margin-top:6px;">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=65x65&data={{ urlencode($qrUrl) }}" alt="QR" style="margin-top:6px;">
             </div>
         </div>
 
-        {{-- Customer & Payment Info --}}
         <div class="inv-parties">
             <div class="info-box">
-                <h4>Bill To</h4>
+                <h4>{{ $isVehicleSale ? 'Buyer' : 'Bill To' }}</h4>
                 <p>
                     <strong>{{ $customerInfo->name ?? $order->customer_name ?? 'Walk-in Customer' }}</strong><br>
                     @if(!empty($customerInfo->phone ?? $order->customer_phone ?? null)) 📞 {{ $customerInfo->phone ?? $order->customer_phone }}<br>@endif
@@ -384,50 +334,30 @@ $qrUrl = isset($invoice)
             </div>
         </div>
 
-        {{-- Gate Pass extra info --}}
         @if($copyKey === 'gate')
         <div class="gate-pass-section">
             <h3>🚧 SECURITY / GATE PASS</h3>
             <div class="gate-pass-grid">
-                <div class="gate-field">
-                    <label>Customer Name</label>
-                    <strong style="font-size:10px;">{{ $order->customer_name ?? '________________' }}</strong>
-                </div>
-                <div class="gate-field">
-                    <label>Phone Number</label>
-                    <strong style="font-size:10px;">{{ $order->customer_phone ?? '________________' }}</strong>
-                </div>
-                <div class="gate-field">
-                    <label>Vehicle / Plate No.</label>
-                    &nbsp;
-                </div>
-                <div class="gate-field">
-                    <label>No. of Items</label>
-                    <strong style="font-size:10px;">{{ $lineItems->count() }} item(s)</strong>
-                </div>
-                <div class="gate-field">
-                    <label>Invoice No.</label>
-                    <strong style="font-size:10px;">{{ $invoiceNo }}</strong>
-                </div>
-                <div class="gate-field">
-                    <label>Exit Time</label>
-                    &nbsp;
-                </div>
+                <div class="gate-field"><label>Customer Name</label><strong style="font-size:11px;">{{ $order->customer_name ?? '________________' }}</strong></div>
+                <div class="gate-field"><label>Phone Number</label><strong style="font-size:11px;">{{ $order->customer_phone ?? '________________' }}</strong></div>
+                <div class="gate-field"><label>Vehicle / Plate No.</label>&nbsp;</div>
+                <div class="gate-field"><label>No. of Items</label><strong style="font-size:11px;">{{ $lineItems->count() }} item(s)</strong></div>
+                <div class="gate-field"><label>Invoice No.</label><strong style="font-size:11px;">{{ $invoiceNo }}</strong></div>
+                <div class="gate-field"><label>Exit Time</label>&nbsp;</div>
             </div>
         </div>
         @endif
 
-        {{-- Items Table --}}
         <table class="items-table">
             <thead>
                 <tr>
                     <th style="width:30px">#</th>
-                    <th>Part Description</th>
-                    <th style="width:60px">Part Code</th>
-                    <th style="width:40px">Grade</th>
-                    <th style="width:30px">Qty</th>
-                    <th style="width:80px">Unit Price</th>
-                    <th style="width:80px">Total</th>
+                    <th>{{ $isVehicleSale ? 'Vehicle Description' : 'Part Description' }}</th>
+                    <th style="width:95px">{{ $isVehicleSale ? 'VIN' : 'Part Code' }}</th>
+                    @if(!$isVehicleSale)<th style="width:44px">Grade</th>@endif
+                    <th style="width:32px">Qty</th>
+                    <th style="width:88px">Unit Price</th>
+                    <th style="width:88px">Total</th>
                 </tr>
             </thead>
             <tbody>
@@ -437,15 +367,20 @@ $qrUrl = isset($invoice)
                     <td>
                         <div class="part-name">{{ $item->part_name }}</div>
                         <div class="part-sub">
-                            @if(!empty($item->brand)){{ strtoupper($item->brand) }} {{ strtoupper($item->model) }} {{ $item->year_from }}@if($item->year_to && $item->year_to != $item->year_from)–{{ $item->year_to }}@endif · @endif
-                            @if(!empty($item->engine_code_oem))Engine: {{ $item->engine_code_oem }} · @endif
-                            @if(!empty($item->part_category)){{ $item->part_category }}@endif
+                            @if($isVehicleSale)
+                                @if(!empty($item->colour)){{ $item->colour }} · @endif
+                                @if(!empty($item->mileage)){{ number_format($item->mileage) }} miles@endif
+                            @else
+                                @if(!empty($item->brand)){{ strtoupper($item->brand) }} {{ strtoupper($item->model) }} {{ $item->year_from }}@if($item->year_to && $item->year_to != $item->year_from)–{{ $item->year_to }}@endif · @endif
+                                @if(!empty($item->engine_code_oem))Engine: {{ $item->engine_code_oem }} · @endif
+                                @if(!empty($item->part_category)){{ $item->part_category }}@endif
+                            @endif
                         </div>
                     </td>
-                    <td style="font-family:monospace;font-size:8.5px;">{{ $item->part_code }}</td>
-                    <td>
-                        <span class="grade-badge grade-{{ $item->condition_grade }}">{{ $item->condition_grade }}</span>
-                    </td>
+                    <td style="font-family:monospace;font-size:10px;">{{ $isVehicleSale ? ($item->vin ?? 'N/A') : $item->part_code }}</td>
+                    @if(!$isVehicleSale)
+                    <td><span class="grade-badge grade-{{ $item->condition_grade }}">{{ $item->condition_grade }}</span></td>
+                    @endif
                     <td style="text-align:center;">{{ $item->qty }}</td>
                     <td style="text-align:right;">{{ $item->unit_price_fmt }}</td>
                     <td>{{ $item->total_fmt }}</td>
@@ -454,7 +389,6 @@ $qrUrl = isset($invoice)
             </tbody>
         </table>
 
-        {{-- Totals --}}
         <div class="inv-totals">
             <div class="totals-box">
                 <table>
@@ -467,18 +401,9 @@ $qrUrl = isset($invoice)
 
         @php
             $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
-            // ── Order-derived invoices (viewed via /admin/invoices/order/{id})
-            // store their real payment records in order_payments, NOT
-            // invoice_payments — that table is only for Manual Invoice/
-            // Quick Receipt/Open Tab. Using the wrong source here silently
-            // showed every order as "fully paid" regardless of its real
-            // balance, since invoice_payments has no rows for an order ID.
             if (isset($order) && $order) {
                 $printPaySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
                 $printPaySummary['payments'] = $printPaySummary['payments']->map(function ($p) {
-                    // Normalize field names so the shared blade below
-                    // (written for invoice_payments) works for either
-                    // source without duplicating the whole block.
                     $p->amount_local = $p->amount_local ?? $p->amount_ngn;
                     return $p;
                 });
@@ -491,18 +416,13 @@ $qrUrl = isset($invoice)
                 <table>
                     @if($printPaySummary && $printPaySummary['payments']->where('status', 'confirmed')->count())
                     @foreach($printPaySummary['payments']->where('status', 'confirmed') as $p)
-                    <tr style="font-size: 11px; color: #555;">
+                    <tr style="font-size: 12px; color: #555;">
                         <td>Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
                         <td>– {{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($p->amount_local) : number_format($p->amount_local, 2) }}</td>
                     </tr>
                     @endforeach
                     @else
-                    {{-- No formal payment record exists — this was paid
-                         in full at the point of sale, as every Manual
-                         Invoice/Quick Receipt/Tab is by default. Shown
-                         the same uniform way as a partial-payment
-                         receipt, for consistency across every printout. --}}
-                    <tr style="font-size: 11px; color: #555;">
+                    <tr style="font-size: 12px; color: #555;">
                         <td>Payment Applied (Paid at point of sale)</td>
                         <td>– {{ $subtotalFmt }}</td>
                     </tr>
@@ -519,13 +439,18 @@ $qrUrl = isset($invoice)
             </div>
         </div>
 
-        {{-- Warranty --}}
+        @if($isVehicleSale)
+        <div class="inv-warranty" style="background:#fdecea; border-color:#f5b3ab;">
+            <p><strong style="color:#a32d2d;">⚠ SOLD AS-IS — NO WARRANTY:</strong> This vehicle is sold as-is, with no warranty implied or expressed, either written or verbal, covering mechanical, electrical, or any other condition. Buyer accepts full responsibility for the vehicle's condition from the point of sale. This receipt does not constitute a warranty of any kind.</p>
+            @if(!empty($order->notes))<p style="margin-top:4px;"><strong>Notes:</strong> {{ $order->notes }}</p>@endif
+        </div>
+        @else
         <div class="inv-warranty">
             <p><strong>⚠ Warranty:</strong> {{ $businessInfo['warranty'] }}. Warranty is void if part is disassembled, modified, or damaged after installation. Proof of purchase (this invoice) required for all warranty claims.</p>
             @if(!empty($order->notes))<p style="margin-top:4px;"><strong>Notes:</strong> {{ $order->notes }}</p>@endif
         </div>
+        @endif
 
-        {{-- Signatures --}}
         <div class="inv-signatures">
             <div class="sig-box">
                 <div class="sig-line"></div>
@@ -537,7 +462,7 @@ $qrUrl = isset($invoice)
                     @if($copyKey === 'gate') Security Officer
                     @elseif($copyKey === 'accounts') Accounts Officer
                     @elseif($copyKey === 'warehouse') Warehouse Officer
-                    @else Customer Signature
+                    @else {{ $isVehicleSale ? 'Buyer Signature' : 'Customer Signature' }}
                     @endif
                 </div>
             </div>
@@ -551,50 +476,35 @@ $qrUrl = isset($invoice)
             </div>
         </div>
 
-        {{-- Footer --}}
         <div class="inv-footer">
             <p>
                 Thank you for your business! · <span class="website">autozenithparts.com</span>
                 · WhatsApp: {{ $businessInfo['phone'] }}<br>
-                This is a computer-generated invoice. No physical signature required unless specified.
+                This is a computer-generated {{ $isVehicleSale ? 'receipt' : 'invoice' }}. No physical signature required unless specified.
                 @if($copyKey === 'gate') · <strong style="color:#b71c1c;">GATE PASS — Present to security on exit</strong>@endif
             </p>
         </div>
 
-    </div>{{-- end invoice-content --}}
-</div>{{-- end invoice --}}
+    </div>
+</div>
 @endforeach
 
-</div>{{-- end invoice-pages --}}
+</div>
 
 <script>
-// ── Show/hide copies ─────────────────────────────────────
 function showCopy(which) {
     const copies = ['customer','warehouse','accounts','gate'];
     const btns   = ['customer','warehouse','accounts','gate','all'];
-
-    // Update buttons
-    btns.forEach(b => {
-        document.getElementById('btn-' + b)?.classList.remove('active');
-    });
+    btns.forEach(b => { document.getElementById('btn-' + b)?.classList.remove('active'); });
     document.getElementById('btn-' + which)?.classList.add('active');
-
-    // Show/hide invoice divs
     copies.forEach(c => {
         const el = document.getElementById('copy-' + c);
         if (!el) return;
-        if (which === 'all') {
-            el.classList.remove('hidden');
-        } else {
-            el.classList.toggle('hidden', c !== which);
-        }
+        if (which === 'all') { el.classList.remove('hidden'); }
+        else { el.classList.toggle('hidden', c !== which); }
     });
 }
-
-// Default: show all
 showCopy('all');
-
-// Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
     if (e.key === '1') showCopy('customer');
     if (e.key === '2') showCopy('warehouse');

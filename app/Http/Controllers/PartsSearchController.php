@@ -284,7 +284,9 @@ class PartsSearchController extends Controller
             'price_usd'             => $p->price_usd, // kept for template compatibility — frozen snapshot, not for display
             'location'              => $p->location,
             'status'                => $p->status,
-            'thumb'                 => $photos[0] ?? null,
+            'thumb' => !empty($photos[0])
+                 ? asset('storage/' . $photos[0])
+                 : asset('images/coming-soon.jpg'),
             'side'                  => $p->side ?? 'N/A',
             'engine_code_oem'       => $p->engine_code_oem ?? null,
             'transmission_code_oem' => $p->transmission_code_oem ?? null,

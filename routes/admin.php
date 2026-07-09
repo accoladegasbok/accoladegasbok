@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\StaffController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\FinancialReportController;
+use App\Http\Controllers\Admin\RecycleBinController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\InvoiceController;
 
@@ -45,6 +46,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/create',       [InventoryController::class, 'create'])->name('create');
             Route::get('/manual-add', [InventoryController::class, 'manualAdd'])->name('manual-add');
             Route::get('/oem-lookup', [InventoryController::class, 'oemLookup'])->name('oem-lookup');
+            Route::get('/backfill-drive-type', [InventoryController::class, 'backfillDriveTypeForm'])->name('backfill-drive-type');
+            Route::post('/backfill-drive-type', [InventoryController::class, 'backfillDriveTypeSave'])->name('backfill-drive-type.save');
             Route::get('/consumable/create', [InventoryController::class, 'consumableCreate'])->name('consumable.create');
             Route::post('/consumable',       [InventoryController::class, 'consumableStore'])->name('consumable.store');
             Route::post('/',            [InventoryController::class, 'store'])->name('store');
@@ -67,6 +70,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/place',                [\App\Http\Controllers\Admin\AdminOrderController::class, 'store'])->name('place.store');
             Route::get('/',                      [OrderAdminController::class, 'index'])->name('index');
             Route::get('/{id}',                  [OrderAdminController::class, 'show'])->name('show');
+            Route::get('/{id}/edit',              [OrderAdminController::class, 'edit'])->name('edit');
+            Route::put('/{id}',                   [OrderAdminController::class, 'update'])->name('update');
             Route::get('/{id}/print',             [OrderAdminController::class, 'printAdmin'])->name('print');
             Route::post('/{id}/confirm-payment', [OrderAdminController::class, 'confirmPayment'])->name('confirm-payment');
             Route::post('/{id}/payments', [OrderAdminController::class, 'addPayment'])->name('payments.add');
@@ -234,6 +239,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/manual/{id}/edit', [InvoiceController::class, 'editManual'])->name('manual.edit');
             Route::put('/manual/{id}', [InvoiceController::class, 'updateManual'])->name('manual.update');
             Route::get('/order/{id}', [InvoiceController::class, 'show'])->name('show');
+
+            // #2 fix — bulk delete for the merged Invoices/Receipts list.
+            // Registered as a literal path ('/bulk-destroy'), so it's
+            // distinct from the '/{id}' wildcard delete below regardless
+            // of declaration order — but kept here, above it, for clarity.
+            Route::post('/bulk-destroy', [InvoiceController::class, 'bulkDestroy'])->name('bulk-destroy');
+
             Route::delete('/{id}', [InvoiceController::class, 'destroy'])->name('destroy');
             Route::post('/{id}/payments', [InvoiceController::class, 'addInvoicePayment'])->name('payments.add');
             Route::post('/{id}/payments/{paymentId}/confirm', [InvoiceController::class, 'confirmInvoicePayment'])->name('payments.confirm');
@@ -245,6 +257,24 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/service/create', [InvoiceController::class, 'createService'])->name('service.create');
             Route::get('/service/search-parts', [InvoiceController::class, 'serviceSearchParts'])->name('service.search-parts');
             Route::post('/service', [InvoiceController::class, 'storeService'])->name('service.store');
+
+            // Car Sale Receipt (#12) — complete vehicle sales, sold as-is,
+            // no warranty implied or expressed. Shares the same invoices/
+            // invoice_items tables (invoice_type='vehicle'), so it appears
+            // in this same list/search/delete/recycle-bin automatically.
+            Route::get('/car-sale/create', [InvoiceController::class, 'createCarSale'])->name('car-sale.create');
+            Route::post('/car-sale', [InvoiceController::class, 'storeCarSale'])->name('car-sale.store');
+        });
+
+        // Recycle Bin (#2) — unified restore/permanent-delete for
+        // soft-deleted Invoices AND Orders, since both tables share
+        // the same deleted_at + deleted_by_staff_id pattern.
+        Route::prefix('recycle-bin')->name('recycle-bin.')->group(function () {
+            Route::get('/',                     [RecycleBinController::class, 'index'])->name('index');
+            Route::post('/bulk-restore',        [RecycleBinController::class, 'bulkRestore'])->name('bulk-restore');
+            Route::post('/bulk-force-delete',   [RecycleBinController::class, 'bulkForceDelete'])->name('bulk-force-delete');
+            Route::post('/{type}/{id}/restore', [RecycleBinController::class, 'restore'])->name('restore');
+            Route::delete('/{type}/{id}',       [RecycleBinController::class, 'forceDelete'])->name('force-delete');
         });
 
         // Service rate catalog (fixed-price labor/misc items)

@@ -163,6 +163,16 @@
         </div>
 
         <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Internal / Source Ref <span class="text-gray-400 font-normal normal-case">(optional, up to 6 chars)</span>
+          </label>
+          <input type="text" name="source_ref" maxlength="6" value="{{ old('source_ref', $part->source_ref ?? '') }}"
+            placeholder="e.g. MVE791"
+            class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono uppercase focus:outline-none focus:border-yellow-400">
+          <p class="text-xs text-gray-400 font-body mt-1">Add or update this any time — it wasn't required at creation.</p>
+        </div>
+
+        <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Mileage (miles)</label>
           <input type="number" name="mileage" value="{{ old('mileage', $part->mileage) }}" min="0"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">

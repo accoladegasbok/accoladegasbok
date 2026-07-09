@@ -264,6 +264,17 @@
           <div id="emailReceiptFeedback" class="text-xs font-body mt-2"></div>
         </div>
 
+        {{-- Edit Order — admin/manager only, completes #5 for Orders --}}
+        @if(in_array(session('staff_role'), ['admin','manager']))
+        <div class="border border-blue-200 bg-blue-50 rounded-xl p-4 sm:col-span-2">
+          <div class="text-xs font-body font-500 text-blue-700 mb-2">Add, remove, or adjust items on this order</div>
+          <a href="{{ route('admin.orders.edit', $order->id) }}"
+            class="block w-full text-center border border-blue-300 text-blue-600 hover:bg-blue-100 font-display font-700 text-xs py-2.5 rounded-xl tracking-wide transition-colors">
+            ✎ Edit Order Items
+          </a>
+        </div>
+        @endif
+
         {{-- Delete Order — admin direct, others require Supervisor+ PIN --}}
         <div class="border border-red-200 bg-red-50 rounded-xl p-4 sm:col-span-2">
           <div class="text-xs font-body font-500 text-red-700 mb-2">⚠ Delete this order permanently from the active list</div>
@@ -428,7 +439,10 @@ async function emailReceipt(id) {
 }
 
 // ── Delete Order — admin deletes directly; everyone else must pass
-// the Supervisor-or-above PIN override modal first.
+// the Supervisor-or-above PIN override modal first. Now passes
+// return_to = current page path, so the #2 redirect fix in
+// OrderAdminController::destroy() sends the user back HERE
+// afterward, rather than always forcing the Orders index page.
 function deleteOrder(id) {
     const staffRole = '{{ session("staff_role") }}';
     if (!confirm('Permanently delete this order? This cannot be undone from the normal interface.')) return;
@@ -450,6 +464,7 @@ async function submitDeleteOrder(id, overrideToken) {
         @csrf
         <input type="hidden" name="_method" value="DELETE">
         ${overrideToken ? `<input type="hidden" name="override_token" value="${overrideToken}">` : ''}
+        <input type="hidden" name="return_to" value="${window.location.pathname}">
     `;
     document.body.appendChild(form);
     form.submit();
