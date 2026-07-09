@@ -1053,4 +1053,20 @@ class HarvestController extends Controller
             ],
         ];
     }
+
+    // =========================================================
+    // GET /parts/models?make=TOYOTA
+    // AJAX — returns model list for a given make.
+    // Used by harvest create form, manual-add form, and
+    // compatibility checker make/model dropdowns.
+    // =========================================================
+    public function models(Request $request)
+    {
+        $make   = strtoupper(trim($request->get('make', '')));
+        if (empty($make)) {
+            return response()->json(['models' => []]);
+        }
+        $models = \App\Data\VehicleDatabase::modelsForMake($make);
+        return response()->json(['models' => $models]);
+    }
 }

@@ -49,8 +49,8 @@
         <select name="location" id="locationSelect" onchange="updateCurrency()" required
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
           @foreach($locations as $key => $label)
-    <option value="{{ $key }}">{{ $label }}</option>
-      @endforeach
+          <option value="{{ $key }}">{{ $label }}</option>
+          @endforeach
         </select>
       </div>
       <div>
@@ -90,7 +90,7 @@
           @foreach($serviceRates as $sr)
           <option value="{{ $sr->id }}" data-name="{{ $sr->name }}"
                   data-prices="{{ json_encode(($servicePricesByLocation[$sr->id] ?? collect())->toArray()) }}"
-                  data-default-price="{{ $sr->default_price }}">{{ $sr->name }}{{ $sr->category ? ' ('.$sr->category.')' : '' }}</option>
+                  data-default-price="{{ $sr->default_price ?? 0 }}">{{ $sr->name }}{{ $sr->category ? ' ('.$sr->category.')' : '' }}</option>
           @endforeach
         </select>
         <button type="button" onclick="addItem()"
@@ -137,6 +137,39 @@
       </div>
     </div>
   </div>
+
+  {{-- ── Legal Trace (Phase 6) ───────────────────────────────────────────
+       Shown automatically when a legal-trace part is in the cart.
+       The server enforces this — the UI just makes it clear and collects
+       the buyer document reference before submission.
+  ── --}}
+  <div id="legalTraceField" class="hidden">
+    <div class="bg-red-50 border border-red-300 rounded-2xl p-5">
+      <div class="flex items-start gap-3">
+        <span class="text-2xl mt-0.5">⚠</span>
+        <div class="flex-1">
+          <h3 class="font-display font-700 text-red-700 text-sm uppercase tracking-wide mb-1">
+            Legal Trace Documentation Required
+          </h3>
+          <p class="text-xs text-red-600 mb-3">
+            One or more parts in this sale (catalytic converter, airbag, engine, or other major component)
+            require buyer documentation before the sale can be completed.
+            Enter the buyer's government ID number, vehicle title number, or receipt reference below.
+          </p>
+          <label class="block text-xs text-red-700 font-700 uppercase tracking-wide mb-1.5">
+            Buyer Document Reference *
+          </label>
+          <input type="text" name="buyer_legal_doc" id="buyerLegalDocInput"
+                 placeholder="e.g. DL-NGA-123456789, Title No. TX-2024-0091234, Receipt #88210..."
+                 class="w-full border border-red-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 bg-white">
+          <p class="text-[10px] text-red-400 mt-1.5">
+            This reference is recorded against the part's inventory record and the invoice for audit purposes.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {{-- Submit --}}
   <div class="flex gap-3 justify-end pb-8">
     <a href="{{ route('admin.invoices.index') }}"
@@ -153,41 +186,40 @@
 </div>
 </form>
 
-{{-- Parts data for autocomplete --}}
 <script>
 const PARTS = {!! json_encode($parts) !!};
 
-// ── Currency is now FIXED per location, matching what we store on
-// each part (price_local / currency_code) — no live FX conversion.
 const CURRENCIES = {
-    'Waxahachie TX': { code: 'USD', symbol: '$',   },
-    'Kennedale TX':  { code: 'USD', symbol: '$',    },
-    'Elkhorn WI':    { code: 'USD', symbol: '$',    },
-    'Ile-Ife Nigeria':{ code: 'NGN', symbol: '₦',  },
-    'Ibadan Nigeria':{ code: 'NGN', symbol: '₦',   },
-    'Lagos Nigeria': { code: 'NGN', symbol: '₦',   },
-    'Abuja Nigeria': { code: 'NGN', symbol: '₦',   },
-    'Akure Nigeria': { code: 'NGN', symbol: '₦',   },
-    'Accra Ghana':   { code: 'GHS', symbol: 'GH₵', },
+    'Waxahachie TX':  { code: 'USD', symbol: '$'   },
+    'Kennedale TX':   { code: 'USD', symbol: '$'   },
+    'Elkhorn WI':     { code: 'USD', symbol: '$'   },
+    'Ile-Ife Nigeria':{ code: 'NGN', symbol: '₦'  },
+    'Ibadan Nigeria': { code: 'NGN', symbol: '₦'  },
+    'Lagos Nigeria':  { code: 'NGN', symbol: '₦'  },
+    'Abuja Nigeria':  { code: 'NGN', symbol: '₦'  },
+    'Akure Nigeria':  { code: 'NGN', symbol: '₦'  },
+    'Accra Ghana':    { code: 'GHS', symbol: 'GH₵' },
 };
 
 let itemCount = 0;
 let currency  = { code: 'USD', symbol: '$' };
 
+// Tracks which items in the cart require legal trace
+// key = item index, value = true/false
+const legalTraceItems = {};
+
 function updateCurrency() {
     const loc = document.getElementById('locationSelect').value;
     currency  = CURRENCIES[loc] || { code: 'USD', symbol: '$' };
     document.getElementById('currencyDisplay').textContent = currency.code + ' (' + currency.symbol + ')';
-
     document.querySelectorAll('.price-input').forEach(el => {
         el.placeholder = currency.code === 'NGN' ? '0' : '0.00';
         el.step        = currency.code === 'NGN' ? '1' : '0.01';
     });
-
     updateTotal();
 }
 
-// ── Customer lookup ──────────────────────────────────────────────────────
+// ── Customer lookup ───────────────────────────────────────────
 let customerLookupTimer = null;
 function lookupCustomer(q) {
     clearTimeout(customerLookupTimer);
@@ -200,21 +232,18 @@ async function fetchCustomers(q) {
     const box = document.getElementById('customerSuggestions');
     box.classList.remove('hidden');
     box.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Searching...</div>';
-
     try {
-        const res = await fetch(`{{ route('admin.customers.lookup') }}?q=${encodeURIComponent(q)}`);
+        const res  = await fetch(`{{ route('admin.customers.lookup') }}?q=${encodeURIComponent(q)}`);
         const data = await res.json();
-
         if (!data.customers || data.customers.length === 0) {
             box.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">No matching customer — keep typing to create a new one.</div>';
             return;
         }
-
         box.innerHTML = data.customers.map(c => `
             <div onclick='selectCustomer(${JSON.stringify(c).replace(/'/g, "&#39;")})'
                 class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100">
                 <div class="font-700 text-navy text-xs">${c.name || 'Unnamed'}</div>
-                <div class="text-xs text-gray-400">${c.phone} · ${c.order_count} order${c.order_count !== 1 ? 's' : ''} · $${Number(c.total_spent).toFixed(2)} lifetime</div>
+                <div class="text-xs text-gray-400">${c.phone} · ${c.order_count} order${c.order_count !== 1 ? 's' : ''}</div>
             </div>
         `).join('');
     } catch (e) {
@@ -223,49 +252,59 @@ async function fetchCustomers(q) {
 }
 
 function selectCustomer(c) {
-    document.getElementById('customerPhoneInput').value   = c.phone || '';
-    document.getElementById('customerNameInput').value    = c.name || '';
-    document.getElementById('customerEmailInput').value   = c.email || '';
+    document.getElementById('customerPhoneInput').value   = c.phone   || '';
+    document.getElementById('customerNameInput').value    = c.name    || '';
+    document.getElementById('customerEmailInput').value   = c.email   || '';
     document.getElementById('customerAddressInput').value = c.address || '';
     document.getElementById('customerSuggestions').classList.add('hidden');
-
     const note = document.getElementById('customerHistoryNote');
-    note.textContent = `Returning customer — ${c.order_count} previous order${c.order_count !== 1 ? 's' : ''}, $${Number(c.total_spent).toFixed(2)} lifetime spend.`;
+    note.textContent = `Returning customer — ${c.order_count} previous order${c.order_count !== 1 ? 's' : ''}.`;
     note.classList.remove('hidden');
 }
 
 document.addEventListener('click', function(e) {
     const box = document.getElementById('customerSuggestions');
-    if (box && !box.contains(e.target) && e.target.id !== 'customerPhoneInput') {
-        box.classList.add('hidden');
-    }
+    if (box && !box.contains(e.target) && e.target.id !== 'customerPhoneInput') box.classList.add('hidden');
 });
+
+// ── Legal Trace check ─────────────────────────────────────────
+// Called whenever a part is selected or removed from the cart.
+// Shows/hides the legal trace documentation field.
+function checkLegalTrace() {
+    const needsLegal = Object.values(legalTraceItems).some(v => v === true);
+    const field      = document.getElementById('legalTraceField');
+    const input      = document.getElementById('buyerLegalDocInput');
+    field.classList.toggle('hidden', !needsLegal);
+    input.required = needsLegal;
+}
 
 function addItem() {
     itemCount++;
     const i = itemCount;
     const container = document.getElementById('itemsContainer');
     const row = document.createElement('div');
-    row.id = 'item-row-' + i;
+    row.id        = 'item-row-' + i;
     row.className = 'bg-gray-50 rounded-xl p-3 border border-gray-200';
     row.innerHTML = `
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-display font-700 text-navy uppercase">Item #${i}</span>
             <button type="button" onclick="removeItem(${i})" class="text-red-400 hover:text-red-600 text-xs">✕ Remove</button>
         </div>
-        <div class="sm:col-span-2 relative">
-    <label class="block text-xs text-gray-400 mb-1">
-        Part Name * <span class="text-gray-400 font-normal">(click to browse inventory, or type a new part name)</span>
-    </label>
-    <input type="text" name="items[${i}][name]" id="item-name-${i}"
-        placeholder="Click to browse inventory or type a new part..."
-        autocomplete="off"
-        onfocus="showAllPartsForLocation(${i})"
-        oninput="searchParts(${i}, this.value)"
-        class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
-    <div id="suggestions-${i}" class="absolute bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-72 hidden max-h-48 overflow-y-auto"></div>
-    <input type="hidden" name="items[${i}][part_id]" id="item-pid-${i}">
-</div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+            <div class="sm:col-span-2 relative">
+                <label class="block text-xs text-gray-400 mb-1">Part Name * <span class="font-normal">(browse or type)</span></label>
+                <input type="text" name="items[${i}][name]" id="item-name-${i}"
+                    placeholder="Click to browse inventory or type a new part..."
+                    autocomplete="off"
+                    onfocus="showAllPartsForLocation(${i})"
+                    oninput="searchParts(${i}, this.value)"
+                    class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
+                <div id="suggestions-${i}" class="absolute bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-72 hidden max-h-48 overflow-y-auto"></div>
+                <input type="hidden" name="items[${i}][part_id]" id="item-pid-${i}">
+                <div id="item-legal-badge-${i}" class="hidden mt-1">
+                    <span class="text-[10px] px-2 py-0.5 rounded bg-red-100 text-red-600 font-700">⚠ Legal Trace Required</span>
+                </div>
+            </div>
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Grade</label>
                 <select name="items[${i}][grade]" id="item-grade-${i}"
@@ -276,20 +315,18 @@ function addItem() {
                     <option value="New">New</option>
                 </select>
             </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Qty</label>
                 <input type="number" name="items[${i}][qty]" id="item-qty-${i}"
                     value="1" min="1" oninput="updateTotal()"
                     class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
             </div>
-        </div>
-        <div class="grid grid-cols-3 gap-2">
             <div>
-                <label class="block text-xs text-gray-400 mb-1 price-label">Unit Price (${currency.code}) *</label>
+                <label class="block text-xs text-gray-400 mb-1 price-label">Unit Price *</label>
                 <input type="number" name="items[${i}][price]" id="item-price-${i}"
-                    placeholder="${currency.code === 'NGN' ? '0' : '0.00'}"
-                    step="${currency.code === 'NGN' ? '1' : '0.01'}"
-                    min="0" oninput="updateTotal()"
+                    placeholder="0" step="1" min="0" oninput="updateTotal()"
                     class="price-input w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-gold">
             </div>
             <div>
@@ -305,38 +342,30 @@ function addItem() {
                     </select>
                 </div>
             </div>
-            <div class="flex items-end">
-                <div class="text-right w-full">
-                    <div class="text-xs text-gray-400">Line Total</div>
-                    <div id="item-total-${i}" class="font-display font-700 text-navy text-base">—</div>
-                </div>
+        </div>
+        <div class="flex justify-end mt-2">
+            <div class="text-right">
+                <div class="text-xs text-gray-400">Line Total</div>
+                <div id="item-total-${i}" class="font-display font-700 text-navy text-base">—</div>
             </div>
         </div>
     `;
     container.appendChild(row);
+    legalTraceItems[i] = false;
     return i;
 }
 
-// #18 — Add a Service Rate as a manual-style line item (no part_id,
-// same as any free-typed item — storeManual already supports this).
 function addServiceFromPicker(sel) {
     const opt = sel.options[sel.selectedIndex];
     if (!opt.value) return;
     const i = addItem();
     document.getElementById('item-name-' + i).value = opt.dataset.name;
-    document.getElementById('item-pid-' + i).value = ''; // no inventory link — it's a service
-
+    document.getElementById('item-pid-' + i).value  = '';
     const loc = document.getElementById('locationSelect')?.value;
     let prices = {};
     try { prices = JSON.parse(opt.dataset.prices || '{}'); } catch (e) {}
-    const priceForLoc = prices[loc];
-    const priceToUse = priceForLoc !== undefined ? priceForLoc : opt.dataset.defaultPrice;
-
-    if (priceForLoc === undefined) {
-        alert('No price has been set for this service at this location yet — using a fallback number. Please verify before saving, or ask admin to set the real price under Service Rates.');
-    }
-
-    const priceInput = document.querySelector(`input[name="items[${i}][price]"]`) || document.getElementById('item-price-' + i);
+    const priceToUse = prices[loc] !== undefined ? prices[loc] : opt.dataset.defaultPrice;
+    const priceInput = document.getElementById('item-price-' + i);
     if (priceInput && priceToUse) priceInput.value = priceToUse;
     sel.value = '';
     updateTotal();
@@ -344,6 +373,8 @@ function addServiceFromPicker(sel) {
 
 function removeItem(i) {
     document.getElementById('item-row-' + i)?.remove();
+    delete legalTraceItems[i];
+    checkLegalTrace();
     updateTotal();
 }
 
@@ -353,20 +384,13 @@ function getLocationParts() {
 }
 
 function showAllPartsForLocation(i) {
-    const box = document.getElementById('suggestions-' + i);
-    const matches = getLocationParts().slice(0, 50);
-    renderSuggestions(i, box, matches);
+    renderSuggestions(i, document.getElementById('suggestions-' + i), getLocationParts().slice(0, 50));
 }
 
 function searchParts(i, query) {
-    const box = document.getElementById('suggestions-' + i);
+    const box  = document.getElementById('suggestions-' + i);
     const pool = getLocationParts();
-
-    if (!query || query.length < 1) {
-        renderSuggestions(i, box, pool.slice(0, 50));
-        return;
-    }
-
+    if (!query || query.length < 1) { renderSuggestions(i, box, pool.slice(0, 50)); return; }
     const q = query.toLowerCase();
     const matches = pool.filter(p =>
         (p.part_name || '').toLowerCase().includes(q) ||
@@ -374,64 +398,48 @@ function searchParts(i, query) {
         (p.brand || '').toLowerCase().includes(q) ||
         (p.model || '').toLowerCase().includes(q) ||
         String(p.year_from || '').includes(q) ||
-        String(p.year_to || '').includes(q) ||
-        (p.brand + ' ' + p.model).toLowerCase().includes(q)
+        String(p.year_to   || '').includes(q)
     ).slice(0, 50);
-
     renderSuggestions(i, box, matches);
 }
 
 function renderSuggestions(i, box, matches) {
     if (matches.length === 0) {
-        box.innerHTML = '<div class="px-3 py-3 text-xs text-gray-400">No matching parts in inventory — keep typing to add this as a new part.</div>';
-        box.classList.remove('hidden');
-        return;
+        box.innerHTML = '<div class="px-3 py-3 text-xs text-gray-400">No matching parts — type a name to add manually.</div>';
+        box.classList.remove('hidden'); return;
     }
-
     box.innerHTML = matches.map(p => {
-        const yearRange = p.year_from && p.year_to
-            ? (p.year_from === p.year_to ? p.year_from : `${p.year_from}–${p.year_to}`)
-            : '';
-        // ── FIXED PRICE — this part's own price_local, no conversion ──
-        const priceLocal = p.price_local ?? p.price_usd; // fallback for pre-migration rows
-        const priceFmt = currency.code === 'NGN'
-            ? Math.round(priceLocal).toLocaleString()
-            : Number(priceLocal).toFixed(2);
-
-        return `
-        <div onclick="selectPart(${i}, ${JSON.stringify(p).replace(/"/g, '&quot;')})"
+        const yr = p.year_from && p.year_to ? (p.year_from === p.year_to ? p.year_from : `${p.year_from}–${p.year_to}`) : '';
+        const priceLocal = p.price_local ?? p.price_usd;
+        const priceFmt   = currency.code === 'NGN' ? Math.round(priceLocal).toLocaleString() : Number(priceLocal).toFixed(2);
+        return `<div onclick="selectPart(${i}, ${JSON.stringify(p).replace(/"/g, '&quot;')})"
             class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100">
-            <div class="font-700 text-navy text-xs">${p.part_name}</div>
-            <div class="text-xs text-gray-400">
-                ${p.brand} ${p.model} ${yearRange} · ${p.part_code} · Grade ${p.condition_grade} ·
-                ${currency.symbol}${priceFmt}
-            </div>
+            <div class="font-700 text-navy text-xs">${p.part_name}${p.legal_trace_required ? ' <span class="text-red-500">⚠</span>' : ''}</div>
+            <div class="text-xs text-gray-400">${p.brand} ${p.model} ${yr} · ${p.part_code} · Grade ${p.condition_grade} · ${currency.symbol}${priceFmt}</div>
         </div>`;
-    }).join('') + `
-        <div class="px-3 py-2 text-xs text-gray-400 bg-gray-50 italic">
-            Not listed? Just type the part name to add it manually.
-        </div>`;
-
+    }).join('') + `<div class="px-3 py-2 text-xs text-gray-400 bg-gray-50 italic">Not listed? Type the part name to add manually.</div>`;
     box.classList.remove('hidden');
 }
+
 function selectPart(i, part) {
     document.getElementById('item-name-' + i).value  = part.part_name;
     document.getElementById('item-pid-' + i).value   = part.id;
-
-    // ── FIXED PRICE — use this part's own price_local directly, no
-    // conversion. It was set once at harvest/entry time and is already
-    // in the correct currency for this location.
     const priceLocal = part.price_local ?? part.price_usd;
-    document.getElementById('item-price-' + i).value = currency.code === 'NGN'
-        ? Math.round(priceLocal)
-        : Number(priceLocal).toFixed(2);
-
+    document.getElementById('item-price-' + i).value = currency.code === 'NGN' ? Math.round(priceLocal) : Number(priceLocal).toFixed(2);
     document.getElementById('item-grade-' + i).value = part.condition_grade || 'B';
     document.getElementById('suggestions-' + i).classList.add('hidden');
+
+    // Legal trace check for this item
+    const needsLegal = !!(part.legal_trace_required);
+    legalTraceItems[i] = needsLegal;
+    const badge = document.getElementById('item-legal-badge-' + i);
+    if (badge) badge.classList.toggle('hidden', !needsLegal);
+    checkLegalTrace();
+
     updateTotal();
 }
 
-const STAFF_DISCOUNT_CAP_FIXED   = {{ $staffDiscountCapFixed ?? 'null' }};
+const STAFF_DISCOUNT_CAP_FIXED   = {{ $staffDiscountCapFixed   ?? 'null' }};
 const STAFF_DISCOUNT_CAP_PERCENT = {{ $staffDiscountCapPercent ?? 'null' }};
 
 function applyDiscount(amount, value, type) {
@@ -441,74 +449,53 @@ function applyDiscount(amount, value, type) {
         const discountAmt = amount * (value / 100);
         return { discounted: amount - discountAmt, discountAmt };
     }
-    // fixed — value is already in local currency
     const discountAmt = Math.min(value, amount);
     return { discounted: amount - discountAmt, discountAmt };
 }
 
 function updateTotal() {
-    let subtotal = 0;
-    let totalLineDiscountLocal = 0;
-
+    let subtotal = 0, totalLineDiscountLocal = 0;
     for (let i = 1; i <= itemCount; i++) {
-        const priceEl = document.getElementById('item-price-' + i);
-        const qtyEl   = document.getElementById('item-qty-' + i);
-        const totalEl = document.getElementById('item-total-' + i);
+        const priceEl    = document.getElementById('item-price-' + i);
+        const qtyEl      = document.getElementById('item-qty-' + i);
+        const totalEl    = document.getElementById('item-total-' + i);
         const discValEl  = document.getElementById('item-discount-' + i);
         const discTypeEl = document.getElementById('item-discount-type-' + i);
         if (!priceEl) continue;
-
-        const price = parseFloat(priceEl.value || 0);
-        const qty   = parseInt(qtyEl?.value || 1);
-        const lineGross = price * qty;
-
-        const { discounted: lineNet, discountAmt } = applyDiscount(
-            lineGross, discValEl?.value, discTypeEl?.value || 'fixed'
-        );
-
-        subtotal += lineNet;
+        const price      = parseFloat(priceEl.value || 0);
+        const qty        = parseInt(qtyEl?.value || 1);
+        const lineGross  = price * qty;
+        const { discounted: lineNet, discountAmt } = applyDiscount(lineGross, discValEl?.value, discTypeEl?.value || 'fixed');
+        subtotal               += lineNet;
         totalLineDiscountLocal += discountAmt;
-
         if (totalEl) totalEl.textContent = lineNet > 0
             ? currency.symbol + (currency.code === 'NGN' ? Math.round(lineNet).toLocaleString() : lineNet.toFixed(2))
             : '—';
     }
 
-    // Invoice-level discount applies on top of the line-discounted subtotal
     const invDiscVal  = document.getElementById('invoiceDiscountInput')?.value;
     const invDiscType = document.getElementById('invoiceDiscountType')?.value || 'fixed';
     const { discounted: total, discountAmt: invoiceDiscountLocal } = applyDiscount(subtotal, invDiscVal, invDiscType);
-
     const totalDiscountLocal = totalLineDiscountLocal + invoiceDiscountLocal;
+    const grossLocal         = subtotal + totalLineDiscountLocal + invoiceDiscountLocal;
+    const discountPct        = grossLocal > 0 ? (totalDiscountLocal / grossLocal) * 100 : 0;
 
-    // ── Discount caps are now compared directly in LOCAL currency —
-    // no conversion to USD. (Caps were historically set assuming USD;
-    // if yours were set that way, review them per-location.)
-    const grossLocal = subtotal + totalLineDiscountLocal + invoiceDiscountLocal;
-    const discountPercentOfGross = grossLocal > 0 ? (totalDiscountLocal / grossLocal) * 100 : 0;
+    document.getElementById('subtotalDisplay').textContent = currency.symbol + (currency.code === 'NGN' ? Math.round(grossLocal).toLocaleString() : grossLocal.toFixed(2));
+    document.getElementById('totalDisplay').textContent    = currency.symbol + (currency.code === 'NGN' ? Math.round(total).toLocaleString()     : total.toFixed(2));
 
-    const fmtSubtotal = currency.symbol + (currency.code === 'NGN' ? Math.round(subtotal + totalLineDiscountLocal).toLocaleString() : (subtotal + totalLineDiscountLocal).toFixed(2));
-    const fmtTotal = currency.symbol + (currency.code === 'NGN' ? Math.round(total).toLocaleString() : total.toFixed(2));
-
-    document.getElementById('subtotalDisplay').textContent = fmtSubtotal;
-    document.getElementById('totalDisplay').textContent    = fmtTotal;
-
-    checkDiscountCap(totalDiscountLocal, discountPercentOfGross);
+    checkDiscountCap(totalDiscountLocal, discountPct);
 }
 
 function checkDiscountCap(discountLocal, discountPercent) {
-    const warningEl = document.getElementById('capWarning');
+    const warningEl   = document.getElementById('capWarning');
     const overrideBox = document.getElementById('overrideReasonBox');
-
-    const exceedsFixed   = STAFF_DISCOUNT_CAP_FIXED !== null && discountLocal > STAFF_DISCOUNT_CAP_FIXED;
+    const exceedsFixed   = STAFF_DISCOUNT_CAP_FIXED   !== null && discountLocal   > STAFF_DISCOUNT_CAP_FIXED;
     const exceedsPercent = STAFF_DISCOUNT_CAP_PERCENT !== null && discountPercent > STAFF_DISCOUNT_CAP_PERCENT;
-
     if (exceedsFixed || exceedsPercent) {
-        let msg = 'This discount exceeds your allowance: ';
         const parts = [];
-        if (exceedsFixed)   parts.push(`fixed cap is ${currency.symbol}${STAFF_DISCOUNT_CAP_FIXED.toFixed(2)} (current: ${currency.symbol}${discountLocal.toFixed(2)})`);
-        if (exceedsPercent) parts.push(`percentage cap is ${STAFF_DISCOUNT_CAP_PERCENT}% (current: ${discountPercent.toFixed(1)}%)`);
-        warningEl.textContent = msg + parts.join(' and ') + '. Please provide a reason to proceed.';
+        if (exceedsFixed)   parts.push(`fixed cap is ${currency.symbol}${STAFF_DISCOUNT_CAP_FIXED.toFixed(2)}`);
+        if (exceedsPercent) parts.push(`percentage cap is ${STAFF_DISCOUNT_CAP_PERCENT}%`);
+        warningEl.textContent = 'Discount exceeds your allowance: ' + parts.join(' and ') + '. Provide a reason to proceed.';
         warningEl.classList.remove('hidden');
         overrideBox.classList.remove('hidden');
         document.getElementById('overrideReasonInput').required = true;
@@ -516,22 +503,18 @@ function checkDiscountCap(discountLocal, discountPercent) {
         warningEl.classList.add('hidden');
         overrideBox.classList.add('hidden');
         document.getElementById('overrideReasonInput').required = false;
-        document.getElementById('overrideReasonInput').value = '';
+        document.getElementById('overrideReasonInput').value    = '';
     }
 }
 
-// Close suggestions on click outside (but not on the input that opens it —
-// without this exclusion, the SAME click that focuses the input also
-// bubbles to this listener and closes the box it just opened)
 document.addEventListener('click', function(e) {
     document.querySelectorAll('[id^="suggestions-"]').forEach(el => {
-        const idx = el.id.replace('suggestions-', '');
+        const idx      = el.id.replace('suggestions-', '');
         const ownInput = document.getElementById('item-name-' + idx);
         if (!el.contains(e.target) && e.target !== ownInput) el.classList.add('hidden');
     });
 });
 
-// Add first item automatically — update currency first so item renders correct symbol
 updateCurrency();
 addItem();
 </script>

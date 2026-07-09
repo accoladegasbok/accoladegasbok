@@ -25,8 +25,9 @@ Route::get('/sw.js', function () {
 
 Route::get('/health', fn() => response()->json(['status' => 'ok', 'ts' => now()]));
 
-// ── Public AJAX — vehicle models dropdown (used on harvest create & manual add) ─
-Route::get('/parts/models', [\App\Http\Controllers\Admin\HarvestController::class, 'engineOptions'])->name('parts.models');
+// ── Public AJAX — vehicle models dropdown ────────────────────────────
+Route::get('/parts/models', [\App\Http\Controllers\Admin\HarvestController::class, 'models'])->name('parts.models');
+Route::get('/parts/engine-options', [\App\Http\Controllers\Admin\HarvestController::class, 'engineOptions'])->name('parts.engine-options');
 
 // ═══════════════════════════════════════════════════════════════════
 // STAFF AUTH — login / logout (outside middleware group)
@@ -246,7 +247,7 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
 
     // ── Supervisor PIN override ────────────────────────────────────
     Route::post('/override/verify',           [\App\Http\Controllers\Admin\OverrideController::class, 'verify'])->name('admin.override.verify');
-    Route::get('/override/set-pin',           [\App\Http\Controllers\Admin\OverrideController::class, 'setOwnPin'])->name('admin.override.set-pin-page');
+    Route::get('/override/set-pin',           [\App\Http\Controllers\Admin\OverrideController::class, 'setOwnPinPage'])->name('admin.override.set-pin-page');
     Route::post('/override/set-pin',          [\App\Http\Controllers\Admin\OverrideController::class, 'setOwnPin'])->name('admin.override.set-pin');
     Route::post('/override/clear-pin/{staffId}', [\App\Http\Controllers\Admin\OverrideController::class, 'clearPin'])->name('admin.override.clear-pin');
     Route::get('/override/logs',              [\App\Http\Controllers\Admin\OverrideController::class, 'logs'])->name('admin.override.logs');

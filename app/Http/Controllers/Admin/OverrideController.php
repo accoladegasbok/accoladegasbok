@@ -21,9 +21,11 @@ class OverrideController extends Controller
 {
     const ELIGIBLE_ROLES = ['supervisor', 'manager', 'admin'];
 
+    // =========================================================
     // POST /admin/override/verify
     // Body: { pin, action, context }
     // Returns: { success, approved_by, role } or { error }
+    // =========================================================
     public function verify(Request $request)
     {
         $request->validate([
@@ -53,7 +55,8 @@ class OverrideController extends Controller
                 'action'                => $request->action,
                 'context'               => ($request->context ?? '') . ' [FAILED — invalid PIN]',
                 'requested_by_staff_id' => Session::get('staff_id'),
-                'created_at'            => now(), 'updated_at' => now(),
+                'created_at'            => now(),
+                'updated_at'            => now(),
             ]);
             return response()->json(['error' => 'Invalid override PIN.'], 403);
         }
@@ -64,7 +67,8 @@ class OverrideController extends Controller
             'action'                => $request->action,
             'context'               => $request->context,
             'requested_by_staff_id' => Session::get('staff_id'),
-            'created_at'            => now(), 'updated_at' => now(),
+            'created_at'            => now(),
+            'updated_at'            => now(),
         ]);
 
         return response()->json([
@@ -74,15 +78,30 @@ class OverrideController extends Controller
         ]);
     }
 
+    // =========================================================
+    // GET /admin/override/set-pin — show the PIN setup page
+    // =========================================================
+    public function setOwnPinPage()
+    {
+        $role = Session::get('staff_role');
+        if (!in_array($role, self::ELIGIBLE_ROLES)) {
+            abort(403, 'Only admin, manager or supervisor can set an override PIN.');
+        }
+        return view('admin.override.set-pin');
+    }
+
+    // =========================================================
+    // POST /admin/override/set-pin — save the PIN
     // Staff (Supervisor/Manager/Admin) set their OWN PIN — never
     // visible to anyone else afterward, including Admin (only a
     // reset/clear is possible, not viewing the existing PIN).
+    // =========================================================
     public function setOwnPin(Request $request)
     {
         $request->validate(['pin' => 'required|digits:4']);
 
         $staffId = Session::get('staff_id');
-        $role = Session::get('staff_role');
+        $role    = Session::get('staff_role');
 
         if (!in_array($role, self::ELIGIBLE_ROLES)) {
             return response()->json(['error' => 'Your role is not eligible for an override PIN.'], 403);
@@ -93,26 +112,42 @@ class OverrideController extends Controller
             'updated_at'        => now(),
         ]);
 
-        return response()->json(['success' => true]);
+        // If request expects JSON (called via AJAX), return JSON
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true]);
+        }
+
+        // Otherwise redirect back with success flash (called from set-pin form)
+        return redirect()->route('admin.override.set-pin-page')
+            ->with('success', 'Your override PIN has been set successfully.');
     }
 
-    // Admin can clear (not view) another staff member's PIN, forcing
-    // them to set a new one — e.g. if they forgot it or left the company.
+    // =========================================================
+    // POST /admin/override/clear-pin/{staffId}
+    // Admin can clear (not view) another staff member's PIN,
+    // forcing them to set a new one.
+    // =========================================================
     public function clearPin(int $staffId)
     {
         if (Session::get('staff_role') !== 'admin') {
             return response()->json(['error' => 'Admin only.'], 403);
         }
 
-        DB::table('staff')->where('id', $staffId)->update(['override_pin_hash' => null, 'updated_at' => now()]);
+        DB::table('staff')->where('id', $staffId)->update([
+            'override_pin_hash' => null,
+            'updated_at'        => now(),
+        ]);
+
         return response()->json(['success' => true]);
     }
 
+    // =========================================================
     // GET /admin/override/logs — audit trail view
+    // =========================================================
     public function logs()
     {
         $logs = DB::table('override_logs as ol')
-            ->leftJoin('staff as approver', 'approver.id', '=', 'ol.approved_by_staff_id')
+            ->leftJoin('staff as approver',  'approver.id',  '=', 'ol.approved_by_staff_id')
             ->leftJoin('staff as requester', 'requester.id', '=', 'ol.requested_by_staff_id')
             ->select('ol.*', 'approver.name as approver_name', 'requester.name as requester_name')
             ->orderByDesc('ol.created_at')
