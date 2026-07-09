@@ -307,7 +307,7 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
     // ── Invoice show for order ─────────────────────────────────────
     Route::get('/orders/{id}/invoice',
         [\App\Http\Controllers\Admin\InvoiceController::class, 'show'])
-        ->name('admin.invoices.show');
+        ->name('admin.orders.invoice');
 
     // ── Service invoice search parts ───────────────────────────────
     Route::get('/invoices/service/search-parts',

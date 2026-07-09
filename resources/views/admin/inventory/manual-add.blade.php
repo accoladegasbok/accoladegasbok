@@ -288,7 +288,7 @@
 
 {{-- ── LOCATION & BIN ─────────────────────────────────────────── --}}
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-    <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-4">Location & Bin Storage *</h2>
+    <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-4">Location & Storage *</h2>
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Warehouse Location *</label>
@@ -302,16 +302,19 @@
         </div>
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Store Room *</label>
-            <select id="storeRoomSelect"
+            <select id="storeRoomSelect" required
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
                 <option value="">Select Location first</option>
             </select>
+            <input type="hidden" name="storage_room_id" id="storageRoomId">
         </div>
         <div>
-            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Bin *</label>
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+                Bin <span class="text-gray-400 font-normal">(optional)</span>
+            </label>
             <select id="binSelect"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
-                <option value="">Select Store Room first</option>
+                <option value="">No specific bin</option>
             </select>
             <input type="hidden" name="storage_shelf_id" id="storageShelfId" value="{{ old('storage_shelf_id') }}">
             <input type="hidden" name="bin_location"     id="binLocationHidden" value="{{ old('bin_location') }}">
@@ -319,17 +322,16 @@
         </div>
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Selected Bin</label>
-            <input type="text" id="binDisplay" readonly
+            <input type="text" id="binDisplay" readonly placeholder="None selected"
                    class="w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">
         </div>
     </div>
-    @error('storage_shelf_id')
-    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-    @enderror
-    <p class="text-xs text-gray-400 mt-2">A bin must be selected before saving. If all bins are occupied, you can confirm sharing a bin.</p>
-
-    <div>
-        <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5 mt-3">Stock Quantity</label>
+    <p class="text-xs text-gray-400 mt-2">
+        Room is required. Bin is optional — parts can be stored at room level and assigned to a bin later from the edit page.
+        If a bin is already occupied, you'll be prompted to confirm sharing.
+    </p>
+    <div class="mt-3">
+        <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Stock Quantity</label>
         <input type="number" name="stock_qty" value="{{ old('stock_qty', 1) }}" min="1"
                class="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold w-32">
     </div>
@@ -505,33 +507,37 @@ async function loadStoreRooms(){
     const loc=document.getElementById('locationSelect').value;
     const rs=document.getElementById('storeRoomSelect');
     const bs=document.getElementById('binSelect');
+    document.getElementById('storageRoomId').value='';
     document.getElementById('storageShelfId').value='';
     document.getElementById('binLocationHidden').value='';
     document.getElementById('binDisplay').value='';
-    bs.innerHTML='<option value="">Select Store Room first</option>';
+    bs.innerHTML='<option value="">No specific bin</option>';
     if(!loc){rs.innerHTML='<option value="">Select Location first</option>';return;}
     rs.innerHTML='<option value="">Loading rooms...</option>';
     try{
         const res=await fetch(`/admin/storage/rooms-for-location?location=${encodeURIComponent(loc)}`);
         const data=await res.json();
         if(!data.rooms||!data.rooms.length){rs.innerHTML='<option value="">No rooms for this location</option>';return;}
-        rs.innerHTML='<option value="">Select Store Room</option>'+data.rooms.map(r=>`<option value="${r.id}">${r.name} (${r.code})</option>`).join('');
+        rs.innerHTML='<option value="">Select Store Room *</option>'+data.rooms.map(r=>`<option value="${r.id}">${r.name} (${r.code})</option>`).join('');
     }catch(e){rs.innerHTML='<option value="">Error loading rooms</option>';}
 }
 
 document.getElementById('storeRoomSelect').addEventListener('change',async function(){
     const rid=this.value;
     const bs=document.getElementById('binSelect');
+    document.getElementById('storageRoomId').value=rid||'';
     document.getElementById('storageShelfId').value='';
     document.getElementById('binLocationHidden').value='';
     document.getElementById('binDisplay').value='';
-    if(!rid){bs.innerHTML='<option value="">Select Store Room first</option>';return;}
-    bs.innerHTML='<option value="">Loading bins...</option>';
+    bs.innerHTML='<option value="">No specific bin — room level only</option>';
+    if(!rid) return;
     try{
         const res=await fetch(`/admin/storage/shelves-for-room?room_id=${rid}`);
         const data=await res.json();
-        if(!data.shelves||!data.shelves.length){bs.innerHTML='<option value="">No bins set up yet</option>';return;}
-        bs.innerHTML='<option value="">Select Bin</option>'+data.shelves.map(s=>`<option value="${s.id}" data-code="${s.full_bin_code}" data-occupied="${s.occupied_by?'1':''}" data-name="${s.occupied_by||''}">${s.full_bin_code}${s.occupied_by?' — OCCUPIED: '+s.occupied_by:''}</option>`).join('');
+        if(!data.shelves||!data.shelves.length){bs.innerHTML='<option value="">No bins in this room yet</option>';return;}
+        bs.innerHTML='<option value="">No specific bin — room level only</option>'+
+            data.shelves.map(s=>`<option value="${s.id}" data-code="${s.full_bin_code}" data-occupied="${s.occupied_by?'1':''}" data-name="${s.occupied_by||''}">`+
+            `${s.full_bin_code}${s.occupied_by?' ⚠ OCCUPIED: '+s.occupied_by:' ✓ Empty'}</option>`).join('');
     }catch(e){bs.innerHTML='<option value="">Error loading bins</option>';}
 });
 
@@ -539,14 +545,21 @@ let prevBin='';
 document.getElementById('binSelect').addEventListener('change',function(){
     const sel=this.options[this.selectedIndex];
     if(!sel||!sel.value){
+        // No bin selected — room level storage only
         document.getElementById('storageShelfId').value='';
         document.getElementById('binLocationHidden').value='';
-        document.getElementById('binDisplay').value='';
+        document.getElementById('binDisplay').value='Room level (no bin)';
         document.getElementById('confirmSharedBin').value='';
+        prevBin='';
         return;
     }
     if(sel.dataset.occupied==='1'){
-        const ok=confirm(`⚠ This bin already contains "${sel.dataset.name}".\n\nShare this bin (group items together)?\n\nClick OK to confirm shared storage, or Cancel to pick a different bin.`);
+        const ok=confirm(
+            `⚠ CAUTION: This bin already contains:\n"${sel.dataset.name}"\n\n`+
+            `Sharing a bin groups items together physically.\n`+
+            `This is allowed but may affect picking accuracy during stock audits.\n\n`+
+            `Click OK to confirm shared bin storage.\nClick Cancel to choose a different bin.`
+        );
         if(!ok){this.value=prevBin;return;}
         document.getElementById('confirmSharedBin').value='1';
     } else {

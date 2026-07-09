@@ -384,6 +384,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                     <td style="text-align:center;">{{ $item->qty }}</td>
                     <td style="text-align:right;">{{ $item->unit_price_fmt }}</td>
                     <td>{{ $item->total_fmt }}</td>
+                    @endif
                 </tr>
                 @endforeach
             </tbody>

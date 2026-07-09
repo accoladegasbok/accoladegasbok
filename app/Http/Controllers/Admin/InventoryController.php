@@ -168,7 +168,7 @@ class InventoryController extends Controller
             // Bin location is now REQUIRED (#13) — every part must
             // have a real physical bin assigned at the moment it's
             // entered into inventory, no exceptions.
-            'storage_shelf_id'    => 'required|exists:storage_shelves,id',
+            'storage_shelf_id'    => 'nullable|exists:storage_shelves,id',
             'bin_location'        => 'nullable|string|max:20',
             'engine_code_oem'     => 'nullable|string|max:30',
             'transmission_code_oem'=> 'nullable|string|max:30',
@@ -587,7 +587,8 @@ class InventoryController extends Controller
             'price_usd'      => 'required|numeric|min:0',
             'condition_grade'=> 'required|in:A,B,C,New',
             'location'       => 'required|string',
-            'storage_shelf_id' => 'required|exists:storage_shelves,id',
+            'storage_shelf_id' => 'nullable|exists:storage_shelves,id',
+'storage_room_id'  => 'nullable|integer',
             'photos'         => 'nullable|array',
             'photos.*'       => 'image|max:8192',
             'video'          => 'nullable|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
