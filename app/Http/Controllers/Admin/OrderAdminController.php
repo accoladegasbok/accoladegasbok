@@ -60,7 +60,7 @@ class OrderAdminController extends Controller
 
         $items = DB::table('order_items')->where('order_id', $id)->get();
 
-        return view('admin.orders.show', compact('order', 'items'));
+        public static function recordBuyerDoc(int $invoiceId, string $table, ?string $buyerDoc): void
     }
 
     // =========================================================
