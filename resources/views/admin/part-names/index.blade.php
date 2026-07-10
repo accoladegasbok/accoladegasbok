@@ -22,6 +22,33 @@
   Tick 2 or more names below that mean the same thing, type the ONE canonical name you want them all to become, then click Merge. Every part currently tagged with the old names is instantly retagged — nothing is deleted, just renamed.
 </div>
 
+{{-- ── Add New Part Name ─────────────────────────────────────── --}}
+<div class="stat-card mb-5">
+    <h3 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-3">+ Add New Part Name</h3>
+    <p class="text-xs text-gray-400 mb-3">Add a new standardised part name to the global list. Once added it appears in all dropdowns across harvest, manual add and invoices.</p>
+    <form method="POST" action="{{ route('admin.part-names.store') }}" class="flex gap-3 items-end">
+        @csrf
+        <div class="flex-1">
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">New Part Name *</label>
+            <input type="text" name="name" required
+                   placeholder="e.g. Laptop Motherboard, Electric Motor, Control Panel..."
+                   class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-yellow-400">
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+            <select name="category" class="border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:border-yellow-400">
+                <option value="">Select category</option>
+                @foreach(['Engine','Transmission','Electrical','Body','Suspension','Cooling','Brakes','Interior','Fuel','Exhaust','Wheels','Electronics','Computers','General'] as $cat)
+                <option value="{{ $cat }}">{{ $cat }}</option>
+                @endforeach
+            </select>
+        </div>
+        <button type="submit" class="bg-gold text-navy font-display font-700 text-sm px-5 py-2.5 rounded-xl hover:bg-yellow-400 transition-colors whitespace-nowrap">
+            Add Part Name
+        </button>
+    </form>
+</div>
+
 <form method="POST" action="{{ route('admin.part-names.merge') }}" id="mergeForm">
 @csrf
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-5">

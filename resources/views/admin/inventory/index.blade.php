@@ -88,7 +88,9 @@
                 <span class="text-xs text-gray-400">· {{ $p->side }}</span>
               @endif
             </div>
-            <div class="text-xs text-gray-400 font-mono mt-0.5">{{ $p->part_code }}</div>
+            <div class="text-xs text-gray-400 font-mono mt-0.5">
+              {{ $p->part_code }}@if(!empty($p->source_ref))<span class="text-gray-300"> / </span><span class="text-gold">{{ $p->source_ref }}</span>@endif
+            </div>
           </td>
           <td class="px-4 py-3">
             <span class="badge {{ $p->part_category === 'Consumable' ? 'badge-amber' : 'badge-gray' }}">
