@@ -221,10 +221,13 @@
           <div class="text-gold text-xs font-body uppercase tracking-wider">{{ session('staff_role') }}</div>
         </div>
       </div>
-      <a href="{{ route('admin.logout') }}" class="mt-3 flex items-center gap-2 text-xs text-gray-500 hover:text-white font-body transition-colors">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-        Log out
-      </a>
+      <form method="POST" action="{{ route('admin.logout') }}" class="mt-3">
+        @csrf
+        <button type="submit" class="flex items-center gap-2 text-xs text-gray-500 hover:text-white font-body transition-colors w-full">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          Log out
+        </button>
+      </form>
     </div>
   </aside>
 

@@ -290,7 +290,7 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
         [\App\Http\Controllers\Admin\InventoryController::class, 'photos'])
         ->name('admin.inventory.photos');
     Route::post('/inventory/{id}/photos',
-        [\App\Http\Controllers\Admin\InventoryController::class, 'addPhoto'])
+        [\App\Http\Controllers\Admin\InventoryController::class, 'addPhotos'])
         ->name('admin.inventory.photos.add');
     Route::post('/inventory/{id}/photos/delete',
         [\App\Http\Controllers\Admin\InventoryController::class, 'deletePhoto'])
