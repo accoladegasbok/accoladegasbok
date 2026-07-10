@@ -467,6 +467,18 @@ class InventoryController extends Controller
     }
 
     // =========================================================
+    // GET /admin/inventory/{id}/photos
+    // Redirects to edit page — photos are managed from the edit form
+    // =========================================================
+    public function photos(int $id)
+    {
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        if (!$part) abort(404);
+        return redirect()->route('admin.inventory.edit', $id)
+            ->with('info', 'Add and manage photos from the edit page below.');
+    }
+
+    // =========================================================
     // GET /admin/inventory/consumable/create — simple dedicated form
     // =========================================================
     public function consumableCreate()
@@ -765,12 +777,27 @@ class InventoryController extends Controller
     {
         $request->validate([
             'photos'   => 'required|array',
-            'photos.*' => 'image|max:8192', // 8MB per photo
+            'photos.*' => 'image|max:8192',
         ]);
 
-        $this->storePartPhotos($id, $request->file('photos'));
+        // Enforce 10-photo maximum
+        $part      = DB::table('parts_inventory')->where('id', $id)->first();
+        $existing  = json_decode($part->photos ?? '[]', true) ?: [];
+        $remaining = 10 - count($existing);
 
-        return back()->with('success', 'Photo(s) uploaded.');
+        if ($remaining <= 0) {
+            return back()->withErrors(['photos' => 'Maximum 10 photos already reached. Delete some first.']);
+        }
+
+        $files   = array_slice($request->file('photos'), 0, $remaining);
+        $this->storePartPhotos($id, $files);
+
+        $added   = count($files);
+        $skipped = count($request->file('photos')) - $added;
+        $msg     = "{$added} photo(s) uploaded.";
+        if ($skipped > 0) $msg .= " {$skipped} skipped (10-photo limit).";
+
+        return back()->with('success', $msg);
     }
 
     // POST /admin/inventory/{id}/video — add or replace this part's single video

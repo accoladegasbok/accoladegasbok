@@ -286,6 +286,9 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
     })->name('admin.inventory.oem-lookup');
 
     // ── Inventory photos & video ───────────────────────────────────
+    Route::get('/inventory/{id}/photos',
+        [\App\Http\Controllers\Admin\InventoryController::class, 'photos'])
+        ->name('admin.inventory.photos');
     Route::post('/inventory/{id}/photos',
         [\App\Http\Controllers\Admin\InventoryController::class, 'addPhoto'])
         ->name('admin.inventory.photos.add');

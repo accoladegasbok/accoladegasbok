@@ -339,8 +339,28 @@
 
 {{-- ── NOTES ──────────────────────────────────────────────────── --}}
 <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-    <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-3">Notes</h2>
+    <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide mb-3">Notes & References</h2>
     <div class="space-y-3">
+        <div>
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+                Source / External Reference <span class="text-gray-400 font-normal">(optional — max 6 alphanumeric)</span>
+            </label>
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1 text-xs font-mono text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 whitespace-nowrap">
+                    <span id="partCodePreview">ENG-XXXXX</span> /
+                </div>
+                <input type="text" name="source_ref" maxlength="6"
+                       value="{{ old('source_ref') }}"
+                       placeholder="e.g. FEM123"
+                       oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,''); document.getElementById('sourceRefPreview').textContent=this.value||'------'"
+                       class="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:border-gold tracking-widest">
+                <span id="sourceRefPreview" class="text-xs font-mono text-gray-400">------</span>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">
+                Shown as <span class="font-mono text-navy">ENG-00018 / FEM123</span> on labels and listings.
+                For harvested parts: use last 6 of VIN. For purchased parts: supplier stock number.
+            </p>
+        </div>
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
                 Conditions / Options <span class="text-gray-400 font-normal">(max 36 chars — printed on label)</span>
