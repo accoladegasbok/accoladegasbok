@@ -789,7 +789,11 @@ class InvoiceController extends Controller
             }
 
             // ── Phase 6: record buyer documentation for legal trace parts ─
-            $legalTrace->recordBuyerDoc($invoiceId, 'invoices', $request->buyer_doc ?? '');
+            LegalTraceService::recordBuyerDoc(
+                $invoiceId,
+                'invoice_items',
+                $request->input('buyer_legal_doc', '')
+            );
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1144,7 +1148,7 @@ class InvoiceController extends Controller
     public function index(Request $request)
     {
         $invoiceRows = DB::table('invoices')
-            ->whereNull('invoices.deleted_at')
+            ->whereNull('deleted_at')
             ->select('id', 'invoice_no as ref', 'customer_name', 'customer_phone',
                      'subtotal_local as amount_local', 'currency_code', 'location',
                      'invoice_type', 'payment_method', 'created_by', 'created_at')
@@ -1160,7 +1164,7 @@ class InvoiceController extends Controller
                 'channel'        => 'In-Store',
                 'type'           => $r->invoice_type ?? 'parts',
                 'payment_method' => $r->payment_method,
-                'staff'          => $r->created_by,
+                'staff'          => $r->created_by ?? 'Staff',
                 'doc_label'      => 'Receipt',
                 'created_at'     => $r->created_at,
                 'url'            => route('admin.invoices.show.manual', $r->id),
@@ -1169,8 +1173,10 @@ class InvoiceController extends Controller
         $orderRows = DB::table('orders')
             ->whereNull('deleted_at')
             ->select('id', 'order_ref as ref', 'customer_name', 'customer_phone',
-                     'total_amount_local', 'total_amount_ngn', 'total_amount_usd', 'currency_code as order_currency_code',
-                     'customer_country', 'payment_method', 'channel', 'created_by', 'payment_status', 'created_at')
+                     'total_amount_local', 'total_amount_ngn', 'total_amount_usd',
+                     'currency_code as order_currency_code',
+                     'customer_country', 'payment_method', 'channel',
+                     'created_by', 'payment_status', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
                 'id'             => $r->id,
@@ -1189,7 +1195,7 @@ class InvoiceController extends Controller
                 },
                 'type'           => 'order',
                 'payment_method' => $r->payment_method,
-                'staff'          => $r->created_by ?? (in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Staff (unrecorded)' : 'Customer (online)'),
+                'staff'          => $r->created_by ?? (in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Walk-in sale' : 'Online order'),
                 'doc_label'      => in_array($r->payment_status, ['confirmed', 'paid', 'completed']) ? 'Receipt' : 'Invoice',
                 'created_at'     => $r->created_at,
                 'url'            => route('admin.invoices.show', $r->id),

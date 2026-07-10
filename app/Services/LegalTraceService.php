@@ -77,7 +77,7 @@ class LegalTraceService
      * @param string $table      'invoice_items' or 'order_items'
      * @param string $buyerDoc   Document reference entered by staff
      */
-    public static function recordBuyerDoc(int $invoiceId, string $table, ?string $buyerDoc): void
+    public static function recordBuyerDoc(int $invoiceId, string $table, string $buyerDoc): void
     {
         if (empty(trim($buyerDoc))) return;
 

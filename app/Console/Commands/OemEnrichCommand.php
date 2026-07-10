@@ -54,9 +54,9 @@ class OemEnrichCommand extends Command
                 $oem = OemDatabase::lookup(
                     strtoupper($row->make),
                     strtoupper($row->model),
-                    $row->year,
-                    $row->cylinders ?? 0,
-                    $row->engine_l ?? 0.0
+                    (int)$row->year,
+                    (int)($row->cylinders ?? 0),
+                    (float)($row->engine_l ?? 0.0)
                 );
                 if (!$oem['engine_code'] && !$oem['transmission_code']) continue;
                 $data = [
