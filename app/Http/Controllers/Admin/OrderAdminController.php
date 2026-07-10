@@ -59,8 +59,9 @@ class OrderAdminController extends Controller
         if (!$order) abort(404);
 
         $items = DB::table('order_items')->where('order_id', $id)->get();
-
-        public static function recordBuyerDoc(int $invoiceId, string $table, ?string $buyerDoc): void
+        $currencyCode   = $order->currency_code ?? ($order->total_amount_ngn ? 'NGN' : 'USD');
+        $currencySymbol = match($currencyCode) { 'NGN' => '₦', 'GHS' => 'GH₵', default => '$' };
+        return view('admin.orders.show', compact('order', 'items', 'currencyCode', 'currencySymbol'));
     }
 
     // =========================================================
