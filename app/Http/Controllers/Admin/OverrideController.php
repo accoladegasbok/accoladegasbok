@@ -37,7 +37,7 @@ class OverrideController extends Controller
         $staffList = DB::table('staff')
             ->whereIn('role', self::ELIGIBLE_ROLES)
             ->whereNotNull('override_pin_hash')
-            ->where('active', true)
+            ->where('is_active', true)
             ->get();
 
         $matched = null;
