@@ -1148,12 +1148,10 @@ class InvoiceController extends Controller
     public function index(Request $request)
     {
         $invoiceRows = DB::table('invoices')
-            ->whereNull('invoices.deleted_at')
-            ->leftJoin('staff as s1', 's1.id', '=', 'invoices.created_by')
-            ->select('invoices.id', 'invoices.invoice_no as ref', 'invoices.customer_name', 'invoices.customer_phone',
-                     'invoices.subtotal_local as amount_local', 'invoices.currency_code', 'invoices.location',
-                     'invoices.invoice_type', 'invoices.payment_method', 'invoices.created_by', 'invoices.created_at',
-                     's1.name as staff_name')
+            ->whereNull('deleted_at')
+            ->select('id', 'invoice_no as ref', 'customer_name', 'customer_phone',
+                     'subtotal_local as amount_local', 'currency_code', 'location',
+                     'invoice_type', 'payment_method', 'created_by', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
                 'id'             => $r->id,
@@ -1166,21 +1164,19 @@ class InvoiceController extends Controller
                 'channel'        => 'In-Store',
                 'type'           => $r->invoice_type ?? 'parts',
                 'payment_method' => $r->payment_method,
-                'staff'          => $r->staff_name ?? $r->created_by ?? 'Staff',
+                'staff'          => $r->created_by ?? 'Staff',
                 'doc_label'      => 'Receipt',
                 'created_at'     => $r->created_at,
                 'url'            => route('admin.invoices.show.manual', $r->id),
             ]);
 
         $orderRows = DB::table('orders')
-            ->whereNull('orders.deleted_at')
-            ->leftJoin('staff as s2', 's2.id', '=', 'orders.created_by')
-            ->select('orders.id', 'orders.order_ref as ref', 'orders.customer_name', 'orders.customer_phone',
-                     'orders.total_amount_local', 'orders.total_amount_ngn', 'orders.total_amount_usd',
-                     'orders.currency_code as order_currency_code',
-                     'orders.customer_country', 'orders.payment_method', 'orders.channel',
-                     'orders.created_by', 'orders.payment_status', 'orders.created_at',
-                     's2.name as staff_name')
+            ->whereNull('deleted_at')
+            ->select('id', 'order_ref as ref', 'customer_name', 'customer_phone',
+                     'total_amount_local', 'total_amount_ngn', 'total_amount_usd',
+                     'currency_code as order_currency_code',
+                     'customer_country', 'payment_method', 'channel',
+                     'created_by', 'payment_status', 'created_at')
             ->get()
             ->map(fn($r) => (object)[
                 'id'             => $r->id,
@@ -1199,7 +1195,7 @@ class InvoiceController extends Controller
                 },
                 'type'           => 'order',
                 'payment_method' => $r->payment_method,
-                'staff'          => $r->staff_name ?? (in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Walk-in sale' : 'Online order'),
+                'staff'          => $r->created_by ?? (in_array($r->channel ?? 'online', ['walk-in','phone']) ? 'Walk-in sale' : 'Online order'),
                 'doc_label'      => in_array($r->payment_status, ['confirmed', 'paid', 'completed']) ? 'Receipt' : 'Invoice',
                 'created_at'     => $r->created_at,
                 'url'            => route('admin.invoices.show', $r->id),
