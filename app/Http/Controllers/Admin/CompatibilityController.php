@@ -157,16 +157,23 @@ class CompatibilityController extends Controller
         $allInterchange = \App\Data\OemDatabase::interchange();
         $interchangeReference = collect();
 
-        // Check transmission code first
+        // Check transmission code first, then engine code — merge both
         if ($oem['transmission_code'] && isset($allInterchange[$oem['transmission_code']])) {
             $interchangeReference = $interchangeReference->merge($allInterchange[$oem['transmission_code']]);
         }
-        // Also check engine code — merge to get the full picture
         if ($oem['engine_code'] && isset($allInterchange[$oem['engine_code']])) {
             $interchangeReference = $interchangeReference->merge($allInterchange[$oem['engine_code']]);
         }
-        // Deduplicate
-        $interchangeReference = $interchangeReference->unique()->values()->toArray();
+
+        // Deduplicate — strip OEM codes in brackets for comparison, keep first occurrence
+        $seen = [];
+        $interchangeReference = $interchangeReference->filter(function($item) use (&$seen) {
+            // Extract core vehicle string: "2002-2011 Toyota Camry 2.4L" from "2002-2011 Toyota Camry 2.4L (2AZ-FE)"
+            $core = trim(preg_replace('/\s*\([^)]+\)/', '', $item));
+            if (isset($seen[$core])) return false;
+            $seen[$core] = true;
+            return true;
+        })->values()->toArray();
 
         return response()->json([
             'count'                 => $results->count(),
