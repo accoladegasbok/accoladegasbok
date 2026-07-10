@@ -316,8 +316,8 @@
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
                 <option value="">No specific bin</option>
             </select>
-            <input type="hidden" name="storage_shelf_id" id="storageShelfId" value="{{ old('storage_shelf_id') }}">
-            <input type="hidden" name="bin_location"     id="binLocationHidden" value="{{ old('bin_location') }}">
+            <input type="hidden" name="storage_shelf_id" id="storageShelfId" value="">
+            <input type="hidden" name="bin_location"     id="binLocationHidden" value="">
             <input type="hidden" name="confirm_shared_bin" id="confirmSharedBin" value="">
         </div>
         <div>

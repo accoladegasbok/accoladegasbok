@@ -588,7 +588,7 @@ class InventoryController extends Controller
             'condition_grade'=> 'required|in:A,B,C,New',
             'location'       => 'required|string',
             'storage_shelf_id' => 'nullable|exists:storage_shelves,id',
-'storage_room_id'  => 'nullable|integer',
+            'storage_room_id'  => 'nullable|integer',
             'photos'         => 'nullable|array',
             'photos.*'       => 'image|max:8192',
             'video'          => 'nullable|file|mimes:mp4,mov,avi,webm|max:51200', // 50MB
@@ -629,7 +629,7 @@ class InventoryController extends Controller
         // the ROOM is allowed to hold multiple parts/bins — unless
         // staff explicitly confirmed a deliberate grouped-items
         // exception via the "are you sure?" prompt.
-        if (!$request->boolean('confirm_shared_bin')) {
+        if ($request->storage_shelf_id && !$request->boolean('confirm_shared_bin')) {
             $conflictingPart = DB::table('parts_inventory')
                 ->where('storage_shelf_id', $request->storage_shelf_id)
                 ->whereIn('status', ['Available', 'Reserved', 'Hold'])
