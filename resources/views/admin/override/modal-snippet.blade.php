@@ -9,8 +9,14 @@
   <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
     <h3 class="font-display font-700 text-navy text-lg tracking-wide mb-1">Supervisor Approval Required</h3>
     <p id="overrideContextText" class="text-sm text-gray-500 font-body mb-4"></p>
-    <input type="text" id="overridePinInput" inputmode="numeric" maxlength="4" autocomplete="off"
-      placeholder="Enter 4-digit PIN" class="w-full border-2 border-gold rounded-lg px-4 py-3 text-center text-2xl font-mono tracking-widest focus:outline-none">
+    <div class="relative">
+      <input type="password" id="overridePinInput" inputmode="numeric" maxlength="4" autocomplete="off"
+        placeholder="Enter 4-digit PIN" class="w-full border-2 border-gold rounded-lg px-4 py-3 pr-12 text-center text-2xl font-mono tracking-widest focus:outline-none">
+      <button type="button" id="overridePinToggle" onclick="toggleOverridePinVisibility()"
+        class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-600 text-gray-400 hover:text-navy transition-colors px-1.5 py-0.5 rounded border border-gray-200">
+        SHOW
+      </button>
+    </div>
     <div id="overrideError" class="text-xs text-red-600 font-body mt-2 min-h-[16px]"></div>
     <div class="flex gap-2 mt-4">
       <button type="button" onclick="closeOverrideModal()" class="flex-1 border border-gray-200 text-gray-600 font-body font-500 text-sm py-2.5 rounded-xl hover:bg-gray-50">Cancel</button>
@@ -28,7 +34,7 @@
 //
 // NOTE: this snippet defines requestOverride/closeOverrideModal/
 // submitOverridePin globally. If a page already defines its own
-// version of these (e.g. POS, Place Order), don't also @@include this
+// version of these (e.g. POS, Place Order), don't also @include this
 // partial on that same page — pick one source to avoid duplicate
 // function declarations.
 let _overrideCallback = null;
@@ -41,6 +47,8 @@ function requestOverride(action, context, callback) {
     _overrideCallback = callback;
     document.getElementById('overrideContextText').textContent = context;
     document.getElementById('overridePinInput').value = '';
+    document.getElementById('overridePinInput').type = 'password';
+    document.getElementById('overridePinToggle').textContent = 'SHOW';
     document.getElementById('overrideError').textContent = '';
     const modal = document.getElementById('overridePinModal');
     modal.classList.remove('hidden');
@@ -55,15 +63,27 @@ function closeOverrideModal() {
     _overrideCallback = null;
 }
 
+function toggleOverridePinVisibility() {
+    const input  = document.getElementById('overridePinInput');
+    const toggle = document.getElementById('overridePinToggle');
+    if (input.type === 'password') {
+        input.type = 'text';
+        toggle.textContent = 'HIDE';
+        toggle.classList.add('text-navy');
+    } else {
+        input.type = 'password';
+        toggle.textContent = 'SHOW';
+        toggle.classList.remove('text-navy');
+    }
+}
+
 async function submitOverridePin() {
     const pin = document.getElementById('overridePinInput').value;
     const errorBox = document.getElementById('overrideError');
-
     if (pin.length !== 4) {
         errorBox.textContent = 'Enter a 4-digit PIN.';
         return;
     }
-
     try {
         const res = await fetch('/admin/override/verify', {
             method: 'POST',
@@ -71,19 +91,17 @@ async function submitOverridePin() {
             body: JSON.stringify({ pin, action: _overrideAction, context: _overrideContext }),
         });
         const data = await res.json();
-
         if (!res.ok || data.error) {
             errorBox.textContent = data.error || 'Invalid PIN.';
             document.getElementById('overridePinInput').value = '';
             return;
         }
-
-        const cb = _overrideCallback;
         closeOverrideModal();
-        if (cb) cb(data.approved_by, data.role);
-
+        if (_overrideCallback) {
+            _overrideCallback(data.approved_by, data.role);
+        }
     } catch (e) {
-        errorBox.textContent = 'Network error — try again.';
+        errorBox.textContent = 'Network error. Please try again.';
     }
 }
 
