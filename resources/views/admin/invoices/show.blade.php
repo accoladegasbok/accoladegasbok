@@ -377,7 +377,22 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                             @endif
                         </div>
                     </td>
-                    <td style="font-family:monospace;font-size:10px;">{{ $isVehicleSale ? ($item->vin ?? 'N/A') : $item->part_code }}</td>
+                    <td>
+                        @if(!$isVehicleSale)
+                        <div style="font-family:monospace;font-size:10px;">{{ $item->part_code }}</div>
+                        @if(!empty($item->brand))
+                        <div style="font-size:9px;color:#666;margin-top:2px;">
+                            Fits: {{ $item->brand }} {{ $item->model }}
+                            {{ $item->compat_year_from ?? $item->year_from }}@if(($item->compat_year_to ?? $item->year_to) != ($item->compat_year_from ?? $item->year_from))–{{ $item->compat_year_to ?? $item->year_to }}@endif
+                        </div>
+                        @endif
+                        @if(!empty($item->engine_code_oem))
+                        <div style="font-size:9px;color:#999;">OEM: {{ $item->engine_code_oem }}{{ $item->transmission_code_oem ? ' / '.$item->transmission_code_oem : '' }}</div>
+                        @endif
+                        @else
+                        <div style="font-family:monospace;font-size:10px;">{{ $item->vin ?? 'N/A' }}</div>
+                        @endif
+                    </td>
                     @if(!$isVehicleSale)
                     <td><span class="grade-badge grade-{{ $item->condition_grade }}">{{ $item->condition_grade }}</span></td>
                     @endif

@@ -246,6 +246,9 @@ class InvoiceController extends Controller
                 'oi.condition_grade',
                 'oi.location as part_location',
                 'p.engine_code_oem',
+                'p.transmission_code_oem',
+                'p.compat_year_from',
+                'p.compat_year_to',
                 'p.part_category'
             )->get()
             ->map(function ($item) use ($orderCurrency) {
