@@ -414,8 +414,8 @@ class OrderAdminController extends Controller
     public static function paymentSummary(int $orderId): array
     {
         $order = DB::table('orders')->where('id', $orderId)->first();
-        if (!$order) return ['payments' => collect(), 'confirmedPaid' => 0, 'balanceDue' => 0];
-
+        if (!$order) return ['payments' => collect(), 'confirmedPaid' => 0, 'balanceDue' => 0, 'currencyCode' => 'USD'];
+        $currencyCode = $order->currency_code ?? ($order->total_amount_ngn ? 'NGN' : 'USD');
         $payments = DB::table('order_payments')
             ->where('order_id', $orderId)
             ->orderBy('created_at')
@@ -424,12 +424,10 @@ class OrderAdminController extends Controller
                 $p->amount_local = $p->amount_local ?? $p->amount_ngn ?? $p->amount_usd ?? 0;
                 return $p;
             });
-
         $confirmedPaid = $payments->where('status', 'confirmed')->sum('amount_local');
         $total         = $order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0;
         $balanceDue    = max(0, $total - $confirmedPaid);
-
-        return compact('payments', 'confirmedPaid', 'balanceDue');
+        return compact('payments', 'confirmedPaid', 'balanceDue', 'currencyCode');
     }
 
     // =========================================================

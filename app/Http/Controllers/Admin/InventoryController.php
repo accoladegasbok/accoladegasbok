@@ -207,7 +207,15 @@ class InventoryController extends Controller
         // explicitly confirmed (via the "are you sure?" prompt on
         // selecting an already-occupied bin) that this is a
         // deliberate grouped-items exception.
-        if ($request->storage_shelf_id && !$request->boolean('confirm_shared_bin')) {
+        // Fetch the part's CURRENT bin before any changes — if the
+        // submitted bin is identical to what it already was, this is
+        // not a new move and should never trigger a fresh conflict
+        // warning, even if another part has legitimately shared that
+        // same bin since before this edit (historical grouped items).
+        $currentPart = DB::table('parts_inventory')->where('id', $id)->first();
+        $binIsUnchanged = $currentPart && (int)($currentPart->storage_shelf_id ?? 0) === (int)($request->storage_shelf_id ?? 0);
+
+        if ($request->storage_shelf_id && !$binIsUnchanged && !$request->boolean('confirm_shared_bin')) {
             $conflictingPart = DB::table('parts_inventory')
                 ->where('storage_shelf_id', $request->storage_shelf_id)
                 ->where('id', '!=', $id) // a part keeping its OWN current bin is fine
