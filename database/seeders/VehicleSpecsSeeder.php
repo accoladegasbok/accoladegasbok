@@ -1,7 +1,9 @@
 <?php
 // FILE: database/seeders/VehicleSpecsSeeder.php
 // Focused seeder — only fetches models actually stocked by Auto Zenith.
-// Much faster than fetching all models for all years.
+// Uses fuzzy model-name matching to handle EPA's inconsistent naming
+// (e.g. "ES350" matches EPA's "ES 350", "RX350" matches both
+// "RX 350 2WD" and "RX 350 AWD", "Sierra" matches all GMC Sierra trims).
 
 namespace Database\Seeders;
 
@@ -27,9 +29,9 @@ class VehicleSpecsSeeder extends Seeder
         'Mercedes-Benz'=> ['C180','C200','C250','C280','C300','C350','E200','E320','E350','E500','ML320','ML350','ML500','S320','S350','S500','GLK350','GL350'],
         'Ford'         => ['Focus','Fusion','Escape','Explorer','F-150','Edge','Expedition','Mustang'],
         'Chevrolet'    => ['Silverado','Tahoe','Suburban','Malibu','Equinox','Cruze','Camaro'],
-        'GMC'          => ['Sierra','Yukon','Terrain'],
+        'GMC'          => ['Sierra','Yukon','Terrain','Acadia','Canyon'],
         'Pontiac'      => ['Vibe','Grand Prix'],
-        'Mazda'        => ['Mazda3','Mazda6','CX-5','CX-7'],
+        'Mazda'        => ['3','6','CX-5','CX-7','CX-9','5','MX-5'],
         'BMW'          => ['3 Series','5 Series','X3','X5'],
         'Mitsubishi'   => ['Lancer','Galant','Outlander','Eclipse'],
         'Subaru'       => ['Impreza','Outback','Forester'],
@@ -38,9 +40,11 @@ class VehicleSpecsSeeder extends Seeder
     const YEAR_FROM = 1995;
     const YEAR_TO   = 2025;
 
+    private array $modelCache = [];
+
     public function run(): void
     {
-        $this->command->info('🚗 Vehicle Engine Specs Seeder (Focused)');
+        $this->command->info('🚗 Vehicle Engine Specs Seeder (Focused + Fuzzy Match)');
         $total = 0; $errors = 0;
 
         foreach (self::VEHICLES as $make => $models) {
@@ -74,9 +78,9 @@ class VehicleSpecsSeeder extends Seeder
                                 $this->command->warn("  ⚠ {$make} {$model} {$year}: " . $e->getMessage());
                             }
                         }
-                        usleep(60000); // 60ms between vehicle detail calls
+                        usleep(60000);
                     }
-                    usleep(80000); // 80ms between years
+                    usleep(80000);
                 }
             }
             $this->command->info("  ✓ {$make}: {$makeCount} specs");
@@ -87,23 +91,70 @@ class VehicleSpecsSeeder extends Seeder
         $this->command->info('   Now run: php artisan oem:enrich');
     }
 
+    // ── Fuzzy model matching ────────────────────────────────────────
+    // EPA's model naming is inconsistent (spaces, drivetrain suffixes
+    // like "2WD"/"AWD", generation codes). Instead of hardcoding every
+    // exact variant, we fetch ALL models for this make+year, then match
+    // any that start with our simplified keyword (case/space-insensitive).
     private function getOptions(int $year, string $make, string $model): array
     {
+        $allModels = $this->getAllModelsForMakeYear($year, $make);
+        if (empty($allModels)) return [];
+
+        $modelKey = strtolower(preg_replace('/[\s\-]/', '', $model));
+        $matched  = [];
+
+        foreach ($allModels as $epaModel) {
+            $epaKey = strtolower(preg_replace('/[\s\-]/', '', $epaModel));
+            if (str_starts_with($epaKey, $modelKey)) {
+                $matched[] = $epaModel;
+            }
+        }
+
+        if (empty($matched)) return [];
+
+        $ids = [];
+        foreach ($matched as $epaModel) {
+            try {
+                $res = Http::timeout(8)
+                    ->withHeaders(['Accept' => 'application/json'])
+                    ->get(self::EPA_BASE . '/vehicle/menu/options', [
+                        'year'  => $year,
+                        'make'  => $make,
+                        'model' => $epaModel,
+                    ]);
+                if ($res->failed()) continue;
+                $items = $res->json('menuItem') ?? [];
+                if (!is_array($items)) continue;
+                if (isset($items['value'])) { $ids[] = (string)$items['value']; continue; }
+                foreach (array_column($items, 'value') as $v) $ids[] = (string)$v;
+            } catch (\Exception $e) { continue; }
+            usleep(40000);
+        }
+
+        return array_unique($ids);
+    }
+
+    private function getAllModelsForMakeYear(int $year, string $make): array
+    {
+        $cacheKey = $year . '|' . $make;
+        if (isset($this->modelCache[$cacheKey])) return $this->modelCache[$cacheKey];
+
         try {
             $res = Http::timeout(8)
                 ->withHeaders(['Accept' => 'application/json'])
-                ->get(self::EPA_BASE . '/vehicle/menu/options', [
-                    'year'  => $year,
-                    'make'  => $make,
-                    'model' => $model,
+                ->get(self::EPA_BASE . '/vehicle/menu/model', [
+                    'year' => $year,
+                    'make' => $make,
                 ]);
-            if ($res->failed()) return [];
+            if ($res->failed()) return $this->modelCache[$cacheKey] = [];
             $items = $res->json('menuItem') ?? [];
-            if (!is_array($items)) return [];
-            // Single item returns object not array
-            if (isset($items['value'])) return [(string)$items['value']];
-            return array_column($items, 'value');
-        } catch (\Exception $e) { return []; }
+            if (!is_array($items)) return $this->modelCache[$cacheKey] = [];
+            if (isset($items['value'])) return $this->modelCache[$cacheKey] = [(string)$items['value']];
+            return $this->modelCache[$cacheKey] = array_column($items, 'value');
+        } catch (\Exception $e) {
+            return $this->modelCache[$cacheKey] = [];
+        }
     }
 
     private function getSpec(string $vehicleId): ?array
@@ -140,14 +191,17 @@ class VehicleSpecsSeeder extends Seeder
             $driveNorm = match(true) {
                 str_contains($drive,'4-Wheel or All-Wheel') => '4WD/AWD',
                 str_contains($drive,'All-Wheel')            => 'AWD',
-                str_contains($drive,'4-Wheel')              => '4WD',
+                str_contains($drive,'4-Wheel')               => '4WD',
                 str_contains($drive,'Front-Wheel')          => 'FWD',
                 str_contains($drive,'Rear-Wheel')           => 'RWD',
-                str_contains($drive,'2-Wheel')              => '2WD',
-                default                                     => substr($drive, 0, 50),
+                str_contains($drive,'2-Wheel')               => '2WD',
+                default                                       => substr($drive, 0, 50),
             };
         }
 
+        // Use the ORIGINAL requested $model (e.g. "ES350") not the EPA
+        // variant (e.g. "ES 350 AWD") for OemDatabase lookup + storage,
+        // so downstream matching stays consistent with the rest of the app.
         $oem = OemDatabase::lookup(strtoupper($make), strtoupper($model), $year, $cylinders, $displ);
 
         return [

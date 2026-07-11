@@ -4,13 +4,13 @@
 // AI-assisted interchange suggestions for staff during harvest/manual
 // inventory entry. Given a part's known engine/transmission codes and
 // vehicle data, asks OpenAI (GPT-4o) which other makes/models/years
-// likely share the same physical part due to shared platform/engine/
-// transmission/electrical architecture — staff review and confirm
-// each suggestion before it's added to an interchange group. The AI
-// never writes to the database directly; it only proposes, and reuses
-// the existing InterchangeService methods (createGroup/addVehicleToGroup)
-// once a staff member accepts a suggestion — same trust boundary as
-// the manual flow.
+// likely share the same physical part due to a shared platform/engine/
+// transmission — staff review and confirm each suggestion before it's
+// added to an interchange group. The AI never writes to the database
+// directly; it only proposes, and reuses the existing
+// InterchangeService methods (createGroup/addVehicleToGroup) once a
+// staff member accepts a suggestion — same trust boundary as the
+// manual flow.
 
 namespace App\Http\Controllers\Admin;
 
@@ -19,7 +19,6 @@ use App\Services\InterchangeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class InterchangeAiController extends Controller
 {
@@ -34,19 +33,11 @@ class InterchangeAiController extends Controller
 
         $prompt = $this->buildPrompt($part);
 
-        Log::info('AI suggest: starting request', [
-            'part_id'    => $part->id,
-            'key_length' => strlen(env('OPENAI_API_KEY') ?? ''),
-        ]);
-
         try {
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
                 'Content-Type'  => 'application/json',
-            ])
-            ->timeout(25)
-            ->connectTimeout(5)
-            ->post('https://api.openai.com/v1/chat/completions', [
+            ])->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
                 'model'    => 'gpt-4o',
                 'messages' => [
                     ['role' => 'system', 'content' => 'You are an expert automotive parts interchange specialist. You only respond with valid JSON arrays, no other text or markdown formatting.'],
@@ -56,13 +47,8 @@ class InterchangeAiController extends Controller
                 'max_tokens'  => 1024,
             ]);
 
-            Log::info('AI suggest: got response', [
-                'status' => $response->status(),
-                'body'   => substr($response->body(), 0, 500),
-            ]);
-
             if (!$response->successful()) {
-                Log::warning('AI interchange suggest failed', [
+                \Illuminate\Support\Facades\Log::warning('AI interchange suggest failed', [
                     'status' => $response->status(),
                     'body'   => $response->body(),
                 ]);
@@ -74,17 +60,13 @@ class InterchangeAiController extends Controller
             $suggestions = json_decode(trim($clean), true);
 
             if (!is_array($suggestions)) {
-                Log::warning('AI suggest: could not parse response', ['raw_text' => $text]);
                 return response()->json(['error' => 'AI response could not be read. Please try again or use the manual interchange flow.'], 502);
             }
 
             return response()->json(['suggestions' => $suggestions]);
 
         } catch (\Exception $e) {
-            Log::error('AI interchange suggest exception', [
-                'message' => $e->getMessage(),
-                'trace'   => substr($e->getTraceAsString(), 0, 1000),
-            ]);
+            \Illuminate\Support\Facades\Log::error('AI interchange suggest exception', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'AI request failed: ' . $e->getMessage()], 502);
         }
     }
@@ -97,28 +79,18 @@ class InterchangeAiController extends Controller
             $part->engine_code_oem ? "Engine code: {$part->engine_code_oem}" : null,
             $part->transmission_code_oem ?? null ? "Transmission code: {$part->transmission_code_oem}" : null,
             "Part: {$part->part_name}", "Category: {$part->part_category}",
-            $part->oem_part_number ? "OEM Part Number: {$part->oem_part_number}" : null,
         ])));
 
         return <<<PROMPT
-You are an expert automotive parts interchange specialist helping an auto parts recycler identify which other vehicle makes/models/years likely accept the exact same physical part as a direct replacement.
+You are helping an auto parts recycler identify which other vehicle makes/models/years likely share the exact same physical part, based on shared engine codes, transmission codes, or known platform-sharing between manufacturers (e.g. badge-engineered twins, shared platforms across brands).
 
 Known vehicle/part info:
 {$known}
 
-Consider ALL relevant compatibility factors for this specific part category, not just engine/transmission sharing:
-
-- Engine/Transmission parts: shared engine family, transmission code, or drivetrain platform
-- Body panels, lights, bumpers, mirrors: shared body platform, facelift/generation overlap, badge-engineered twins (e.g. Toyota/Scion, same-factory rebadges)
-- Electrical/Electronics (ECU, sensors, switches, wiring harness, infotainment): shared electrical architecture or connector standard across trims/years/models, even across different engine options
-- Interior parts (seats, dash, console, airbags): shared interior platform across trim levels or model years
-- Suspension/brakes/wheels: shared chassis platform or bolt pattern
-- Glass, wheels, trim pieces: shared part number across multiple body styles
-
 Respond ONLY with a JSON array (no other text, no markdown fences) of suggested interchange matches, each with this exact shape:
 [{"brand": "...", "model": "...", "year_from": 2015, "year_to": 2019, "confidence": "high|medium|low", "reason": "short explanation of why this likely shares the part"}]
 
-Only include genuinely plausible matches based on real shared engineering relevant to THIS part's category. If you are not confident about any matches, return an empty array []. Limit to 6 suggestions maximum, ordered by confidence.
+Only include genuinely plausible matches based on real shared engineering (same engine family, same transmission, confirmed platform-sharing, or badge-engineered variants). If you are not confident about any matches, return an empty array []. Limit to 5 suggestions maximum, ordered by confidence.
 PROMPT;
     }
 }
