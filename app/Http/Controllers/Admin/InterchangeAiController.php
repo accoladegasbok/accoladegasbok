@@ -112,13 +112,15 @@ Consider ALL relevant compatibility factors for this specific part category, not
 - Body panels, lights, bumpers, mirrors: shared body platform, facelift/generation overlap, badge-engineered twins (e.g. Toyota/Scion, same-factory rebadges)
 - Electrical/Electronics (ECU, sensors, switches, wiring harness, infotainment): shared electrical architecture or connector standard across trims/years/models, even across different engine options
 - Interior parts (seats, dash, console, airbags): shared interior platform across trim levels or model years
-- Suspension/brakes/wheels: shared chassis platform or bolt pattern
+- Suspension/brakes/wheels (steering racks, control arms, calipers): shared chassis platform, bolt pattern, or badge-engineered/platform-sharing partners (e.g. Hyundai/Kia shared platforms)
 - Glass, wheels, trim pieces: shared part number across multiple body styles
+
+For parts like starters, alternators, steering racks, and other electrical/mechanical components: even if you cannot confirm an EXACT match, provide medium or low confidence suggestions based on the vehicle's platform, engine family, or known shared-parts relationships within the same manufacturer's lineup during that era. Staff will physically verify fitment before confirming any suggestion, so it is more useful to suggest plausible candidates with honest confidence levels than to return nothing.
 
 Respond ONLY with a JSON array (no other text, no markdown fences) of suggested interchange matches, each with this exact shape:
 [{"brand": "...", "model": "...", "year_from": 2015, "year_to": 2019, "confidence": "high|medium|low", "reason": "short explanation of why this likely shares the part"}]
 
-Only include genuinely plausible matches based on real shared engineering relevant to THIS part's category. If you are not confident about any matches, return an empty array []. Limit to 6 suggestions maximum, ordered by confidence.
+Only return an empty array [] if you have absolutely no plausible platform, engine, or model-family reasoning to offer. Limit to 6 suggestions maximum, ordered by confidence (high first).
 PROMPT;
     }
 }
