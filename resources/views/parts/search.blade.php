@@ -509,7 +509,7 @@
 
                                 {{-- Compatibility badge --}}
                                 <div class="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5 mb-3 text-xs font-body text-blue-700">
-                                    ✓ Fits: {{ $part->brand }} {{ $part->model }} {{ $part->year_from }}
+                                    ✓ Fits: {{ $part->brand }} {{ $part->model }} {{ $part->compat_year_from ?? $part->year_from }}@if(($part->compat_year_to ?? $part->year_to) != ($part->compat_year_from ?? $part->year_from))–{{ $part->compat_year_to ?? $part->year_to }}@endif
                                     @if($part->year_to != $part->year_from)–{{ $part->year_to }}@endif
                                     @if($part->body_style && $part->body_style !== 'N/A')
                                         · {{ $part->body_style }}
