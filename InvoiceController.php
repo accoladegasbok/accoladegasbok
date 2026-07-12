@@ -410,11 +410,8 @@ class InvoiceController extends Controller
     // =========================================================
     public function editManual(int $id)
     {
-        // Admin/Manager edit directly. Supervisor may edit but every
-        // edit is logged to override_logs for audit — see updateManual()
-        // where the override_token is verified before saving.
-        if (!in_array(Session::get('staff_role'), ['admin', 'manager', 'supervisor'])) {
-            abort(403, 'Only admin, manager, or supervisor accounts can edit invoices.');
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            abort(403, 'Only admin or manager accounts can edit invoices.');
         }
 
         $invoice = DB::table('invoices')->where('id', $id)->first();
@@ -474,33 +471,12 @@ class InvoiceController extends Controller
     // =========================================================
     public function updateManual(Request $request, int $id)
     {
-        $role = Session::get('staff_role');
-
-        if (!in_array($role, ['admin', 'manager', 'supervisor'])) {
-            abort(403, 'Only admin, manager, or supervisor accounts can edit invoices.');
-        }
-
-        // Supervisor edits require a verified override token (approved via
-        // the Supervisor-PIN modal on the edit page) — admin/manager do not.
-        if ($role === 'supervisor' && empty($request->override_token)) {
-            return back()->withInput()->withErrors([
-                'override_token' => 'Supervisor edits require override approval. Please use the Approve button.'
-            ]);
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            abort(403, 'Only admin or manager accounts can edit invoices.');
         }
 
         $invoice = DB::table('invoices')->where('id', $id)->first();
         if (!$invoice) abort(404);
-
-        // Audit log — every invoice edit is recorded regardless of role,
-        // so there's a full trail of who changed what and when.
-        DB::table('invoice_edit_log')->insert([
-            'invoice_id'  => $id,
-            'edited_by'   => Session::get('staff_name') ?? 'Unknown',
-            'staff_role'  => $role,
-            'override_by' => $request->override_token ?? null,
-            'created_at'  => now(),
-            'updated_at'  => now(),
-        ]);
 
         $request->validate([
             'customer_name'    => 'required|string|max:120',

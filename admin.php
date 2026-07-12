@@ -247,10 +247,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/bulk-destroy', [InvoiceController::class, 'bulkDestroy'])->name('bulk-destroy');
 
             Route::delete('/{id}', [InvoiceController::class, 'destroy'])->name('destroy');
-            Route::post('/{id}/payments', [InvoiceController::class, 'addPayment'])->name('payments.add');
-            Route::post('/{id}/payments/{paymentId}/confirm', [InvoiceController::class, 'confirmPayment'])->name('payments.confirm');
-            Route::post('/{id}/payments/{paymentId}/reject', [InvoiceController::class, 'rejectPayment'])->name('payments.reject');
-            Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendReminder'])->name('send-reminder');
+            Route::post('/{id}/payments', [InvoiceController::class, 'addInvoicePayment'])->name('payments.add');
+            Route::post('/{id}/payments/{paymentId}/confirm', [InvoiceController::class, 'confirmInvoicePayment'])->name('payments.confirm');
+            Route::post('/{id}/payments/{paymentId}/reject', [InvoiceController::class, 'rejectInvoicePayment'])->name('payments.reject');
+            Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendInvoiceReminder'])->name('send-reminder');
 
             // Quick Receipt — services/labor/misc, never touches inventory
             Route::get('/service', fn() => redirect()->route('admin.invoices.service.create'));
