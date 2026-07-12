@@ -16,7 +16,6 @@ class VehicleSpecsSeeder extends Seeder
 {
     const EPA_BASE = 'https://fueleconomy.gov/ws/rest';
 
-    // Only the make/model combinations Auto Zenith actually stocks
     const VEHICLES = [
         'Toyota'       => ['Corolla','Camry','RAV4','Highlander','Avalon','Sienna','Venza','Matrix','Yaris','4Runner','Land Cruiser','Tundra','Sequoia','Hilux','Fortuner','HiAce','Innova','FJ Cruiser','Prius','Tacoma'],
         'Lexus'        => ['ES300','ES330','ES350','RX300','RX330','RX350','GS300','GS350','IS250','IS350','LS430','LS460','LX470','LX570','GX470','GX460'],
@@ -91,11 +90,6 @@ class VehicleSpecsSeeder extends Seeder
         $this->command->info('   Now run: php artisan oem:enrich');
     }
 
-    // ── Fuzzy model matching ────────────────────────────────────────
-    // EPA's model naming is inconsistent (spaces, drivetrain suffixes
-    // like "2WD"/"AWD", generation codes). Instead of hardcoding every
-    // exact variant, we fetch ALL models for this make+year, then match
-    // any that start with our simplified keyword (case/space-insensitive).
     private function getOptions(int $year, string $make, string $model): array
     {
         $allModels = $this->getAllModelsForMakeYear($year, $make);
@@ -199,9 +193,6 @@ class VehicleSpecsSeeder extends Seeder
             };
         }
 
-        // Use the ORIGINAL requested $model (e.g. "ES350") not the EPA
-        // variant (e.g. "ES 350 AWD") for OemDatabase lookup + storage,
-        // so downstream matching stays consistent with the rest of the app.
         $oem = OemDatabase::lookup(strtoupper($make), strtoupper($model), $year, $cylinders, $displ);
 
         return [
