@@ -1,4 +1,17 @@
 <?php
+
+// ── Direct storage serving — bypasses broken symlinks on some hosts ──
+// See config/media.php for why this exists. Serves files straight from
+// storage/app/public/{path} without relying on the public/storage symlink,
+// which some LiteSpeed configurations silently 403 on.
+use Illuminate\Support\Facades\Route as MediaRoute;
+MediaRoute::get('/storage/app/public/{path}', function ($path) {
+    $fullPath = storage_path('app/public/' . $path);
+    if (!file_exists($fullPath)) {
+        abort(404);
+    }
+    return response()->file($fullPath);
+})->where('path', '.*')->name('media.serve');
 // FILE: routes/web.php
 // ═══════════════════════════════════════════════════════════════════
 // NEW POWERLINK ADOPTION ROUTES — Phases 1-7
