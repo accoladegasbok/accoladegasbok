@@ -69,11 +69,13 @@
   <div class="overflow-x-auto">
     <table class="w-full text-sm font-body">
       <thead>
-        <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Part</th>
+        <tr>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Part</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Category</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Vehicle</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Grade</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Price</th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Qty</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Location</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Status</th>
           <th class="px-4 py-3"></th>
@@ -99,7 +101,18 @@
           </td>
           <td class="px-4 py-3">
             @if($p->part_category === 'Consumable')
-              <div class="font-500 text-navy text-xs">{{ $p->brand }}</div>
+              @php
+                // Custom-typed brands (e.g. "INFINITY") are stored as
+                // brand='Generic' with the real name folded into the
+                // start of part_name as "Name - Product...". Recover
+                // the real name for display here rather than showing
+                // the generic placeholder.
+                $displayBrand = $p->brand;
+                if ($p->brand === 'Generic' && str_contains($p->part_name, ' - ')) {
+                    $displayBrand = explode(' - ', $p->part_name, 2)[0];
+                }
+              @endphp
+              <div class="font-500 text-navy text-xs">{{ $displayBrand }}</div>
               <div class="text-xs text-gray-400">{{ $p->unit_size ?? 'Universal' }}</div>
             @else
               <div class="font-500 text-navy text-xs">{{ $p->brand }} {{ $p->model }}</div>
@@ -121,6 +134,9 @@
             @endphp
             <div class="font-display font-700 text-navy text-sm">{{ $symbol }}{{ number_format($priceLocal, $decimals) }}</div>
             <div class="text-xs text-gray-400">{{ $currencyCode }}</div>
+          </td>
+          <td class="px-4 py-3">
+            <span class="font-display font-700 text-navy text-sm">{{ $p->stock_qty ?? 1 }}</span>
           </td>
           <td class="px-4 py-3 text-xs text-gray-600">{{ $p->location }}</td>
           <td class="px-4 py-3">
@@ -164,7 +180,7 @@
           </td>
         </tr>
         @empty
-        <tr><td colspan="7" class="px-4 py-12 text-center text-gray-400 text-sm font-body">No parts found.</td></tr>
+        <tr><td colspan="9" class="px-4 py-12 text-center text-gray-400 text-sm font-body">No parts found.</td></tr>
         @endforelse
       </tbody>
     </table>
