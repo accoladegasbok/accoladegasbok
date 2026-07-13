@@ -151,13 +151,14 @@ class OrderAdminController extends Controller
             }
             $service = DB::table('service_rates')->where('id', $item['id'])->first();
             if (!$service) return null;
-            $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($service->id, $order->location ?? $order->customer_country ?? 'Waxahachie TX');
+            $resolvedLocation = $order->location ?? $order->customer_country ?? 'Waxahachie TX';
+            $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($service->id, $resolvedLocation);
             return (object)[
                 'type' => 'service', 'part_id' => null, 'service_id' => $service->id,
                 'part_name' => $service->name, 'part_code' => $service->service_code,
                 'brand' => $service->category, 'model' => null,
                 'year_from' => null, 'year_to' => null,
-                'condition_grade' => null, 'location' => $order->location ?? null,
+                'condition_grade' => null, 'location' => $resolvedLocation,
                 'unit_price_local' => $priced['price'], 'currency_code' => $priced['currency_code'],
             ];
         })->filter()->values();
