@@ -477,7 +477,7 @@ function updateTotal() {
     const invDiscType = document.getElementById('invoiceDiscountType')?.value || 'fixed';
     const { discounted: total, discountAmt: invoiceDiscountLocal } = applyDiscount(subtotal, invDiscVal, invDiscType);
     const totalDiscountLocal = totalLineDiscountLocal + invoiceDiscountLocal;
-    const grossLocal         = subtotal + totalLineDiscountLocal + invoiceDiscountLocal;
+    const grossLocal = subtotal + totalLineDiscountLocal;
     const discountPct        = grossLocal > 0 ? (totalDiscountLocal / grossLocal) * 100 : 0;
 
     document.getElementById('subtotalDisplay').textContent = currency.symbol + (currency.code === 'NGN' ? Math.round(grossLocal).toLocaleString() : grossLocal.toFixed(2));
