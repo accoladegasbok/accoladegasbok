@@ -147,7 +147,7 @@
 </form>
 
 <script>
-cconst KNOWN_BRANDS = [
+const KNOWN_BRANDS = [
     'Mobil 1','Castrol','Valvoline','Shell','Fram','Bosch','Denso','NGK','ACDelco','Dell','HP','Lenovo','Samsung','LG','Generic',
     @foreach($customBrands as $cb)'{{ addslashes($cb) }}',@endforeach
 ];
