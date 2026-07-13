@@ -953,7 +953,20 @@ class InvoiceController extends Controller
         });
 
         $subtotalLocal = $lineItems->sum('line_local');
+
+        // Apply invoice-level discount (Quick Receipt now supports
+        // discount, matching manual invoice behavior)
+        $discountType  = $request->invoice_discount_type ?? 'fixed';
+        $discountValue = (float) ($request->invoice_discount_value ?? 0);
+        $discountLocal = 0;
+        if ($discountValue > 0) {
+            $discountLocal = $discountType === 'percent'
+                ? $subtotalLocal * ($discountValue / 100)
+                : min($discountValue, $subtotalLocal);
+        }
+        $totalLocal    = $subtotalLocal - $discountLocal;
         $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
+        $totalFmt      = self::formatLocal($totalLocal, $currencyCode);
         $invoiceNo     = 'SVC-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
         $customerInfo  = (object)[
             'name'    => $request->customer_name,
@@ -977,8 +990,11 @@ class InvoiceController extends Controller
                 'customer_address' => $customerInfo->address,
                 'location'         => $saleLocation,
                 'currency_code'    => $currencyCode,
-                'subtotal_local'   => $subtotalLocal,
-                'subtotal_usd'     => $subtotalLocal,
+                'subtotal_local'   => $totalLocal,
+                'subtotal_usd'     => $totalLocal,
+                'discount_type'    => $discountValue > 0 ? $discountType : null,
+                'discount_value'   => $discountValue > 0 ? $discountValue : null,
+                'discount_amount_local' => $discountLocal > 0 ? $discountLocal : null,
                 'payment_method'   => $paymentMethod,
                 'created_by'       => Session::get('staff_name') ?? 'Admin',
                 'notes'            => $request->notes ?? null,
@@ -1037,7 +1053,7 @@ class InvoiceController extends Controller
         $invoiceType = 'service';
 
         return view('admin.invoices.show', compact(
-            'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
+            'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd', 'totalFmt', 'discountLocal',
             'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
         ));
