@@ -493,7 +493,8 @@ class InventoryController extends Controller
     public function consumableCreate()
     {
         return view('admin.inventory.consumable-create', [
-            'locations' => Locations::all(),
+            'locations'     => Locations::all(),
+            'customBrands'  => DB::table('custom_brands')->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -548,7 +549,18 @@ class InventoryController extends Controller
         $brand    = $request->brand;
         $partName = $request->part_name;
         if ($request->other_brand) {
-            $partName = trim($request->other_brand) . ' - ' . $partName;
+            $typedBrand = trim($request->other_brand);
+            $partName   = $typedBrand . ' - ' . $partName;
+
+            // Remember this custom brand so it's offered as a suggestion
+            // next time, instead of needing to be retyped from scratch.
+            if ($typedBrand !== '' && !DB::table('custom_brands')->where('name', $typedBrand)->exists()) {
+                DB::table('custom_brands')->insert([
+                    'name'       => $typedBrand,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
         }
 
         // ── Fixed currency by location (needed early now, for match) ──

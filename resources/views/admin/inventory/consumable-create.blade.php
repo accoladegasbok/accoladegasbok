@@ -147,7 +147,10 @@
 </form>
 
 <script>
-const KNOWN_BRANDS = ['Mobil 1','Castrol','Valvoline','Shell','Fram','Bosch','Denso','NGK','ACDelco','Dell','HP','Lenovo','Samsung','LG','Generic'];
+cconst KNOWN_BRANDS = [
+    'Mobil 1','Castrol','Valvoline','Shell','Fram','Bosch','Denso','NGK','ACDelco','Dell','HP','Lenovo','Samsung','LG','Generic',
+    @foreach($customBrands as $cb)'{{ addslashes($cb) }}',@endforeach
+];
 
 const brandTypeahead   = document.getElementById('brandTypeahead');
 const brandHidden      = document.getElementById('brandHidden');
