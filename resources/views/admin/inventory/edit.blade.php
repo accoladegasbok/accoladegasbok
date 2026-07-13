@@ -510,7 +510,7 @@ async function getAiSuggestions() {
                         </div>
                         <div class="text-xs text-gray-400 font-body mt-0.5">${s.reason}</div>
                     </div>
-                    <button type="button" onclick='confirmAiSuggestion(${JSON.stringify(s).replace(/'/g,"&#39;")})'
+                    <button type="button" onclick='confirmAiSuggestion(${JSON.stringify(s).replace(/'/g,"&#39;")}, this)'
                         class="text-xs font-body font-700 bg-gold text-navy px-3 py-2 rounded-lg hover:bg-yellow-500 transition-colors whitespace-nowrap">
                         + Confirm
                     </button>
@@ -524,31 +524,76 @@ async function getAiSuggestions() {
     btn.textContent = '🤖 Get AI Interchange Suggestions';
 }
 
-async function confirmAiSuggestion(s) {
-    if (HAS_GROUP) {
-        // Add directly to the existing confirmed group
-        const form = new FormData();
-        form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
-        form.append('part_id', PART_ID);
-        form.append('make', s.brand);
-        form.append('model', s.model);
-        form.append('year_from', s.year_from);
-        form.append('year_to', s.year_to);
-        await fetch(`/admin/interchange/groups/${GROUP_ID}/add-vehicle`, { method: 'POST', body: form });
-        location.reload();
-    } else {
-        const groupCode = prompt(`No confirmed interchange group exists yet for this part. Enter a group code to create one (e.g. COROLLA-E170-HEADLIGHT-R):`);
-        if (!groupCode) return;
-        const form = new FormData();
-        form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
-        form.append('part_id', PART_ID);
-        form.append('group_code', groupCode);
-        const res = await fetch(`{{ route('admin.interchange.groups.create') }}`, { method: 'POST', body: form });
-        if (res.redirected || res.ok) {
-            alert('Group created — now adding the suggested vehicle. Reloading...');
-            location.reload();
+async function confirmAiSuggestion(s, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+        if (HAS_GROUP) {
+            // Add directly to the existing confirmed group — no reload,
+            // so staff can keep confirming other suggestions in the list.
+            const form = new FormData();
+            form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+            form.append('part_id', PART_ID);
+            form.append('make', s.brand);
+            form.append('model', s.model);
+            form.append('year_from', s.year_from);
+            form.append('year_to', s.year_to);
+            const res = await fetch(`/admin/interchange/groups/${GROUP_ID}/add-vehicle`, { method: 'POST', body: form });
+            if (res.ok || res.redirected) {
+                markSuggestionConfirmed(btn);
+            } else {
+                btn.disabled = false;
+                btn.textContent = '+ Confirm';
+                alert('Could not add this vehicle. Please try again.');
+            }
+        } else {
+            // First confirmation with no group yet — create the group,
+            // then remember GROUP_ID/HAS_GROUP so subsequent confirms in
+            // this same session add straight to it without another prompt.
+            const groupCode = prompt(`No confirmed interchange group exists yet for this part. Enter a group code to create one (e.g. COROLLA-E170-HEADLIGHT-R):`);
+            if (!groupCode) { btn.disabled = false; btn.textContent = '+ Confirm'; return; }
+
+            const form = new FormData();
+            form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+            form.append('part_id', PART_ID);
+            form.append('group_code', groupCode);
+            form.append('make', s.brand);
+            form.append('model', s.model);
+            form.append('year_from', s.year_from);
+            form.append('year_to', s.year_to);
+            const res = await fetch(`{{ route('admin.interchange.groups.create') }}`, { method: 'POST', body: form });
+            const data = await res.json().catch(() => null);
+
+            if ((res.ok || res.redirected) && data?.group_id) {
+                HAS_GROUP = true;
+                GROUP_ID  = data.group_id;
+                markSuggestionConfirmed(btn);
+            } else if (res.ok || res.redirected) {
+                // Group created but response didn't include the new ID —
+                // safest is one reload here (first confirmation only),
+                // after which all further confirms in this session use
+                // the fast in-place path above.
+                location.reload();
+            } else {
+                btn.disabled = false;
+                btn.textContent = '+ Confirm';
+                alert('Could not create the interchange group. Please try again.');
+            }
         }
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '+ Confirm';
+        alert('Network error — please try again.');
     }
+}
+
+function markSuggestionConfirmed(btn) {
+    btn.textContent = '✓ Added';
+    btn.classList.remove('bg-gold', 'hover:bg-yellow-500', 'text-navy');
+    btn.classList.add('bg-green-100', 'text-green-700', 'cursor-default');
+    btn.disabled = true;
+    btn.onclick = null;
 }
 
 document.getElementById('locationSelect').addEventListener('change', () => loadStoreRooms());

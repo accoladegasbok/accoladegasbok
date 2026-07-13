@@ -202,9 +202,9 @@ Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
     Route::post('/interchange/promote-heuristic',
         [\App\Http\Controllers\Admin\InterchangeController::class, 'promoteHeuristic'])
         ->name('admin.interchange.promote-heuristic');
-    Route::post('/interchange/ai-suggest',
-        [\App\Http\Controllers\Admin\InterchangeAiController::class, 'suggest'])
-        ->name('admin.interchange.ai-suggest');
+    Route::post('/compatibility/ai-suggest',
+    [\App\Http\Controllers\Admin\InterchangeAiController::class, 'suggestForVehicle'])
+    ->name('admin.compatibility.ai-suggest');
     Route::post('/interchange/{id}/vehicles',
         [\App\Http\Controllers\Admin\InterchangeController::class, 'addVehicle'])
         ->name('admin.interchange.groups.add-vehicle');

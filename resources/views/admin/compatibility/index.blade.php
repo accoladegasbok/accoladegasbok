@@ -82,6 +82,10 @@
                 class="bg-gold text-navy font-display font-700 text-sm py-2.5 px-5 rounded-xl hover:bg-yellow-400 transition-colors">
             Find Compatible Parts
         </button>
+        <button onclick="getVehicleAiSuggestions()" id="aiVehicleSuggestBtn"
+                class="bg-navy text-white font-display font-700 text-sm py-2.5 px-5 rounded-xl hover:bg-opacity-90 transition-colors ml-2">
+            🤖 Get AI Suggestions
+        </button>
     </div>
     <div class="mt-3 grid grid-cols-2 gap-3">
         <div>
@@ -129,6 +133,32 @@
                 💡 Ladipo/OEM Heuristic Suggestions (auto-detected — not yet confirmed)
             </div>
             <div id="suggestionsList" class="space-y-2"></div>
+        </div>
+    </div>
+
+    {{-- ── AI Vehicle Suggestions (covers ALL part categories — headlights,
+         doors, brake pads, steering racks, etc — not just engine/trans) ── --}}
+    <div id="aiVehicleResults" class="mt-5 hidden">
+        <div id="aiVehicleLoading" class="hidden text-sm text-gray-400 text-center py-4">
+            <div class="animate-pulse">Asking AI which related vehicles share parts with this one...</div>
+        </div>
+
+        <div id="aiVehicleContent" class="hidden">
+            <div class="text-xs font-600 text-gray-500 uppercase tracking-wide mb-2">
+                🤖 AI-Suggested Related Vehicles <span class="font-normal normal-case text-gray-400">(shares platform/engine/body — review before relying on)</span>
+            </div>
+            <div id="aiVehicleList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4"></div>
+
+            <div id="aiStockMatchWrap" class="hidden">
+                <div class="text-xs font-600 text-green-700 uppercase tracking-wide mb-2 mt-4">
+                    ✓ Matching Stock Found <span class="font-normal normal-case text-gray-400">(parts you already have that fit these related vehicles — any category)</span>
+                </div>
+                <div id="aiStockMatchList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+            </div>
+
+            <div id="aiVehicleEmpty" class="hidden text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">
+                No confident AI suggestions for this vehicle.
+            </div>
         </div>
     </div>
 </div>
@@ -350,5 +380,81 @@ async function runCheck() {
 document.getElementById('chk_year').addEventListener('change', e => {
     if(document.getElementById('chk_make').value && document.getElementById('chk_model').value) runCheck();
 });
+
+// ── AI Vehicle Suggestions (Compatibility Checker) ───────────────
+async function getVehicleAiSuggestions() {
+    const make  = document.getElementById('chk_make').value.trim();
+    const model = document.getElementById('chk_model').value.trim();
+    const year  = document.getElementById('chk_year').value.trim();
+    const partName = document.getElementById('chk_part')?.value.trim() || '';
+    if(!make || !model || !year) { alert('Please select Make, Model and Year first.'); return; }
+
+    const btn = document.getElementById('aiVehicleSuggestBtn');
+    btn.disabled = true;
+    btn.textContent = '🤖 Thinking...';
+
+    document.getElementById('aiVehicleResults').classList.remove('hidden');
+    document.getElementById('aiVehicleContent').classList.add('hidden');
+    document.getElementById('aiVehicleEmpty').classList.add('hidden');
+    document.getElementById('aiVehicleLoading').classList.remove('hidden');
+
+    try {
+        const res = await fetch(`{{ route('admin.compatibility.ai-suggest') }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ make, model, year, part_name: partName }),
+        });
+        const data = await res.json();
+        document.getElementById('aiVehicleLoading').classList.add('hidden');
+
+        if (data.error) {
+            document.getElementById('aiVehicleEmpty').textContent = data.error;
+            document.getElementById('aiVehicleEmpty').classList.remove('hidden');
+            return;
+        }
+
+        const vehicles = data.vehicles || [];
+        const stock     = data.matching_stock || [];
+
+        if (vehicles.length === 0) {
+            document.getElementById('aiVehicleEmpty').classList.remove('hidden');
+            return;
+        }
+
+        document.getElementById('aiVehicleContent').classList.remove('hidden');
+        document.getElementById('aiVehicleList').innerHTML = vehicles.map(v => `
+            <div class="border border-gray-200 rounded-xl p-3">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="text-sm font-700 text-navy">${v.brand} ${v.model} ${v.year_from}${v.year_to !== v.year_from ? '–' + v.year_to : ''}</div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full font-700 whitespace-nowrap ${v.confidence==='high'?'bg-green-100 text-green-700':v.confidence==='medium'?'bg-amber-100 text-amber-700':'bg-gray-100 text-gray-500'}">${v.confidence}</span>
+                </div>
+                ${(v.engine_code || v.transmission_code) ? `<div class="text-[10px] font-mono text-gray-400 mt-1">${v.engine_code || ''}${v.engine_code && v.transmission_code ? ' / ' : ''}${v.transmission_code || ''}</div>` : ''}
+                <div class="text-xs text-gray-400 mt-1">${v.reason}</div>
+            </div>`).join('');
+
+        if (stock.length > 0) {
+            document.getElementById('aiStockMatchWrap').classList.remove('hidden');
+            document.getElementById('aiStockMatchList').innerHTML = stock.map(p => `
+                <a href="/admin/inventory/${p.id}/edit" class="block border border-green-200 bg-green-50 rounded-xl p-3 hover:border-green-400 transition-colors">
+                    <div class="text-sm font-700 text-navy">${p.part_name}</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">${p.brand} ${p.model} ${p.year_from}${p.year_to !== p.year_from ? '–'+p.year_to : ''} · ${p.part_code}</div>
+                    <div class="flex items-center justify-between mt-1.5">
+                        <span class="text-xs font-700 text-gold">${p.currency_code === 'NGN' ? '₦' : '$'}${Number(p.price_local).toLocaleString()}</span>
+                        <span class="text-[10px] text-gray-400">${p.location}</span>
+                    </div>
+                </a>`).join('');
+        } else {
+            document.getElementById('aiStockMatchWrap').classList.add('hidden');
+        }
+
+    } catch (e) {
+        document.getElementById('aiVehicleLoading').classList.add('hidden');
+        document.getElementById('aiVehicleEmpty').textContent = 'Request failed — please try again.';
+        document.getElementById('aiVehicleEmpty').classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🤖 Get AI Suggestions';
+    }
+}
 </script>
 @endpush

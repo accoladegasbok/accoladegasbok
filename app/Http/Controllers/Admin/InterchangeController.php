@@ -50,7 +50,18 @@ class InterchangeController extends Controller
             (int) ($part->compat_year_to ?? $part->year_to)
         );
 
-        $this->interchange->assignPartToGroup($part->id, $groupId);
+       $this->interchange->assignPartToGroup($part->id, $groupId);
+
+        // AJAX callers (like the AI-suggestion "+ Confirm" button) get
+        // JSON back with the new group_id so they can add further
+        // suggestions to the SAME group instantly, without a page reload.
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success'  => true,
+                'group_id' => $groupId,
+                'message'  => "Interchange group {$request->group_code} created.",
+            ]);
+        }
 
         return redirect()->route('admin.inventory.edit', $part->id)
             ->with('success', "Interchange group {$request->group_code} created and this part assigned to it.");
