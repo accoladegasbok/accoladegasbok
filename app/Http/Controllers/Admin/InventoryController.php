@@ -29,10 +29,11 @@ class InventoryController extends Controller
         'Infiniti','Ford','GM','Chevrolet','Acura','VW','Honda',
     ];
 
-    const CATEGORIES = [
-        'Engine','Transmission','Body','Suspension','Electrical',
-        'Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels','Consumable',
-    ];
+   const CATEGORIES = [
+    'Engine','Transmission','Body','Suspension','Electrical',
+    'Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels',
+    'Consumable','Electronics','Computers','Other',
+];
 
     // Year range 1986–2027 (item 5)
     private function yearRange(): array
@@ -40,15 +41,15 @@ class InventoryController extends Controller
         return range(1986, 2027);
     }
 
-    // ── Part name guard — only admin may submit a name not on the
-    // ── standard list, to keep nomenclature uniform across staff.
+    // ── Part name guard — only admin/manager may submit a name not on the
+// ── standard list, to keep nomenclature uniform across staff.
     private function assertAllowedPartName(?string $partName): ?string
     {
         if (!$partName) return 'Part name is required.';
 
-        if (Session::get('staff_role') === 'admin') {
-            return null; // admins may use any name
-        }
+        if (in_array(Session::get('staff_role'), ['admin', 'manager'], true)) {
+    return null; // admins and managers may use any name
+}
 
         if (!in_array($partName, PartNames::flat(), true)) {
             return 'Only admin can add a part name that is not on the standard list. Please select a name from the list, or ask an admin to add it.';
@@ -506,12 +507,13 @@ class InventoryController extends Controller
             'brand'              => 'required|string|max:80',
             'other_brand'        => 'nullable|string|max:60',
             'part_name'          => 'required|string|max:150',
+            'part_category'      => 'nullable|string|in:Consumable,Electronics,Computers,Other',
             'unit_size'          => 'nullable|string|max:30',
             'compatibility_note' => 'nullable|string|max:200',
             'price_usd'          => 'required|numeric|min:0',
             'condition_grade'    => 'required|in:A,B,C,New',
             'location'           => 'required|string',
-            'storage_shelf_id'   => 'required|exists:storage_shelves,id', // #13 — bin location cannot be empty
+            'storage_shelf_id'   => 'nullable|exists:storage_shelves,id', // bin now optional — room-level storage allowed
             'stock_qty'          => 'nullable|integer|min:1',
         ]);
 
@@ -528,7 +530,7 @@ class InventoryController extends Controller
         // ── Bin exclusivity — re-verified at save time (new part, so
         // any active occupant of this bin is a real conflict), unless
         // staff explicitly confirmed sharing it deliberately. ──
-        if (!$request->boolean('confirm_shared_bin')) {
+        if ($request->storage_shelf_id && !$request->boolean('confirm_shared_bin')) {
             $conflictingConsumablePart = DB::table('parts_inventory')
                 ->where('storage_shelf_id', $request->storage_shelf_id)
                 ->whereIn('status', ['Available', 'Reserved', 'Hold'])
@@ -572,7 +574,7 @@ class InventoryController extends Controller
             'part_name'            => $partName,
             'unit_size'            => $request->unit_size,
             'compatibility_note'   => $request->compatibility_note,
-            'part_category'        => 'Consumable',
+            'part_category'        => $request->part_category ?? 'Consumable',
             'side'                 => 'N/A',
             'condition_grade'      => $request->condition_grade,
             'price_usd'            => $priceUsdSnapshot,
