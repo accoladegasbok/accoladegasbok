@@ -147,10 +147,17 @@
 </form>
 
 <script>
-const KNOWN_BRANDS = [
-    'Mobil 1','Castrol','Valvoline','Shell','Fram','Bosch','Denso','NGK','ACDelco','Dell','HP','Lenovo','Samsung','LG','Generic',
-    @foreach($customBrands as $cb)'{{ addslashes($cb) }}',@endforeach
-];
+// Brands safe to write directly to the ENUM `brand` column in the DB.
+// Must exactly mirror database/migrations/2026_06_17_000004_expand_brand_enum_consumables.php
+const ENUM_SAFE_BRANDS = ['Toyota','Lexus','Kia','Hyundai','Nissan','Mercedes-Benz','Infiniti','Ford','GM','Chevrolet','Acura','VW','Honda','Mobil 1','Castrol','Valvoline','Shell','Fram','Bosch','Denso','NGK','ACDelco'];
+
+// Suggestion-only brands — shown in the typeahead for convenience but
+// NEVER written directly to the brand column (fixed ENUM would reject
+// them). These always route through brand='Generic' with the real
+// name folded into part_name, same as any other unlisted/custom brand.
+const SUGGESTED_ONLY_BRANDS = ['Dell','HP','Lenovo','Samsung','LG', @foreach($customBrands as $cb)'{{ addslashes($cb) }}',@endforeach];
+
+const KNOWN_BRANDS = [...ENUM_SAFE_BRANDS, ...SUGGESTED_ONLY_BRANDS]; // suggestions dropdown only
 
 const brandTypeahead   = document.getElementById('brandTypeahead');
 const brandHidden      = document.getElementById('brandHidden');
@@ -158,9 +165,9 @@ const otherBrandHidden = document.getElementById('otherBrandHidden');
 const brandSuggestions = document.getElementById('brandSuggestions');
 
 function setBrandValue(typedValue) {
-    const match = KNOWN_BRANDS.find(b => b.toLowerCase() === typedValue.toLowerCase());
-    if (match) {
-        brandHidden.value      = match;
+    const enumMatch = ENUM_SAFE_BRANDS.find(b => b.toLowerCase() === typedValue.toLowerCase());
+    if (enumMatch) {
+        brandHidden.value      = enumMatch;
         otherBrandHidden.value = '';
     } else if (typedValue.trim()) {
         brandHidden.value      = 'Generic';
