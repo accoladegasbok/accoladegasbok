@@ -102,9 +102,12 @@ class InterchangeAiController extends Controller
         $transCodes  = collect($suggestions)->pluck('transmission_code')->filter()->unique();
 
         if ($vehicleConditions->isNotEmpty() || $engineCodes->isNotEmpty() || $transCodes->isNotEmpty()) {
-            $matchingStock = DB::table('parts_inventory')
+            $stockQuery = DB::table('parts_inventory')
                 ->where(function ($q) use ($vehicleConditions, $engineCodes, $transCodes) {
-                    // (a) Vehicle-based match — catches ALL part types
+                    // (a) Vehicle-based match — catches ALL part types for
+                    //     the related vehicle (further narrowed below by
+                    //     part name/category so a transmission search
+                    //     doesn't surface unrelated steering parts etc)
                     foreach ($vehicleConditions as $v) {
                         $yFrom = $v['year_from'] ?? 1900;
                         $yTo   = $v['year_to']   ?? 2100;
@@ -119,7 +122,22 @@ class InterchangeAiController extends Controller
                     if ($engineCodes->isNotEmpty()) $q->orWhereIn('engine_code_oem', $engineCodes);
                     if ($transCodes->isNotEmpty())  $q->orWhereIn('transmission_code_oem', $transCodes);
                 })
-                ->whereIn('status', ['Available', 'Reserved', 'Hold'])
+                ->whereIn('status', ['Available', 'Reserved', 'Hold']);
+
+            // Narrow to the SAME part the staff searched for — otherwise
+            // a "Steering Rack" search would surface transmissions, doors,
+            // or any other part that happens to fit a related vehicle.
+            // Match loosely on part_name (contains) so "Steering Rack /
+            // Gear Box" still matches "Steering Rack" etc.
+            if ($partName !== '') {
+                $nameWords = array_filter(explode(' ', strtolower($partName)));
+                $firstWord = $nameWords[0] ?? '';
+                if ($firstWord) {
+                    $stockQuery->where('part_name', 'like', '%' . $firstWord . '%');
+                }
+            }
+
+            $matchingStock = $stockQuery
                 ->select('id', 'part_code', 'part_name', 'part_category', 'brand', 'model', 'year_from', 'year_to',
                          'engine_code_oem', 'transmission_code_oem', 'price_local', 'currency_code',
                          'condition_grade', 'location')
