@@ -192,10 +192,15 @@ body { font-family: 'Arial', sans-serif; font-size: 13px; color: #1a1a2e; backgr
     $paySummary = ($resolvedInvoiceId && !isset($order)) ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
 @endphp
 @if(isset($order) && $order)
-<div class="payments-panel" style="text-align:center;">
+<div class="payments-panel" style="text-align:center; display:flex; gap:10px; justify-content:center;">
     <a href="{{ route('admin.orders.show', $order->id) }}" style="display:inline-block; background:#0d1b2a; color:#fff; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
         Manage Payments on Order {{ $order->order_ref }} →
     </a>
+    @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
+    <a href="{{ route('admin.orders.edit', $order->id) }}" style="display:inline-block; background:#c9a84c; color:#0d1b2a; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
+        ✎ Edit Order
+    </a>
+    @endif
 </div>
 @elseif($resolvedInvoiceId && $paySummary)
 <div class="payments-panel">
