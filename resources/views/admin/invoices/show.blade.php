@@ -7,7 +7,7 @@
 <title>Invoice {{ $invoiceNo }} — Auto Zenith Parts</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Arial', sans-serif; font-size: 13px; color: #1a1a2e; background: #f0f2f5; }
+body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; background: #f0f2f5; }
 .print-controls {
     position: fixed; top: 0; left: 0; right: 0; z-index: 999;
     background: #0d1b2a; color: white; padding: 12px 24px;
@@ -75,40 +75,40 @@ body { font-family: 'Arial', sans-serif; font-size: 13px; color: #1a1a2e; backgr
 
 /* ── HEADER ─────────────────────────────────────────────────────── */
 .inv-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 2.5px solid #0d1b2a; padding-bottom: 12px; }
-.brand-block .brand-name { font-size: 26px; font-weight: 900; color: #0d1b2a; letter-spacing: 2px; }
+.brand-block .brand-name { font-size: 31px; font-weight: 900; color: #0d1b2a; letter-spacing: 2px; }
 .brand-block .brand-name span { color: #c9a84c; }
-.brand-block .tagline { font-size: 10px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
-.brand-block .company { font-size: 11px; color: #444; margin-top: 4px; font-weight: 600; }
-.brand-block .address { font-size: 10.5px; color: #555; margin-top: 2px; line-height: 1.6; }
-.brand-block .contact { font-size: 10.5px; color: #555; margin-top: 4px; }
+.brand-block .tagline { font-size: 12px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+.brand-block .company { font-size: 13px; color: #444; margin-top: 4px; font-weight: 600; }
+.brand-block .address { font-size: 13px; color: #555; margin-top: 2px; line-height: 1.6; }
+.brand-block .contact { font-size: 13px; color: #555; margin-top: 4px; }
 
 /* ── META (right side of header) ────────────────────────────────── */
 .inv-meta { text-align: right; }
-.inv-meta .inv-title { font-size: 22px; font-weight: 900; color: #0d1b2a; letter-spacing: 3px; text-transform: uppercase; }
+.inv-meta .inv-title { font-size: 26px; font-weight: 900; color: #0d1b2a; letter-spacing: 3px; text-transform: uppercase; }
 .inv-meta table { margin-top: 6px; }
-.inv-meta td { padding: 2px 0; font-size: 11px; }
+.inv-meta td { padding: 3px 0; font-size: 13px; }
 .inv-meta td:first-child { color: #777; padding-right: 10px; }
 .inv-meta td:last-child { font-weight: 700; color: #0d1b2a; }
 
 /* ── BILL TO / PAYMENT DETAILS ──────────────────────────────────── */
 .inv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
 .info-box { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 9px 11px; }
-.info-box h4 { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; }
-.info-box p { font-size: 11px; line-height: 1.7; color: #333; }
+.info-box h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 6px; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; }
+.info-box p { font-size: 13px; line-height: 1.7; color: #333; }
 .info-box strong { color: #0d1b2a; }
 
 /* ── LINE ITEMS TABLE ───────────────────────────────────────────── */
 .items-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .items-table thead tr { background: #0d1b2a; color: white; }
-.items-table thead th { padding: 8px 9px; text-align: left; font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase; }
+.items-table thead th { padding: 10px 11px; text-align: left; font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; }
 .items-table thead th:last-child { text-align: right; }
 .items-table tbody tr:nth-child(even) { background: #f8f9fa; }
 .items-table tbody tr { border-bottom: 1px solid #eee; }
-.items-table tbody td { padding: 8px 9px; font-size: 11.5px; vertical-align: top; }
+.items-table tbody td { padding: 10px 11px; font-size: 14px; vertical-align: top; }
 .items-table tbody td:last-child { text-align: right; font-weight: 700; }
-.part-name { font-weight: 700; color: #0d1b2a; font-size: 12px; }
-.part-sub { font-size: 9.5px; color: #888; margin-top: 2px; }
-.grade-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; }
+.part-name { font-weight: 700; color: #0d1b2a; font-size: 14px; }
+.part-sub { font-size: 11px; color: #888; margin-top: 3px; }
+.grade-badge { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; }
 .grade-A { background: #e8f5e9; color: #2e7d32; }
 .grade-B { background: #fff3e0; color: #e65100; }
 .grade-C { background: #fce4ec; color: #c62828; }
@@ -118,51 +118,51 @@ body { font-family: 'Arial', sans-serif; font-size: 13px; color: #1a1a2e; backgr
 .inv-totals { display: flex; justify-content: flex-end; margin-bottom: 14px; }
 .totals-box { width: 240px; }
 .totals-box table { width: 100%; }
-.totals-box td { padding: 5px 9px; font-size: 12px; }
+.totals-box td { padding: 6px 11px; font-size: 14px; }
 .totals-box td:last-child { text-align: right; font-weight: 700; }
 .totals-box .total-row { background: #0d1b2a; color: white; border-radius: 4px; }
-.totals-box .total-row td { font-size: 14px; padding: 7px 9px; }
+.totals-box .total-row td { font-size: 17px; padding: 8px 11px; }
 
 /* ── PAYMENT SECTION ────────────────────────────────────────────── */
 .inv-payment { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
 .payment-box { border: 1px solid #e0e0e0; border-radius: 6px; padding: 9px 11px; }
-.payment-box h4 { font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; }
-.payment-box p { font-size: 11px; line-height: 1.8; color: #333; }
+.payment-box h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 6px; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; }
+.payment-box p { font-size: 13px; line-height: 1.8; color: #333; }
 
 /* ── WARRANTY BOX ───────────────────────────────────────────────── */
 .inv-warranty { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 8px 11px; margin-bottom: 12px; }
-.inv-warranty p { font-size: 10px; color: #5d4037; line-height: 1.6; }
+.inv-warranty p { font-size: 12px; color: #5d4037; line-height: 1.6; }
 .inv-warranty strong { color: #3e2723; }
 
 /* ── GATE PASS ──────────────────────────────────────────────────── */
 .gate-pass-section { border: 2px dashed #b71c1c; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
-.gate-pass-section h3 { font-size: 13px; font-weight: 900; color: #b71c1c; text-align: center; letter-spacing: 3px; margin-bottom: 8px; }
+.gate-pass-section h3 { font-size: 16px; font-weight: 900; color: #b71c1c; text-align: center; letter-spacing: 3px; margin-bottom: 9px; }
 .gate-pass-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .gate-field { border-bottom: 1px solid #999; padding-bottom: 16px; }
-.gate-field label { font-size: 9px; color: #666; display: block; margin-bottom: 2px; text-transform: uppercase; }
+.gate-field label { font-size: 11px; color: #666; display: block; margin-bottom: 3px; text-transform: uppercase; }
 
 /* ── SIGNATURES ─────────────────────────────────────────────────── */
 .inv-signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 8px; }
 .sig-box { text-align: center; }
 .sig-line { border-top: 1px solid #999; margin-top: 28px; padding-top: 5px; }
-.sig-label { font-size: 9.5px; color: #777; text-transform: uppercase; letter-spacing: 0.8px; }
+.sig-label { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.8px; }
 
 /* ── FOOTER ─────────────────────────────────────────────────────── */
 .inv-footer { text-align: center; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; }
-.inv-footer p { font-size: 9.5px; color: #999; line-height: 1.7; }
+.inv-footer p { font-size: 11px; color: #999; line-height: 1.7; }
 .inv-footer .website { font-weight: 700; color: #c9a84c; }
 
 .hidden { display: none !important; }
 @media print {
-    body { background: white; font-size: 13px; }
+    body { background: white; font-size: 16px; }
     .print-controls { display: none !important; }
     .invoice-pages { margin-top: 0; padding: 0; }
     .invoice { box-shadow: none; margin: 0; page-break-after: always; }
     .hidden { display: none !important; }
     /* Ensure font sizes are preserved on print */
-    .part-name { font-size: 12px !important; }
-    .items-table tbody td { font-size: 11.5px !important; }
-    .totals-box .total-row td { font-size: 14px !important; }
+    .part-name { font-size: 14px !important; }
+    .items-table tbody td { font-size: 14px !important; }
+    .totals-box .total-row td { font-size: 17px !important; }
 }
 </style>
 </head>
