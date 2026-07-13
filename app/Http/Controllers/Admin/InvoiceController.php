@@ -494,13 +494,14 @@ class InvoiceController extends Controller
         // Audit log — every invoice edit is recorded regardless of role,
         // so there's a full trail of who changed what and when.
         DB::table('invoice_edit_log')->insert([
-            'invoice_id'  => $id,
-            'edited_by'   => Session::get('staff_name') ?? 'Unknown',
-            'staff_role'  => $role,
-            'override_by' => $request->override_token ?? null,
-            'created_at'  => now(),
-            'updated_at'  => now(),
-        ]);
+    'invoice_id'      => $id,
+    'edited_by'       => Session::get('staff_name') ?? 'Unknown',
+    'staff_role'      => $role,
+    'override_by'     => $request->override_token ?? null,
+    'changes_summary' => 'Invoice updated via manual edit form',
+    'created_at'      => now(),
+    'updated_at'      => now(),
+]);
 
         $request->validate([
             'customer_name'    => 'required|string|max:120',
