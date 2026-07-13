@@ -103,9 +103,31 @@
 
     <div class="flex justify-end px-5 py-4 bg-gray-50 border-t border-gray-200">
       <div class="w-72">
+        <div class="flex justify-between items-center text-sm font-body py-1">
+          <span class="text-gray-500">Subtotal:</span>
+          <span id="subtotalDisplay" class="font-700 text-navy">$0.00</span>
+        </div>
+        <div class="flex justify-between items-center text-sm font-body py-1">
+          <span class="text-gray-500">Discount:</span>
+          <div class="flex gap-1 items-center">
+            <input type="number" name="invoice_discount_value" id="invoiceDiscountInput"
+                placeholder="0" min="0" oninput="updateTotal()"
+                class="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm font-mono text-right focus:outline-none focus:border-gold">
+            <select name="invoice_discount_type" id="invoiceDiscountType" onchange="updateTotal()"
+                class="border border-gray-200 rounded-lg px-1 py-1 text-xs bg-white focus:outline-none">
+                <option value="fixed">$</option>
+                <option value="percent">%</option>
+            </select>
+          </div>
+        </div>
         <div class="flex justify-between text-sm font-body py-1 border-t border-gray-200 mt-1 pt-2">
           <span class="font-display font-700 text-navy uppercase tracking-wide">TOTAL:</span>
           <span id="totalDisplay" class="font-display font-800 text-navy text-lg">$0.00</span>
+        </div>
+        <div id="capWarning" class="hidden mt-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs px-3 py-2 rounded-lg"></div>
+        <div id="overrideReasonBox" class="hidden mt-2">
+          <input type="text" name="discount_override_reason" id="overrideReasonInput" placeholder="Reason for exceeding discount cap..."
+            class="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-amber-500">
         </div>
       </div>
     </div>
@@ -268,8 +290,22 @@ function removeItem(i) {
     updateTotal();
 }
 
+const STAFF_DISCOUNT_CAP_FIXED   = {{ $staffDiscountCapFixed   ?? 'null' }};
+const STAFF_DISCOUNT_CAP_PERCENT = {{ $staffDiscountCapPercent ?? 'null' }};
+
+function applyDiscount(amount, value, type) {
+    value = parseFloat(value || 0);
+    if (value <= 0) return { discounted: amount, discountAmt: 0 };
+    if (type === 'percent') {
+        const discountAmt = amount * (value / 100);
+        return { discounted: amount - discountAmt, discountAmt };
+    }
+    const discountAmt = Math.min(value, amount);
+    return { discounted: amount - discountAmt, discountAmt };
+}
+
 function updateTotal() {
-    let total = 0;
+    let subtotal = 0;
     for (let i = 1; i <= itemCount; i++) {
         const priceEl = document.getElementById('item-price-' + i);
         const qtyEl = document.getElementById('item-qty-' + i);
@@ -278,12 +314,42 @@ function updateTotal() {
         const price = parseFloat(priceEl.value || 0);
         const qty = parseInt(qtyEl?.value || 1);
         const lineTotal = price * qty;
-        total += lineTotal;
+        subtotal += lineTotal;
         if (totalEl) totalEl.textContent = lineTotal > 0
             ? currency.symbol + (currency.code === 'NGN' ? Math.round(lineTotal).toLocaleString() : lineTotal.toFixed(2))
             : '—';
     }
-    document.getElementById('totalDisplay').textContent = currency.symbol + (currency.code === 'NGN' ? Math.round(total).toLocaleString() : total.toFixed(2));
+
+    const discVal  = document.getElementById('invoiceDiscountInput')?.value;
+    const discType = document.getElementById('invoiceDiscountType')?.value || 'fixed';
+    const { discounted: total, discountAmt } = applyDiscount(subtotal, discVal, discType);
+    const discountPct = subtotal > 0 ? (discountAmt / subtotal) * 100 : 0;
+
+    document.getElementById('subtotalDisplay').textContent = currency.symbol + (currency.code === 'NGN' ? Math.round(subtotal).toLocaleString() : subtotal.toFixed(2));
+    document.getElementById('totalDisplay').textContent    = currency.symbol + (currency.code === 'NGN' ? Math.round(total).toLocaleString()    : total.toFixed(2));
+
+    checkDiscountCap(discountAmt, discountPct);
+}
+
+function checkDiscountCap(discountLocal, discountPercent) {
+    const warningEl   = document.getElementById('capWarning');
+    const overrideBox = document.getElementById('overrideReasonBox');
+    const exceedsFixed   = STAFF_DISCOUNT_CAP_FIXED   !== null && discountLocal   > STAFF_DISCOUNT_CAP_FIXED;
+    const exceedsPercent = STAFF_DISCOUNT_CAP_PERCENT !== null && discountPercent > STAFF_DISCOUNT_CAP_PERCENT;
+    if (exceedsFixed || exceedsPercent) {
+        const parts = [];
+        if (exceedsFixed)   parts.push(`fixed cap is ${currency.symbol}${STAFF_DISCOUNT_CAP_FIXED.toFixed(2)}`);
+        if (exceedsPercent) parts.push(`percentage cap is ${STAFF_DISCOUNT_CAP_PERCENT}%`);
+        warningEl.textContent = 'Discount exceeds your allowance: ' + parts.join(' and ') + '. Provide a reason to proceed.';
+        warningEl.classList.remove('hidden');
+        overrideBox.classList.remove('hidden');
+        document.getElementById('overrideReasonInput').required = true;
+    } else {
+        warningEl.classList.add('hidden');
+        overrideBox.classList.add('hidden');
+        document.getElementById('overrideReasonInput').required = false;
+        document.getElementById('overrideReasonInput').value    = '';
+    }
 }
 
 // ── Customer lookup (same pattern as manual invoice form) ──────────────
