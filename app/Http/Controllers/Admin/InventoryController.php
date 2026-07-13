@@ -550,6 +550,35 @@ class InventoryController extends Controller
         if ($request->other_brand) {
             $partName = trim($request->other_brand) . ' - ' . $partName;
         }
+
+        // ── Fixed currency by location (needed early now, for match) ──
+        $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
+        $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
+
+        // ── Duplicate detection — same product already in stock at this
+        // location/price gets its quantity bumped instead of creating a
+        // duplicate row with its own part code. ──
+        $qtyToAdd = (int) ($request->stock_qty ?? 1);
+        $existing = DB::table('parts_inventory')
+            ->where('brand', $brand)
+            ->where('part_name', $partName)
+            ->where('unit_size', $request->unit_size)
+            ->where('condition_grade', $request->condition_grade)
+            ->where('location', $request->location)
+            ->where('price_local', $priceLocal)
+            ->where('status', 'Available')
+            ->first();
+
+        if ($existing) {
+            $newQty = $existing->stock_qty + $qtyToAdd;
+            DB::table('parts_inventory')->where('id', $existing->id)->update([
+                'stock_qty'  => $newQty,
+                'updated_at' => now(),
+            ]);
+            return redirect()->route('admin.inventory.index')
+                ->with('success', "Added {$qtyToAdd} more unit(s) to existing stock {$existing->part_code} — now {$newQty} in stock.");
+        }
+
         $prefix   = 'CON';
         $lastCode = DB::table('parts_inventory')
             ->where('part_code', 'like', $prefix.'-%')
@@ -557,9 +586,6 @@ class InventoryController extends Controller
         $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix)+1) + 1 : 1;
         $partCode = $prefix.'-'.str_pad($nextNum, 5, '0', STR_PAD_LEFT);
 
-        // ── Fixed currency by location ──────────────────────────────
-        $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
-        $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
         $priceUsdSnapshot = $priceLocal / $currency['rate'];
         // ──────────────────────────────────────────────────────────────
 
