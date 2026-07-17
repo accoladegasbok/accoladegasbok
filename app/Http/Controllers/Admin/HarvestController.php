@@ -15,6 +15,17 @@ use App\Services\InterchangeService;
 
 class HarvestController extends Controller
 {
+    // Bump this whenever the raw NHTSA field-extraction logic in
+    // vinDecode() below changes — automatically invalidates every
+    // previously-cached VIN instead of waiting up to 30 days.
+    // Namespaced as "harvest" so this NEVER collides with
+    // PartsSearchController's separate customer-facing VIN cache —
+    // they used to share the exact same unqualified "nhtsa_{$vin}"
+    // key, which meant whichever controller decoded a VIN first
+    // silently determined the data shape the OTHER controller got
+    // back for that same VIN.
+    private const NHTSA_CACHE_VERSION = 1;
+
     const CODE_PREFIX = [
         'Engine'       => 'ENG',
         'Transmission' => 'TRN',
@@ -198,7 +209,7 @@ class HarvestController extends Controller
         $request->validate(['vin' => 'required|string|size:17']);
         $vin = strtoupper(trim($request->vin));
 
-        $cached = Cache::remember("nhtsa_{$vin}", now()->addDays(30), function () use ($vin) {
+        $cached = Cache::remember("nhtsa_harvest_v" . self::NHTSA_CACHE_VERSION . "_{$vin}", now()->addDays(30), function () use ($vin) {
             try {
                 $res = Http::timeout(8)->get(
                     "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/{$vin}?format=json"
@@ -211,10 +222,14 @@ class HarvestController extends Controller
                     'year'       => $r->firstWhere('Variable', 'Model Year')['Value']                    ?? null,
                     'trim'       => $r->firstWhere('Variable', 'Trim')['Value']                          ?? null,
                     'body_style' => $r->firstWhere('Variable', 'Body Class')['Value']                    ?? null,
-                    'engine'     => $r->firstWhere('Variable', 'Displacement (L)')['Value']              ?? null,
+                    // Renamed from 'engine'/'cylinders' to 'engine_l'/'engine_cyl' —
+                    // matches what create.blade.php's JS actually reads (v.engine_l,
+                    // v.engine_cyl), and matches PartsSearchController's naming so
+                    // both VIN-decode endpoints share one consistent data contract.
+                    'engine_l'   => $r->firstWhere('Variable', 'Displacement (L)')['Value']              ?? null,
                     'drive_type' => $r->firstWhere('Variable', 'Drive Type')['Value']                    ?? null,
                     'origin'     => $r->firstWhere('Variable', 'Plant Country')['Value']                 ?? null,
-                    'cylinders'  => $r->firstWhere('Variable', 'Engine Number of Cylinders')['Value']    ?? null,
+                    'engine_cyl' => $r->firstWhere('Variable', 'Engine Number of Cylinders')['Value']    ?? null,
                 ];
             } catch (\Exception $e) {
                 return null;
@@ -228,17 +243,19 @@ class HarvestController extends Controller
         $oem = OemDatabase::lookup(
             $cached['make']  ?? '',
             $cached['model'] ?? '',
-            (int) ($cached['year']      ?? 0),
-            (int) ($cached['cylinders'] ?? 0),
-            (float) ($cached['engine']  ?? 0)
+            (int) ($cached['year']       ?? 0),
+            (int) ($cached['engine_cyl'] ?? 0),
+            (float) ($cached['engine_l'] ?? 0)
         );
 
-        $cached['oem_suggestion'] = [
-            'engine_code'       => $oem['engine_code'],
-            'transmission_code' => $oem['transmission_code'],
-            'pin_count'         => $oem['pin_count'],
-            'gear_alias'        => $oem['gear_alias'],
-        ];
+        // Flattened to top-level (not nested under 'oem_suggestion') to
+        // match PartsSearchController's contract — some blades (manual-add)
+        // already read these as flat data.oem_engine_code / data.pin_count.
+        $cached['oem_engine_code']       = $oem['engine_code'];
+        $cached['oem_transmission_code'] = $oem['transmission_code'];
+        $cached['pin_count']             = $oem['pin_count'];
+        $cached['gear_alias']            = $oem['gear_alias'];
+        $cached['market_note']           = $oem['market_note'] ?? null;
 
         return response()->json(['vehicle' => $cached]);
     }
