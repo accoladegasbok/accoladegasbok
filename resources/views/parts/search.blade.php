@@ -469,12 +469,22 @@
                                     </a>
                                 </h3>
 
-                                {{-- Pin count + Drive type — shown on transmissions and
-                                     Complete Engine And Gear, key buying info for customers.
-                                     drive_type is now a real stored column, not guessed
-                                     from the gear alias text. --}}
-                                @if(($part->pin_count ?? null) || ($part->gear_alias ?? null) || ($part->drive_type ?? null))
+                                {{-- Pin count + Drive type + Engine displacement/code — shown on
+                                     transmissions and Complete Engine And Gear, key buying info
+                                     for customers. drive_type/pin_count are real stored columns.
+                                     Displacement is derived from the part's own engine_code_oem
+                                     via OemDatabase (only shows for confirmed codes — no guessing). --}}
+                                @php
+                                    $displacementL = \App\Data\OemDatabase::displacementForCode($part->engine_code_oem ?? null);
+                                @endphp
+                                @if(($part->pin_count ?? null) || ($part->gear_alias ?? null) || ($part->drive_type ?? null) || $displacementL || ($part->engine_code_oem ?? null))
                                 <div class="flex flex-wrap gap-1 mb-1">
+                                    @if($displacementL)
+                                    <span class="text-[10px] font-mono font-700 bg-gray-700 text-white px-1.5 py-0.5 rounded">{{ $displacementL }}L</span>
+                                    @endif
+                                    @if($part->engine_code_oem ?? null)
+                                    <span class="text-[10px] font-mono font-700 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{{ $part->engine_code_oem }}</span>
+                                    @endif
                                     @if($part->pin_count ?? null)
                                     <span class="text-[10px] font-mono font-700 bg-navy text-gold px-1.5 py-0.5 rounded">{{ $part->pin_count }}-pin</span>
                                     @endif
@@ -586,6 +596,17 @@
                                             @if($part->oem_part_number)<span class="font-mono">{{ $part->oem_part_number }}</span>@endif
                                             <span class="{{ $gradeClass }} px-2 py-0.5 rounded-full text-xs font-500">{{ $part->condition_grade }}</span>
                                         </div>
+                                        @php
+                                            $listDisplacementL = \App\Data\OemDatabase::displacementForCode($part->engine_code_oem ?? null);
+                                        @endphp
+                                        @if($listDisplacementL || ($part->engine_code_oem ?? null) || ($part->pin_count ?? null) || ($part->drive_type ?? null))
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            @if($listDisplacementL)<span class="text-[10px] font-mono font-700 bg-gray-700 text-white px-1.5 py-0.5 rounded">{{ $listDisplacementL }}L</span>@endif
+                                            @if($part->engine_code_oem ?? null)<span class="text-[10px] font-mono font-700 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{{ $part->engine_code_oem }}</span>@endif
+                                            @if($part->pin_count ?? null)<span class="text-[10px] font-mono font-700 bg-navy text-gold px-1.5 py-0.5 rounded">{{ $part->pin_count }}-pin</span>@endif
+                                            @if($part->drive_type ?? null)<span class="text-[10px] font-body font-700 bg-blue-600 text-white px-1.5 py-0.5 rounded">{{ $part->drive_type }}</span>@endif
+                                        </div>
+                                        @endif
                                     </div>
                                     <div class="text-right flex-shrink-0">
                                         <div class="font-display font-800 text-navy text-xl">{{ $price }}</div>

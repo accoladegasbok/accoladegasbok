@@ -100,6 +100,97 @@ class VehicleDatabase
                 'ID.4','Jetta','Jetta GLI','Passat','Phaeton','Routan',
                 'Taos','Tiguan','Touareg',
             ],
+
+            // ── Added: Phase 1 brand expansion ──────────────────────
+            'ram' => [
+                '1500','2500','3500','ProMaster','ProMaster City','Dakota',
+            ],
+            'gmc' => [
+                'Acadia','Canyon','Envoy','Jimmy','Safari','Savana','Sierra 1500',
+                'Sierra 2500HD','Sierra 3500HD','Sonoma','Terrain','Yukon','Yukon XL',
+            ],
+            'subaru' => [
+                'Ascent','BRZ','Crosstrek','Forester','Impreza','Legacy',
+                'Outback','WRX','WRX STI','XV',
+            ],
+            'mazda' => [
+                'CX-3','CX-30','CX-5','CX-50','CX-7','CX-9','CX-90','Mazda2',
+                'Mazda3','Mazda5','Mazda6','MX-5 Miata','RX-8','Tribute',
+            ],
+            'dodge' => [
+                'Avenger','Caliber','Caravan','Challenger','Charger','Dakota',
+                'Durango','Grand Caravan','Journey','Magnum','Neon','Nitro',
+                'Ram 1500','Stratus','Viper',
+            ],
+            'buick' => [
+                'Cascada','Century','Enclave','Encore','Encore GX','Envision',
+                'LaCrosse','Lucerne','Rainier','Regal','Rendezvous','Verano',
+            ],
+            'cadillac' => [
+                'ATS','CT4','CT5','CT6','CTS','DTS','Escalade','Escalade ESV',
+                'SRX','STS','XT4','XT5','XT6','XTS',
+            ],
+            'volvo' => [
+                'C30','C40','C70','S40','S60','S70','S80','S90','V40','V50',
+                'V60','V70','V90','XC40','XC60','XC70','XC90',
+            ],
+            'chrysler' => [
+                '200','300','300M','Aspen','Cirrus','Concorde','Crossfire',
+                'Pacifica','PT Cruiser','Sebring','Town & Country','Voyager',
+            ],
+            'mitsubishi' => [
+                'Eclipse','Eclipse Cross','Endeavor','Galant','Lancer',
+                'Lancer Evolution','Mirage','Montero','Outlander',
+                'Outlander Sport','RVR',
+            ],
+            'land rover' => [
+                'Defender','Discovery','Discovery Sport','Freelander',
+                'Range Rover','Range Rover Evoque','Range Rover Sport',
+                'Range Rover Velar',
+            ],
+            'lincoln' => [
+                'Aviator','Continental','Corsair','MKC','MKS','MKT','MKX',
+                'MKZ','Nautilus','Navigator','Town Car','Zephyr',
+            ],
+            'porsche' => [
+                '911','718 Boxster','718 Cayman','Boxster','Cayenne',
+                'Cayman','Macan','Panamera','Taycan',
+            ],
+            'genesis' => [
+                'G70','G80','G90','GV60','GV70','GV80',
+            ],
+            'mini' => [
+                'Clubman','Convertible','Cooper','Countryman','Hardtop',
+                'Paceman',
+            ],
+            'jaguar' => [
+                'E-Pace','F-Pace','F-Type','I-Pace','S-Type','X-Type',
+                'XE','XF','XJ','XK',
+            ],
+            'fiat' => [
+                '124 Spider','500','500L','500X',
+            ],
+            'rolls-royce' => [
+                'Cullinan','Dawn','Ghost','Phantom','Wraith',
+            ],
+            'pontiac' => [
+                'Aztek','Bonneville','G3','G5','G6','G8','Grand Am',
+                'Grand Prix','GTO','Solstice','Sunfire','Torrent','Vibe',
+            ],
+            'datsun' => [
+                '200SX','280Z','810','GO','GO+','Redi-GO',
+            ],
+            'isuzu' => [
+                'Ascender','Axiom','D-Max','Hombre','Rodeo','Trooper','VehiCROSS',
+            ],
+            'jeep' => [
+                'Cherokee','Commander','Compass','Gladiator','Grand Cherokee',
+                'Grand Wagoneer','Liberty','Patriot','Renegade','Wrangler',
+            ],
+            'peugeot' => [
+                '206','207','208','2008','301','307','308','3008','406',
+                '407','5008','508',
+            ],
         ];
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\InterchangeService;
+use App\Data\PlatformDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -68,14 +69,18 @@ class CompatibilityController extends Controller
     public function check(Request $request)
     {
         $request->validate([
-            'make'  => 'required|string|max:60',
-            'model' => 'required|string|max:80',
-            'year'  => 'required|integer|min:1980|max:2030',
+            'make'       => 'required|string|max:60',
+            'model'      => 'required|string|max:80',
+            'year'       => 'required|integer|min:1980|max:2030',
+            'cylinders'  => 'nullable|integer|min:0|max:16',
+            'engine_l'   => 'nullable|numeric|min:0|max:10',
         ]);
 
         $make      = strtoupper(trim($request->make));
         $model     = strtoupper(trim($request->model));
         $year      = (int) $request->year;
+        $cylinders = (int) $request->get('cylinders', 0);
+        $engineL   = (float) $request->get('engine_l', 0.0);
         $partName  = trim($request->get('part_name', ''));
         $category  = trim($request->get('category', ''));
 
@@ -122,6 +127,38 @@ class CompatibilityController extends Controller
             $results->push($this->formatResult($part, 'direct', null, collect(), null));
         }
 
+        // ── Tier 2b: Platform-based match (chassis-shared parts) ──
+        // Some parts don't care what engine is under the hood — but
+        // "shares a platform" does NOT mean "shares body panels."
+        // PlatformDatabase deliberately scopes each cross-model entry
+        // to only the categories genuinely safe to claim (typically
+        // Suspension/Brakes) — see PlatformDatabase.php header comment.
+        $platform = \App\Data\PlatformDatabase::lookup($make, $model, $year);
+
+        if (!empty($platform['shared_vehicles'])) {
+            $existingIds = $results->pluck('id')->toArray();
+            foreach ($platform['shared_vehicles'] as $sv) {
+                $entryCategories = $sv['categories'] ?? \App\Data\PlatformDatabase::CROSS_MODEL_SAFE_CATEGORIES;
+                if ($category && !in_array($category, $entryCategories)) continue;
+
+                $pQuery = DB::table('parts_inventory')
+                    ->where('brand', strtoupper($sv['make']))
+                    ->where('model', strtoupper($sv['model']))
+                    ->where('year_from', '<=', $sv['year_to'])
+                    ->where('year_to',   '>=', $sv['year_from'])
+                    ->where('status', 'Available')
+                    ->whereIn('part_category', $entryCategories)
+                    ->whereNull('interchange_group_id')
+                    ->whereNotIn('id', $existingIds);
+                if ($partName) $pQuery->where('part_name', 'like', "%{$partName}%");
+                if ($category) $pQuery->where('part_category', $category);
+                foreach ($pQuery->get() as $part) {
+                    $results->push($this->formatResult($part, 'platform', null, collect(), null));
+                    $existingIds[] = $part->id;
+                }
+            }
+        }
+
         // ── Tier 3: OEM-code heuristic (Ladipo algorithm) ──────────
         $oemQuery = DB::table('parts_inventory')
             ->where('brand', $make)->where('model', $model)
@@ -153,7 +190,13 @@ class CompatibilityController extends Controller
         }
 
         // ── OemDatabase interchange reference — check both trans + engine ──
-        $oem = \App\Data\OemDatabase::lookup($make, $model, $year);
+        // Pass through cylinders/engine_l if the staff already picked a
+        // specific engine (via the picker below); otherwise this falls
+        // back to whichever branch OemDatabase treats as the default —
+        // which is why engineOptions() below matters: without it, an
+        // ambiguous vehicle (e.g. Camry with both 4-cyl and V6 versions)
+        // would silently guess one and never show the other.
+        $oem = \App\Data\OemDatabase::lookup($make, $model, $year, $cylinders, $engineL);
         $allInterchange = \App\Data\OemDatabase::interchange();
         $interchangeReference = collect();
 
@@ -175,12 +218,27 @@ class CompatibilityController extends Controller
             return true;
         })->values()->toArray();
 
+        // ── Engine options — surfaced whenever this vehicle has more than
+        // one known engine and staff hasn't specified which one yet
+        // (via cylinders/engine_l). The front-end shows a picker; once
+        // the staff selects one, the search re-runs with that value so
+        // $oem above resolves to the CORRECT branch instead of a guess.
+        $engineOptions = \App\Data\OemDatabase::engineOptions($make, $model, $year);
+        $engineDisambiguated = ($cylinders > 0 || $engineL > 0);
+
         return response()->json([
             'count'                 => $results->count(),
             'results'               => $results->values(),
             'suggestions'           => $heuristicSuggestions->values(),
             'interchange_reference' => $interchangeReference,
             'oem'                   => $oem,
+            'engine_options'        => $engineOptions,
+            'engine_disambiguated'  => $engineDisambiguated,
+            'platform'              => [
+                'generation'    => $platform['generation'] ?? null,
+                'body_style'    => $platform['body_style'] ?? null,
+                'shared_models' => $platform['shared_models'] ?? [],
+            ],
             'search'                => "{$year} {$make} {$model}" . ($partName ? " · {$partName}" : ''),
         ]);
     }

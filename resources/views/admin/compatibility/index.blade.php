@@ -47,6 +47,7 @@
     <p class="text-xs text-gray-400 font-body mb-4">
         <strong>Tier 1</strong> Interchange groups →
         <strong>Tier 2</strong> Direct year-range match →
+        <strong>Tier 2b</strong> Platform/chassis match (Suspension/Brakes only) →
         <strong>Tier 3</strong> OEM-code heuristic (Ladipo/Tokunbo market algorithm).
         Confirmed groups shown first.
     </p>
@@ -111,19 +112,34 @@
         </div>
     </div>
 
+    {{-- Engine picker — appears only when the selected vehicle has more
+         than one known engine option and none has been chosen yet.
+         Prevents the system from silently guessing one engine (e.g. the
+         4-cyl) and hiding that a V6 option even exists. --}}
+    <div id="enginePickerWrap" class="hidden mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div class="text-xs font-700 text-amber-800 uppercase tracking-wide mb-1">⚠ This vehicle has more than one engine option</div>
+        <p class="text-xs text-amber-700 mb-2">Pick the one that matches the physical part/vehicle so pin count and displacement shown below are accurate — not a guess.</p>
+        <div id="enginePickerOptions" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <input type="hidden" id="chk_cylinders" value="">
+    <input type="hidden" id="chk_engine_l" value="">
+
+
     <div id="checkLoading" class="mt-4 hidden text-sm text-gray-400 text-center py-4">
         <div class="animate-pulse">Searching interchange groups + Ladipo OEM database...</div>
     </div>
     <div id="checkEmpty" class="mt-4 hidden text-sm text-gray-400 text-center py-6 bg-gray-50 rounded-xl">
         No compatible parts found in stock for that vehicle.
-        <div class="text-xs text-gray-400 mt-1">Check the interchange groups below or see the powertrain panel for alternatives.</div>
+        <div class="text-xs text-gray-400 mt-1">Check the interchange groups below or see the powertrain/platform panels for alternatives.</div>
     </div>
 
     <div id="checkResults" class="mt-5 hidden">
         <div id="checkCount" class="text-sm font-600 text-navy mb-3 flex items-center gap-2"></div>
-        <div class="flex gap-2 mb-3 text-xs">
+        <div class="flex gap-2 mb-3 text-xs flex-wrap">
             <span class="px-2 py-1 rounded-full bg-green-100 text-green-700 font-700">✓ Interchange = Confirmed group</span>
             <span class="px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-700">Direct = Year-range match</span>
+            <span class="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-700">⚙ Platform = Suspension/Brakes chassis match</span>
             <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 font-700">~ Heuristic = OEM suggestion</span>
         </div>
         <div id="checkList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4"></div>
@@ -274,12 +290,28 @@ async function loadCheckModels(make) {
     const sel = document.getElementById('chk_model');
     if(!make){sel.innerHTML='<option value="">Select Make first</option>';return;}
     sel.innerHTML='<option value="">Loading...</option>';
+    resetEngineSelection();
     try {
         const res  = await fetch(`{{ route('parts.models') }}?make=${encodeURIComponent(make)}`);
         const data = await res.json();
         sel.innerHTML='<option value="">Select Model</option>'+(data.models||[]).map(m=>`<option value="${m}">${m}</option>`).join('');
     } catch(e){ sel.innerHTML='<option value="">Could not load models</option>'; }
 }
+
+// ── ENGINE PICKER ────────────────────────────────────────────────
+function selectEngineOption(cylinders, engineL) {
+    document.getElementById('chk_cylinders').value = cylinders || '';
+    document.getElementById('chk_engine_l').value  = engineL || '';
+    document.getElementById('enginePickerWrap').classList.add('hidden');
+    runCheck();
+}
+
+function resetEngineSelection() {
+    document.getElementById('chk_cylinders').value = '';
+    document.getElementById('chk_engine_l').value  = '';
+    document.getElementById('enginePickerWrap')?.classList.add('hidden');
+}
+document.getElementById('chk_model').addEventListener('change', resetEngineSelection);
 
 // ── COMPATIBILITY CHECK ─────────────────────────────────────────
 async function runCheck() {
@@ -288,21 +320,38 @@ async function runCheck() {
     const year     = document.getElementById('chk_year').value.trim();
     const partName = document.getElementById('chk_part')?.value.trim()||'';
     const category = document.getElementById('chk_category')?.value.trim()||'';
+    const cylinders= document.getElementById('chk_cylinders')?.value||'';
+    const engineL  = document.getElementById('chk_engine_l')?.value||'';
     if(!make||!model||!year){alert('Please select Make, Model and Year.');return;}
 
     ['checkResults','checkEmpty','suggestionsWrap'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));
-    // Remove previous powertrain panel
+    // Remove previous reference panels
     document.getElementById('refPanel')?.remove();
+    document.getElementById('platformRefPanel')?.remove();
     document.getElementById('checkLoading').classList.remove('hidden');
 
     try {
         const res  = await fetch('{{ route('admin.compatibility.check') }}', {
             method:'POST',
             headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},
-            body:JSON.stringify({make,model,year,part_name:partName,category}),
+            body:JSON.stringify({make,model,year,part_name:partName,category,cylinders,engine_l:engineL}),
         });
         const data = await res.json();
         document.getElementById('checkLoading').classList.add('hidden');
+
+        // Engine picker — show only if this vehicle has multiple known
+        // engines and staff hasn't picked one yet for THIS search.
+        const pickerWrap = document.getElementById('enginePickerWrap');
+        if (data.engine_options && data.engine_options.length > 1 && !data.engine_disambiguated) {
+            document.getElementById('enginePickerOptions').innerHTML = data.engine_options.map(opt => `
+                <button type="button" onclick="selectEngineOption(${opt.cylinders}, ${opt.engine_l})"
+                    class="bg-white border border-amber-300 text-amber-800 text-xs font-600 px-3 py-2 rounded-lg hover:bg-amber-100 transition-colors">
+                    ${opt.label}${opt.pin_count?` · ${opt.pin_count}-pin`:''}
+                </button>`).join('');
+            pickerWrap.classList.remove('hidden');
+        } else {
+            pickerWrap.classList.add('hidden');
+        }
 
         // Always show powertrain reference if available
         if(data.interchange_reference && data.interchange_reference.length>0){
@@ -315,11 +364,38 @@ async function runCheck() {
                     ${data.oem?.engine_code?`<span class="font-mono text-gold ml-2">${data.oem.engine_code}</span>`:''}
                     ${data.oem?.transmission_code?`<span class="font-mono text-gold ml-1">/ ${data.oem.transmission_code}</span>`:''}
                 </div>
+                <div class="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-2">
+                    ${data.oem?.engine_l?`<span>📏 Displacement: <strong class="text-navy">${data.oem.engine_l}L</strong></span>`:''}
+                    ${data.oem?.cylinders?`<span>🔧 Cylinders: <strong class="text-navy">${data.oem.cylinders}</strong></span>`:''}
+                    ${data.oem?.drive_type?`<span>⚙ Drive: <strong class="text-navy">${data.oem.drive_type}</strong></span>`:''}
+                    ${data.oem?.pin_count?`<span>🔌 Pin count: <strong class="text-navy">${data.oem.pin_count}-pin</strong>${data.oem.pin_count_variants&&data.oem.pin_count_variants.length?` <span class="text-amber-600">(also seen: ${data.oem.pin_count_variants.join('/')}-pin — confirm on unit)</span>`:''}</span>`:''}
+                </div>
                 <p class="text-xs text-gray-400 mb-2">Same engine/transmission — parts are interchangeable. Use to advise customers of alternatives even with zero stock.</p>
                 <div class="flex flex-wrap gap-2">
                     ${data.interchange_reference.map(ref=>`<span class="bg-white border border-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-full">${ref}</span>`).join('')}
                 </div>`;
             document.getElementById('checkEmpty').after(div);
+        }
+
+        // Platform/chassis reference — shown even with zero stock, same
+        // pattern as the powertrain panel above. Suspension/Brakes only —
+        // body, lighting, and interior are deliberately NOT claimed here
+        // since those need visual/physical confirmation before selling
+        // as interchange (see PlatformDatabase.php header comment).
+        if(data.platform && data.platform.generation){
+            const pdiv=document.createElement('div');
+            pdiv.id='platformRefPanel';
+            pdiv.className='mt-4 bg-purple-50 border border-purple-200 rounded-xl p-4';
+            pdiv.innerHTML=`
+                <div class="text-xs font-700 text-navy uppercase tracking-wide mb-1">
+                    ⚙ Chassis Platform: <span class="font-mono text-purple-700">${data.platform.generation}</span>
+                    ${data.platform.body_style?`<span class="text-gray-400 ml-1">(${data.platform.body_style})</span>`:''}
+                </div>
+                <p class="text-xs text-gray-500 mb-2">Suspension/brake parts may interchange with chassis-mates below. Body, lighting, and interior are NOT included — those need visual/physical confirmation before selling as interchange.</p>
+                <div class="flex flex-wrap gap-2">
+                    ${data.platform.shared_models.map(m=>`<span class="bg-white border border-purple-200 text-purple-700 text-xs px-3 py-1.5 rounded-full">${m}</span>`).join('')}
+                </div>`;
+            document.getElementById('checkEmpty').after(pdiv);
         }
 
         if(!data.count){
@@ -351,6 +427,7 @@ async function runCheck() {
                 <div class="flex gap-1 mt-2 flex-wrap">
                     ${p.source==='interchange'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-700">✓ Interchange</span>`:''}
                     ${p.source==='direct'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-700">Direct match</span>`:''}
+                    ${p.source==='platform'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-700">⚙ Chassis match</span>`:''}
                     ${p.major_component?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-700">⚡ Major</span>`:''}
                     ${p.legal_trace?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-700">⚠ Legal Trace</span>`:''}
                     ${p.group_code?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono">IC# ${p.group_code}</span>`:''}
