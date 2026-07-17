@@ -108,12 +108,22 @@ class PartsSearchController extends Controller
         return response()->json(['models' => $merged]);
     }
 
+    // Bump this whenever the raw NHTSA field-extraction logic below
+    // changes (new/renamed 'Variable' lookups, fixed parsing bugs,
+    // etc.) — NOT for OemDatabase.php changes, since the OEM lookup
+    // already recomputes fresh on every request and is never cached.
+    // Bumping this automatically invalidates every previously-cached
+    // VIN result instead of waiting up to 30 days for it to expire,
+    // which is what caused a real V6 Camry to keep showing as a
+    // 4-cylinder after an earlier decode was cached under stale logic.
+    private const NHTSA_CACHE_VERSION = 2;
+
     public function vinDecode(Request $request): \Illuminate\Http\JsonResponse
     {
         $request->validate(['vin' => 'required|string|size:17']);
         $vin = strtoupper(trim($request->vin));
 
-        $data = Cache::remember("nhtsa_{$vin}", now()->addDays(30), function () use ($vin) {
+        $data = Cache::remember("nhtsa_v" . self::NHTSA_CACHE_VERSION . "_{$vin}", now()->addDays(30), function () use ($vin) {
             try {
                 $res = Http::timeout(8)
                     ->get("https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/{$vin}?format=json");
