@@ -40,6 +40,8 @@ class OemDatabase
             'engine_code'       => null,
             'transmission_code' => null,
             'pin_count'         => null,
+            'pin_count_variants'=> null, // e.g. [3,5,7] when the same transmission code shows up with different pin counts by unit/supplier — confirm visually
+            'cylinders'         => null,
             'gear_alias'        => null,
             'engine_l'          => $engineL ?: null,
             'drive_type'        => null,
@@ -71,16 +73,17 @@ class OemDatabase
             if ($model === 'CAMRY') {
                 // V6 check first
                 if ($cylinders == 6 || $engineL >= 3.0) {
-                    if ($year >= 2007) return array_merge($default, ['engine_code'=>'2GR-FE','transmission_code'=>'A750E','gear_alias'=>'V6 6AT (Camry V6 2007+)','compat_year_from'=>2007,'compat_year_to'=>2024]);
-                    if ($year >= 2002) return array_merge($default, ['engine_code'=>'1MZ-FE','transmission_code'=>'A541E','gear_alias'=>'V6 (Camry 3.0L 02-06)','compat_year_from'=>2002,'compat_year_to'=>2006]);
-                    return array_merge($default, ['engine_code'=>'1MZ-FE','transmission_code'=>'A541E','gear_alias'=>'V6 (Camry 3.0L pre-02)','compat_year_from'=>1994,'compat_year_to'=>2001]);
+                    if ($year >= 2007) return array_merge($default, ['engine_code'=>'2GR-FE','transmission_code'=>'A750E','engine_l'=>3.5,'cylinders'=>6,'drive_type'=>'FWD','gear_alias'=>'V6 6AT (Camry V6 2007+)','compat_year_from'=>2007,'compat_year_to'=>2024]);
+                    if ($year >= 2002) return array_merge($default, ['engine_code'=>'1MZ-FE','transmission_code'=>'A541E','pin_count'=>7,'pin_count_variants'=>[3,5,7],'engine_l'=>3.0,'cylinders'=>6,'drive_type'=>'FWD','gear_alias'=>'V6 3/5/7-pin — confirm on unit (Camry 3.0L 02-06)','market_note'=>'Pin count varies by unit — 3, 5, or 7-pin all seen in this transmission code. Confirm visually before quoting.','compat_year_from'=>2002,'compat_year_to'=>2006]);
+                    return array_merge($default, ['engine_code'=>'1MZ-FE','transmission_code'=>'A541E','pin_count'=>7,'pin_count_variants'=>[3,5,7],'engine_l'=>3.0,'cylinders'=>6,'drive_type'=>'FWD','gear_alias'=>'V6 3/5/7-pin — confirm on unit (Camry 3.0L pre-02)','market_note'=>'Pin count varies by unit — 3, 5, or 7-pin all seen in this transmission code. Confirm visually before quoting.','compat_year_from'=>1994,'compat_year_to'=>2001]);
                 }
                 // 4-cyl
-                if ($year >= 2018) return array_merge($default, ['engine_code'=>'A25A-FKS','transmission_code'=>'Direct Shift CVT','gear_alias'=>'CVT (Camry 2018+ 2.5L)','compat_year_from'=>2018,'compat_year_to'=>2024]);
-                if ($year >= 2012) return array_merge($default, ['engine_code'=>'2AR-FE','transmission_code'=>'U760E','pin_count'=>22,'gear_alias'=>'22-pin gear (Camry 2012-17 2.5L)','compat_year_from'=>2012,'compat_year_to'=>2017]);
-                if ($year >= 2002) return array_merge($default, ['engine_code'=>'2AZ-FE','transmission_code'=>'U241E','pin_count'=>13,'gear_alias'=>'13-pin gear (Camry 2002-11 2.4L)','market_note'=>'Most common Camry in Nigerian/Ghanaian market','compat_year_from'=>2002,'compat_year_to'=>2011]);
-                if ($year >= 1997) return array_merge($default, ['engine_code'=>'5S-FE','transmission_code'=>'A541E','gear_alias'=>'4AT (Camry 1997-2001 2.2L)','compat_year_from'=>1997,'compat_year_to'=>2001]);
-                return array_merge($default, ['engine_code'=>'5S-FE','transmission_code'=>'A540E','gear_alias'=>'4AT (Camry pre-1997)','compat_year_from'=>1992,'compat_year_to'=>1996]);
+                if ($year >= 2018) return array_merge($default, ['engine_code'=>'A25A-FKS','transmission_code'=>'Direct Shift CVT','engine_l'=>2.5,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'CVT (Camry 2018+ 2.5L)','compat_year_from'=>2018,'compat_year_to'=>2024]);
+                if ($year >= 2012) return array_merge($default, ['engine_code'=>'2AR-FE','transmission_code'=>'U760E','pin_count'=>22,'engine_l'=>2.5,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'22-pin gear (Camry 2012-17 2.5L)','compat_year_from'=>2012,'compat_year_to'=>2017]);
+                if ($year >= 2010) return array_merge($default, ['engine_code'=>'2AR-FE','transmission_code'=>'U760E','pin_count'=>20,'engine_l'=>2.5,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'20-pin gear (Camry 2010-11 — early 2AR-FE, distinct from 2012+ 22-pin)','market_note'=>'2010-2011 Camry uses 2AR-FE at 20-pin — NOT the same as the 2012+ 22-pin 2AR-FE. Confirm year carefully before quoting as interchangeable.','compat_year_from'=>2010,'compat_year_to'=>2011]);
+                if ($year >= 2002) return array_merge($default, ['engine_code'=>'2AZ-FE','transmission_code'=>'U241E','pin_count'=>10,'engine_l'=>2.4,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'10-pin gear (Camry 2002-09 2.4L)','market_note'=>'Most common Camry in Nigerian/Ghanaian market. Confirmed 10-pin. 2AZ-FE runs 2002-2009 — 2010-2011 switched to 2AR-FE (20-pin), see above.','compat_year_from'=>2002,'compat_year_to'=>2009]);
+                if ($year >= 1997) return array_merge($default, ['engine_code'=>'5S-FE','transmission_code'=>'A541E','engine_l'=>2.2,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'4AT (Camry 1997-2001 2.2L)','compat_year_from'=>1997,'compat_year_to'=>2001]);
+                return array_merge($default, ['engine_code'=>'5S-FE','transmission_code'=>'A540E','engine_l'=>2.2,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'4AT (Camry pre-1997)','compat_year_from'=>1992,'compat_year_to'=>1996]);
             }
 
             // ── Avalon ────────────────────────────────────────
@@ -530,7 +533,16 @@ class OemDatabase
     }
 
     // =========================================================
-    // engineOptions() — multiple engine choices for a vehicle
+    // engineOptions() — multiple engine choices for a vehicle.
+    // Called when no VIN/cylinder data is available, so staff can
+    // be shown the real alternatives instead of the system silently
+    // guessing one engine and hiding the other from view.
+    //
+    // NOTE: pin_count left null here unless separately confirmed —
+    // engine codes/displacement below are documented factory specs
+    // (safe, public facts). Pin counts are empirical Ladipo-market
+    // knowledge and should only be added here once verified, since
+    // staff will treat anything shown here as fact.
     // =========================================================
     public static function engineOptions(string $make, string $model, int $year): array
     {
@@ -538,24 +550,71 @@ class OemDatabase
         $model = strtoupper($model);
         $opts  = [];
 
-        if ($make === 'TOYOTA' && $model === 'CAMRY') {
+        if ($make === 'TOYOTA' && in_array($model, ['CAMRY','SOLARA'])) {
             if ($year >= 2012) {
-                $opts[] = ['label'=>'2.5L 4-cyl (2AR-FE) — Most common','engine_code'=>'2AR-FE','cylinders'=>4,'engine_l'=>2.5];
-                $opts[] = ['label'=>'3.5L V6 (2GR-FE)','engine_code'=>'2GR-FE','cylinders'=>6,'engine_l'=>3.5];
+                $opts[] = ['label'=>'2.5L 4-cyl (2AR-FE) — Most common','engine_code'=>'2AR-FE','cylinders'=>4,'engine_l'=>2.5,'pin_count'=>22];
+                $opts[] = ['label'=>'3.5L V6 (2GR-FE)','engine_code'=>'2GR-FE','cylinders'=>6,'engine_l'=>3.5,'pin_count'=>null];
+            } elseif ($year >= 2010 && $model === 'CAMRY') {
+                $opts[] = ['label'=>'2.5L 4-cyl (2AR-FE, 20-pin) — Most common','engine_code'=>'2AR-FE','cylinders'=>4,'engine_l'=>2.5,'pin_count'=>20];
+            } elseif ($year >= 2004 && $model === 'SOLARA') {
+                $opts[] = ['label'=>'2.4L 4-cyl (2AZ-FE)','engine_code'=>'2AZ-FE','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>13];
+                $opts[] = ['label'=>'3.3L V6 (3MZ-FE)','engine_code'=>'3MZ-FE','cylinders'=>6,'engine_l'=>3.3,'pin_count'=>null];
             } elseif ($year >= 2002) {
-                $opts[] = ['label'=>'2.4L 4-cyl (2AZ-FE) — Most common','engine_code'=>'2AZ-FE','cylinders'=>4,'engine_l'=>2.4];
-                $opts[] = ['label'=>'3.0L V6 (1MZ-FE)','engine_code'=>'1MZ-FE','cylinders'=>6,'engine_l'=>3.0];
+                $opts[] = ['label'=>'2.4L 4-cyl (2AZ-FE) — Most common','engine_code'=>'2AZ-FE','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>10];
+                $opts[] = ['label'=>'3.0L V6 (1MZ-FE, 3/5/7-pin — confirm on unit)','engine_code'=>'1MZ-FE','cylinders'=>6,'engine_l'=>3.0,'pin_count'=>7];
             }
         }
+
         if ($make === 'TOYOTA' && $model === 'HIGHLANDER') {
             if ($year >= 2008) {
-                $opts[] = ['label'=>'3.5L V6 (2GR-FE)','engine_code'=>'2GR-FE','cylinders'=>6,'engine_l'=>3.5];
-                $opts[] = ['label'=>'2.7L 4-cyl (2AR-FE)','engine_code'=>'2AR-FE','cylinders'=>4,'engine_l'=>2.7];
+                $opts[] = ['label'=>'3.5L V6 (2GR-FE)','engine_code'=>'2GR-FE','cylinders'=>6,'engine_l'=>3.5,'pin_count'=>null];
+                $opts[] = ['label'=>'2.7L 4-cyl (2AR-FE)','engine_code'=>'2AR-FE','cylinders'=>4,'engine_l'=>2.7,'pin_count'=>22];
             } else {
-                $opts[] = ['label'=>'2.4L 4-cyl (2AZ-FE)','engine_code'=>'2AZ-FE','cylinders'=>4,'engine_l'=>2.4];
-                $opts[] = ['label'=>'3.3L V6 (3MZ-FE)','engine_code'=>'3MZ-FE','cylinders'=>6,'engine_l'=>3.3];
+                $opts[] = ['label'=>'2.4L 4-cyl (2AZ-FE)','engine_code'=>'2AZ-FE','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>13];
+                $opts[] = ['label'=>'3.3L V6 (3MZ-FE)','engine_code'=>'3MZ-FE','cylinders'=>6,'engine_l'=>3.3,'pin_count'=>null];
             }
         }
+
+        if ($make === 'TOYOTA' && $model === 'CELICA') {
+            $opts[] = ['label'=>'1.8L 4-cyl (1ZZ-FE) — GT','engine_code'=>'1ZZ-FE','cylinders'=>4,'engine_l'=>1.8,'pin_count'=>5];
+            $opts[] = ['label'=>'1.8L VVTLi (2ZZ-GE) — GT-S, 6-speed manual only','engine_code'=>'2ZZ-GE','cylinders'=>4,'engine_l'=>1.8,'pin_count'=>null];
+        }
+
+        if (in_array($make, ['HONDA','ACURA']) && $model === 'ACCORD') {
+            if ($year >= 2008) {
+                $opts[] = ['label'=>'2.4L 4-cyl (K24Z3/K24W)','engine_code'=>'K24Z3','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>null];
+                $opts[] = ['label'=>'3.5L V6 (J35A)','engine_code'=>'J35A','cylinders'=>6,'engine_l'=>3.5,'pin_count'=>null];
+            } elseif ($year >= 1998) {
+                $opts[] = ['label'=>'2.3L/2.4L 4-cyl (F23A/K24A)','engine_code'=>'K24A','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>null];
+                $opts[] = ['label'=>'3.0L V6 (J30A)','engine_code'=>'J30A','cylinders'=>6,'engine_l'=>3.0,'pin_count'=>null];
+            }
+        }
+
+        if (in_array($make, ['NISSAN','INFINITI']) && $model === 'ALTIMA' && $year <= 2006) {
+            $opts[] = ['label'=>'2.5L 4-cyl (QR25DE) — Most common','engine_code'=>'QR25DE','cylinders'=>4,'engine_l'=>2.5,'pin_count'=>null];
+            $opts[] = ['label'=>'3.5L V6 (VQ35DE)','engine_code'=>'VQ35DE','cylinders'=>6,'engine_l'=>3.5,'pin_count'=>null];
+        }
+
+        if ($make === 'FORD' && $model === 'FUSION') {
+            $opts[] = ['label'=>'2.5L 4-cyl (Duratec25) — Most common','engine_code'=>'Duratec25','cylinders'=>4,'engine_l'=>2.5,'pin_count'=>null];
+            $opts[] = ['label'=>'3.0L V6 (Duratec30)','engine_code'=>'Duratec30','cylinders'=>6,'engine_l'=>3.0,'pin_count'=>null];
+        }
+
+        if ($make === 'FORD' && $model === 'ESCAPE' && $year >= 2008 && $year <= 2012) {
+            $opts[] = ['label'=>'2.5L 4-cyl (Duratec25) — Most common','engine_code'=>'Duratec25','cylinders'=>4,'engine_l'=>2.5,'pin_count'=>null];
+            $opts[] = ['label'=>'3.0L V6 (Duratec30)','engine_code'=>'Duratec30','cylinders'=>6,'engine_l'=>3.0,'pin_count'=>null];
+        }
+
+        if (in_array($make, ['HYUNDAI']) && $model === 'SONATA' && $year >= 2002 && $year <= 2005) {
+            $opts[] = ['label'=>'2.4L 4-cyl (G4JS) — Most common','engine_code'=>'G4JS','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>null];
+            $opts[] = ['label'=>'2.7L V6 (G6BA)','engine_code'=>'G6BA','cylinders'=>6,'engine_l'=>2.7,'pin_count'=>null];
+        }
+
+        if (in_array($make, ['HYUNDAI','KIA']) && str_starts_with($model, 'GENESIS')) {
+            $opts[] = ['label'=>'3.8L V6 (G6DC)','engine_code'=>'G6DC','cylinders'=>6,'engine_l'=>3.8,'pin_count'=>null];
+            $opts[] = ['label'=>'4.6L V8 (G8BA / Tau)','engine_code'=>'G8BA','cylinders'=>8,'engine_l'=>4.6,'pin_count'=>null];
+        }
+
         return $opts;
     }
 
@@ -565,7 +624,7 @@ class OemDatabase
     public static function pinCounts(): array
     {
         return [
-            'U341E'=>5,'U241E'=>13,'U760E'=>22,'U660E'=>22,
+            'U341E'=>5,'U241E'=>10,'U760E'=>null,'U660E'=>22,
             'K310'=>12,'K311'=>12,'K313'=>12,
             'A750E'=>null,'A750F'=>null,'A541E'=>null,'A650E'=>null,'AB60F'=>null,
             'MCTA'=>null,'BGRA'=>null,'BAXA'=>null,'BDKA'=>null,
@@ -591,11 +650,11 @@ class OemDatabase
             'K310'   => ['2009-2013 Toyota Corolla CVT','2009-2013 Toyota Matrix CVT','2007-2013 Toyota Auris CVT'],
             'K311'   => ['2009-2013 Toyota Corolla CVT (K311)','2009-2013 Toyota Matrix CVT'],
             // Toyota 2AZ-FE family (13-pin gear)
-            '2AZ-FE' => ['2002-2011 Toyota Camry 2.4L','2001-2012 Toyota RAV4 2.4L','2001-2007 Toyota Highlander 2.4L','2002-2008 Toyota Solara 2.4L','2009-2012 Toyota Venza 2.7L','2006-2012 Toyota Alphard 2.4L'],
-            'U241E'  => ['2002-2011 Toyota Camry (13-pin U241E)','2001-2012 Toyota RAV4','2001-2007 Toyota Highlander','2002-2008 Toyota Solara'],
+            '2AZ-FE' => ['2002-2009 Toyota Camry 2.4L','2001-2012 Toyota RAV4 2.4L','2001-2007 Toyota Highlander 2.4L','2002-2008 Toyota Solara 2.4L','2009-2012 Toyota Venza 2.7L','2006-2012 Toyota Alphard 2.4L'],
+            'U241E'  => ['2002-2009 Toyota Camry (10-pin U241E)','2001-2012 Toyota RAV4','2001-2007 Toyota Highlander','2002-2008 Toyota Solara'],
             // Toyota 2AR-FE family (22-pin gear)
-            '2AR-FE' => ['2012-2018 Toyota Camry 2.5L','2013-2018 Toyota RAV4 2.5L','2014-2019 Toyota Highlander 2.7L','2009-2015 Toyota Venza 2.7L','2012-2017 Toyota Avalon 2.5L','2012-2017 Toyota Aurion 2.5L'],
-            'U760E'  => ['2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4','2009-2015 Toyota Venza'],
+            '2AR-FE' => ['2010-2011 Toyota Camry 2.5L (20-pin — distinct from 2012+)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4 2.5L','2014-2019 Toyota Highlander 2.7L','2009-2015 Toyota Venza 2.7L','2012-2017 Toyota Avalon 2.5L','2012-2017 Toyota Aurion 2.5L'],
+            'U760E'  => ['2010-2011 Toyota Camry 2.5L (20-pin)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4','2009-2015 Toyota Venza','NOTE: U760E pin count varies by year (20 vs 22) — always confirm year before treating as interchangeable'],
             // Toyota 2GR-FE V6 family
             '2GR-FE' => ['2007-2022 Toyota Camry V6 3.5L','2008-2019 Toyota Highlander V6','2005-2022 Toyota Avalon V6','2011-2020 Toyota Sienna V6','2006-2015 Lexus GS350','2007-2018 Lexus ES350','2007-2019 Lexus RX350'],
             'A750E'  => ['2007-2022 Toyota Camry V6','2008-2013 Toyota Highlander V6','2005-2022 Toyota Avalon V6','2007-2018 Lexus ES350','2007-2015 Lexus RX350'],
@@ -668,7 +727,7 @@ class OemDatabase
     public static function nigerianMarketNames(): array
     {
         return [
-            'U341E'=>'5-pin gear','U241E'=>'13-pin gear','U760E'=>'22-pin gear (direct)',
+            'U341E'=>'5-pin gear','U241E'=>'10-pin gear','U760E'=>'20/22-pin gear (varies by year — see OemDatabase)',
             'K310'=>'12-pin CVT','K311'=>'12-pin CVT','A750E'=>'V6 automatic (Toyota)',
             '722.6'=>'5-speed Mercedes gear','722.9'=>'7-speed Mercedes gear',
             '2AZ-FE'=>'Camry engine 2.4','2AR-FE'=>'Camry engine 2.5','2GR-FE'=>'Camry V6 / Avalon engine',
