@@ -529,7 +529,102 @@ class OemDatabase
             if (in_array($model, ['TRAX','SONIC','CRUZE'])) return array_merge($default, ['engine_code'=>'Ecotec14','transmission_code'=>'6T30','gear_alias'=>'6AT (1.4T)','compat_year_from'=>2011,'compat_year_to'=>2019]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // DB FALLBACK — only reached if NOTHING above matched. This is
+        // deliberate: hardcoded branches above represent CONFIRMED,
+        // market-verified facts (like the Camry pin corrections) and
+        // must always win over unverified reference-table ranges. The
+        // DB table (vehicle_powertrain_reference) only fills gaps for
+        // makes/models this file doesn't cover yet — e.g. it currently
+        // has zero Toyota Camry coverage in the hardcoded branches
+        // above that would ever fall through to here, since Camry is
+        // fully handled above; but a make like "Toyota Yaris" that
+        // isn't hardcoded anywhere will reach here and get DB coverage
+        // instead of an empty $default.
+        // ══════════════════════════════════════════════════════
+        $dbResult = self::lookupFromReferenceTable($make, $model, $year, $cylinders, $engineL);
+        if ($dbResult !== null) {
+            return array_merge($default, $dbResult);
+        }
+
         return $default;
+    }
+
+    // =========================================================
+    // lookupFromReferenceTable() — queries vehicle_powertrain_reference
+    // for a make/model/year match. Returns null if no row matches (so
+    // the caller's fallback to $default still applies cleanly).
+    // If multiple engine variants exist for the same year (e.g. a 4-cyl
+    // AND V6 both covering 2003), attempts to disambiguate using
+    // cylinders/engineL by parsing the displacement out of the row's
+    // free-text engine_code (e.g. "2AZ-FE 2.4" -> 2.4). Falls back to
+    // the first matching row if disambiguation isn't possible — same
+    // "best guess" limitation the hardcoded branches have without a
+    // VIN, and why 'multiple_engines' is flagged true so the UI picker
+    // still offers a manual choice.
+    // =========================================================
+    private static function lookupFromReferenceTable(string $make, string $model, int $year, int $cylinders, float $engineL): ?array
+    {
+        $rows = \Illuminate\Support\Facades\DB::table('vehicle_powertrain_reference')
+            ->where('make', ucfirst(strtolower($make)))
+            ->where('model', ucfirst(strtolower($model)))
+            ->where('year_from', '<=', $year)
+            ->where('year_to', '>=', $year)
+            ->get();
+
+        if ($rows->isEmpty()) return null;
+
+        $row = $rows->first();
+        if ($rows->count() > 1 && ($cylinders > 0 || $engineL > 0)) {
+            foreach ($rows as $candidate) {
+                if (preg_match('/(\d+\.\d+)/', $candidate->engine_code, $m)) {
+                    $candidateL = (float) $m[1];
+                    if ($engineL > 0 && abs($candidateL - $engineL) < 0.15) { $row = $candidate; break; }
+                    if ($cylinders == 6 && $candidateL >= 2.7) { $row = $candidate; break; }
+                    if ($cylinders == 4 && $candidateL < 2.7 && $candidateL > 0) { $row = $candidate; break; }
+                }
+            }
+        }
+
+        $pinCount = ($row->pin_count_min !== null && $row->pin_count_min == $row->pin_count_max)
+            ? (int) $row->pin_count_min : null;
+        $pinVariants = ($row->pin_count_min !== null && $row->pin_count_max !== null && $row->pin_count_min != $row->pin_count_max)
+            ? range((int) $row->pin_count_min, (int) $row->pin_count_max) : [];
+
+        return [
+            'engine_code'        => $row->engine_code,
+            'transmission_code'  => $row->transmission_code,
+            'pin_count'          => $pinCount,
+            'pin_count_variants' => $pinVariants,
+            'gear_alias'         => trim(($row->transmission_code ?? '') . ' (' . ($row->speeds ?? '?') . '-spd)' . ($row->key_notes ? ' — ' . $row->key_notes : '')),
+            'drive_type'         => $row->drive_type,
+            'market_note'        => 'Reference range from Toyota/Lexus transmission master workbook — UNVERIFIED (pin count '
+                . ($row->pin_count_min ?? '?') . '-' . ($row->pin_count_max ?? '?') . '). Confirm against physical unit/VIN before quoting as exact.'
+                . ($row->key_notes ? ' ' . $row->key_notes : ''),
+            'multiple_engines'   => $rows->count() > 1,
+            'compat_year_from'   => (int) $row->year_from,
+            'compat_year_to'     => (int) $row->year_to,
+        ];
+    }
+
+    // =========================================================
+    // displacementForCode() — reverse lookup: engine code -> liters.
+    // Only includes codes with a CONFIRMED engine_l value set in
+    // lookup() above (currently Camry-family codes). Returns null
+    // for anything not yet confirmed rather than guessing.
+    // =========================================================
+    public static function displacementForCode(?string $engineCode): ?float
+    {
+        if (!$engineCode) return null;
+        $map = [
+            '2AZ-FE'    => 2.4,
+            '2AR-FE'    => 2.5,
+            '1MZ-FE'    => 3.0,
+            '2GR-FE'    => 3.5,
+            'A25A-FKS'  => 2.5,
+            '5S-FE'     => 2.2,
+        ];
+        return $map[strtoupper(trim($engineCode))] ?? null;
     }
 
     // =========================================================
