@@ -374,7 +374,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                         <div class="part-sub">
                             @if($isVehicleSale)
                                 @if(!empty($item->colour)){{ $item->colour }} · @endif
-                                @if(!empty($item->mileage)){{ number_format($item->mileage) }} miles@endif
+                                @if(!empty($item->mileage)){{ number_format($item->mileage) }} miles @endif
                             @else
                                 @if(!empty($item->brand)){{ strtoupper($item->brand) }} {{ strtoupper($item->model) }} {{ $item->year_from }}@if($item->year_to && $item->year_to != $item->year_from)–{{ $item->year_to }}@endif · @endif
                                 @if(!empty($item->engine_code_oem))Engine: {{ $item->engine_code_oem }} · @endif
