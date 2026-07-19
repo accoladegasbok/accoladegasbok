@@ -60,6 +60,7 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
 .copy-warehouse .copy-banner { background: #1a6b3c; }
 .copy-accounts  .copy-banner { background: #6a1b9a; }
 .copy-gate      .copy-banner { background: #b71c1c; }
+.copy-waybill   .copy-banner { background: #8a6d1f; }
 .watermark {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%) rotate(-35deg);
@@ -71,6 +72,7 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
 .copy-warehouse .watermark { color: #1a6b3c; }
 .copy-accounts  .watermark { color: #6a1b9a; }
 .copy-gate      .watermark { color: #b71c1c; }
+.copy-waybill   .watermark { color: #8a6d1f; }
 .invoice-content { position: relative; z-index: 1; }
 
 /* ── HEADER ─────────────────────────────────────────────────────── */
@@ -153,6 +155,48 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
 .inv-footer .website { font-weight: 700; color: #c9a84c; }
 
 .hidden { display: none !important; }
+
+/* ── MOBILE (screen, not print) ────────────────────────────────────
+   The invoice is a fixed 210mm (A4) print layout by design — great on
+   paper/desktop, unusable on a phone screen. This reflows everything
+   to a single scrollable column below ~600px viewport width without
+   touching anything print-related above. */
+@media screen and (max-width: 600px) {
+    body { font-size: 14px; }
+    .print-controls { padding: 10px 12px; gap: 8px; }
+    .print-controls h2 { font-size: 13px; margin-right: 4px; width: 100%; }
+    .copy-btn, .print-all-btn, .print-single-btn { padding: 6px 10px; font-size: 11px; }
+    .invoice-pages { margin-top: 96px; padding: 8px; }
+    .payments-panel { margin: 100px 8px 0; max-width: none; }
+
+    .invoice {
+        width: 100%; min-height: 0;
+        padding: 16px 14px; margin: 0 auto 16px;
+    }
+
+    .inv-header { flex-direction: column; gap: 10px; }
+    .inv-meta { text-align: left; width: 100%; }
+    .inv-meta table { width: 100%; }
+    .brand-block .brand-name { font-size: 24px; }
+    .inv-meta .inv-title { font-size: 20px; }
+
+    .inv-parties { grid-template-columns: 1fr; }
+
+    /* Items table: allow horizontal scroll instead of squeezing
+       columns unreadably small — safer for barcodes/part codes/prices
+       than trying to wrap every column. */
+    .items-table { display: block; overflow-x: auto; white-space: nowrap; }
+    .items-table thead, .items-table tbody { display: table; width: 100%; }
+    .items-table tbody td { font-size: 12px; padding: 8px 6px; white-space: normal; }
+    .part-name { font-size: 13px; }
+
+    .inv-totals { justify-content: stretch; }
+    .totals-box { width: 100%; }
+
+    .gate-pass-grid { grid-template-columns: 1fr 1fr; }
+    .inv-signatures { grid-template-columns: 1fr; gap: 20px; }
+}
+
 @media print {
     body { background: white; font-size: 16px; }
     .print-controls { display: none !important; }
@@ -163,6 +207,31 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     .part-name { font-size: 14px !important; }
     .items-table tbody td { font-size: 14px !important; }
     .totals-box .total-row td { font-size: 17px !important; }
+
+    /* ── LEGIBILITY: force all real content to solid black, bold ──
+       This document may need to survive a police-checkpoint photocopy
+       or a cheap/low-toner printer, so nothing informational should
+       ever fade to light grey. Grade/copy-type color coding is kept
+       (still useful for quick visual sorting), and the background
+       watermark is deliberately exempted — it's a faint security
+       texture, not content, and forcing it to bold black would just
+       obscure the page. */
+    .invoice, .invoice p, .invoice td, .invoice th, .invoice div, .invoice span, .invoice strong,
+    .invoice label {
+        color: #000 !important;
+    }
+    .invoice .watermark {
+        color: inherit !important; /* restores each copy type's own faint watermark color, untouched by the rule above */
+    }
+    .invoice td, .invoice th, .invoice p, .invoice .part-name, .invoice .part-sub,
+    .brand-block .company, .brand-block .address, .brand-block .contact, .brand-block .tagline,
+    .inv-meta td, .info-box h4, .info-box p, .payment-box h4, .payment-box p,
+    .sig-label, .gate-field label, .inv-footer p, .inv-footer div {
+        font-weight: 700 !important;
+    }
+    /* Grade/copy badges keep their own color-coded backgrounds for
+       fast visual scanning — only their text needs to stay legible,
+       which the black override above already handles. */
 }
 </style>
 </head>
@@ -181,7 +250,8 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     <button class="copy-btn" onclick="showCopy('warehouse')" id="btn-warehouse">🏭 Warehouse Copy</button>
     <button class="copy-btn" onclick="showCopy('accounts')" id="btn-accounts">📊 Accounts Copy</button>
     <button class="copy-btn" onclick="showCopy('gate')" id="btn-gate">🚧 Gate Pass</button>
-    <button class="copy-btn active" onclick="showCopy('all')" id="btn-all" style="border-color:#c9a84c;color:#c9a84c;">📋 All 4 Copies</button>
+    <button class="copy-btn" onclick="showCopy('waybill')" id="btn-waybill">📦 Waybill / Packing List</button>
+    <button class="copy-btn active" onclick="showCopy('all')" id="btn-all" style="border-color:#c9a84c;color:#c9a84c;">📋 All 5 Copies</button>
     <span class="sep">|</span>
     <button class="print-single-btn" onclick="window.print()">🖨 Print</button>
     <a href="{{ url()->previous() }}" style="color:#aaa;font-size:12px;text-decoration:none;">← Back</a>
@@ -279,6 +349,7 @@ $copies = [
     'warehouse' => ['label' => 'WAREHOUSE CONTROL COPY',  'color' => '#1a6b3c'],
     'accounts'  => ['label' => 'ACCOUNTS COPY',           'color' => '#6a1b9a'],
     'gate'      => ['label' => 'SECURITY / GATE PASS',    'color' => '#b71c1c'],
+    'waybill'   => ['label' => 'WAYBILL / PACKING LIST — NO PRICES', 'color' => '#8a6d1f'],
 ];
 $createdAt = $order->created_at ?? now();
 $paymentMethod = $order->payment_method ?? 'Cash';
@@ -361,8 +432,10 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                     <th style="width:95px">{{ $isVehicleSale ? 'VIN' : 'Part Code' }}</th>
                     @if(!$isVehicleSale)<th style="width:44px">Grade</th>@endif
                     <th style="width:32px">Qty</th>
+                    @if($copyKey !== 'waybill')
                     <th style="width:88px">Unit Price</th>
                     <th style="width:88px">Total</th>
+                    @endif
                 </tr>
             </thead>
             <tbody>
@@ -402,19 +475,37 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                     <td><span class="grade-badge grade-{{ $item->condition_grade }}">{{ $item->condition_grade }}</span></td>
                     @endif
                     <td style="text-align:center;">{{ $item->qty }}</td>
+                    @if($copyKey !== 'waybill')
                     <td style="text-align:right;">{{ $item->unit_price_fmt }}</td>
                     <td>{{ $item->total_fmt }}</td>
+                    @endif
                 </tr>
                 @endforeach
             </tbody>
         </table>
 
+        @if($copyKey === 'waybill')
+        <div style="border: 2px dashed #8a6d1f; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: #fffbf0;">
+            <p style="font-size: 11px; color: #5d4e1f; line-height: 1.6;">
+                <strong>⚠ WAYBILL / PACKING LIST — NOT A PRICED DOCUMENT.</strong>
+                This document lists the full description and quantity of goods being moved from
+                <strong>{{ $saleLocation }}</strong> to their destination. It serves as evidence of
+                lawful possession of these goods in transit and should be presented if requested by
+                police or other authorities during movement between locations. No prices are shown
+                on this copy — see Customer or Accounts Copy for pricing.
+            </p>
+        </div>
+        @endif
+
+        @if($copyKey !== 'waybill')
         <div class="inv-totals">
             <div class="totals-box">
                 <table>
                     <tr><td>Subtotal:</td><td>{{ $subtotalFmt }}</td></tr>
-                    <tr><td>Discount:</td><td>{{ $currency['symbol'] }}0</td></tr>
-                    <tr class="total-row"><td><strong>TOTAL:</strong></td><td><strong>{{ $subtotalFmt }}</strong></td></tr>
+                    @if(($discountLocal ?? 0) > 0)
+                    <tr><td>{{ $discountLabel }}</td><td>-{{ $discountFmt }}</td></tr>
+                    @endif
+                    <tr class="total-row"><td><strong>TOTAL:</strong></td><td><strong>{{ $totalFmt ?? $subtotalFmt }}</strong></td></tr>
                 </table>
             </div>
         </div>
@@ -458,6 +549,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                 </table>
             </div>
         </div>
+        @endif
 
         @if($isVehicleSale)
         <div class="inv-warranty" style="background:#fdecea; border-color:#f5b3ab;">
@@ -497,6 +589,23 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
         </div>
 
         <div class="inv-footer">
+            @if(!empty($footerAddresses))
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; text-align:left; max-width: 480px; margin: 0 auto 8px; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 6px 0;">
+                @foreach($footerAddresses as $addr)
+                    @php
+                        // Split "Label — Address details" into a bold
+                        // label line and a normal address line, for a
+                        // cleaner, easier-to-scan layout than one long
+                        // run-on line.
+                        $parts = explode(' — ', $addr, 2);
+                    @endphp
+                    <div style="font-size: 10px; line-height: 1.5;">
+                        <div style="font-weight: 700; color:#000;">📍 {{ $parts[0] }}</div>
+                        <div style="color:#000;">{{ $parts[1] ?? '' }}</div>
+                    </div>
+                @endforeach
+            </div>
+            @endif
             <p>
                 Thank you for your business! · <span class="website">autozenithparts.com</span>
                 · WhatsApp: {{ $businessInfo['phone'] }}<br>
@@ -513,8 +622,8 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
 
 <script>
 function showCopy(which) {
-    const copies = ['customer','warehouse','accounts','gate'];
-    const btns   = ['customer','warehouse','accounts','gate','all'];
+    const copies = ['customer','warehouse','accounts','gate','waybill'];
+    const btns   = ['customer','warehouse','accounts','gate','waybill','all'];
     btns.forEach(b => { document.getElementById('btn-' + b)?.classList.remove('active'); });
     document.getElementById('btn-' + which)?.classList.add('active');
     copies.forEach(c => {
@@ -530,6 +639,7 @@ document.addEventListener('keydown', function(e) {
     if (e.key === '2') showCopy('warehouse');
     if (e.key === '3') showCopy('accounts');
     if (e.key === '4') showCopy('gate');
+    if (e.key === '5') showCopy('waybill');
     if (e.key === 'a' || e.key === 'A') showCopy('all');
     if (e.key === 'p' || e.key === 'P') window.print();
 });

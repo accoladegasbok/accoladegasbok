@@ -185,8 +185,17 @@ class InventoryController extends Controller
         ]);
 
         // ── Part name guard (admin-only for unlisted names) ──────────
-        if ($err = $this->assertAllowedPartName($request->part_name)) {
-            return back()->withErrors(['part_name' => $err])->withInput();
+        // FIXED: this used to fire on EVERY save, even when part_name
+        // wasn't being changed at all — meaning editing price, condition,
+        // photos, etc. on an existing part with a legitimately-saved
+        // custom name would incorrectly block the entire save. Now only
+        // checked when the submitted name actually differs from what's
+        // already in the database for this part.
+        $existingPartName = DB::table('parts_inventory')->where('id', $id)->value('part_name');
+        if ($request->part_name !== $existingPartName) {
+            if ($err = $this->assertAllowedPartName($request->part_name)) {
+                return back()->withErrors(['part_name' => $err])->withInput();
+            }
         }
         // ──────────────────────────────────────────────────────────────
 

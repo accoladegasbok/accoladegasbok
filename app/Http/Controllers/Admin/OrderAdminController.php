@@ -285,6 +285,49 @@ class OrderAdminController extends Controller
     // =========================================================
     // POST /admin/orders/{id}/confirm-payment
     // =========================================================
+    // =========================================================
+    // POST /admin/orders/{id}/payments
+    // This route existed and pointed here, but this method never did —
+    // every "Add Payment" attempt on an order was a hard crash
+    // (undefined method). Built to mirror InvoiceController::addPayment()
+    // exactly, using order_payments' REAL columns (confirmed via the
+    // actual migration — amount_ngn, not amount_local; no created_by
+    // column, same gap the invoice version had).
+    // =========================================================
+    public function addPayment(Request $request, int $id)
+    {
+        $request->validate([
+            'amount_ngn'     => 'required|numeric|min:0.01',
+            'payment_method' => 'required|string',
+        ]);
+
+        $order = DB::table('orders')->where('id', $id)->first();
+        if (!$order) abort(404);
+
+        $proofPath = null;
+        if ($request->hasFile('proof') && $request->file('proof')->isValid()) {
+            $proofPath = $request->file('proof')->store('payment-proofs', 'public');
+        }
+
+        DB::table('order_payments')->insert([
+            'order_id'       => $id,
+            'amount_ngn'     => $request->amount_ngn,
+            'payment_method' => $request->payment_method,
+            'proof_path'     => $proofPath,
+            // No "added by" column exists on this table (same gap as
+            // invoice_payments) — kept in notes so it's not lost.
+            'notes'          => trim(($request->notes ?? '') . ' [Added by: ' . (Session::get('staff_name') ?? 'Staff') . ']'),
+            'status'         => 'pending',
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
+
+        return back()->with('success', 'Payment recorded as pending. Confirm it to reduce the balance.');
+    }
+
+    // =========================================================
+    // POST /admin/orders/{id}/confirm-payment
+    // =========================================================
     public function confirmPayment(Request $request, int $id)
     {
         $request->validate(['confirmed_by' => 'nullable|string|max:80']);

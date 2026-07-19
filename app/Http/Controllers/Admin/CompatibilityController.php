@@ -320,6 +320,22 @@ class CompatibilityController extends Controller
             fn($v) => "{$v->make} {$v->model} ({$v->year_from}-{$v->year_to})"
         )->implode(', ');
 
+        // Real evidence-based confidence — only meaningful for Tier 1
+        // (confirmed interchange group) results, since that's the only
+        // tier with a group_id to attach evidence to. Falls back to
+        // null for direct/platform/heuristic tiers, which already show
+        // their own source badge instead.
+        $confidenceScore  = null;
+        $verificationStatus = null;
+        $sourceCount = null;
+        if ($group) {
+            $confidenceScore     = \App\Services\ConfidenceScorer::scoreForGroup($group->id);
+            $sourceCount         = \App\Services\ConfidenceScorer::sourceCountForGroup($group->id);
+            $verificationStatus  = $sourceCount > 0
+                ? \App\Services\ConfidenceScorer::suggestStatus($confidenceScore)
+                : null; // zero evidence recorded yet — don't claim a status with nothing behind it
+        }
+
         return [
             'id'              => $part->id,
             'part_code'       => $part->part_code,
@@ -339,6 +355,9 @@ class CompatibilityController extends Controller
             'combined_stock'  => $stockBreakdown ? $stockBreakdown['total'] : $part->stock_qty,
             'major_component' => (bool) ($part->is_major_component ?? false),
             'legal_trace'     => (bool) ($part->legal_trace_required ?? false),
+            'confidence_score'     => $confidenceScore,
+            'verification_status'  => $verificationStatus,
+            'evidence_count'       => $sourceCount,
         ];
     }
 }

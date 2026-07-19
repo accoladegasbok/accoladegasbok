@@ -103,7 +103,7 @@ class InvoiceController extends Controller
                 'address'   => 'Oshodi, Lagos State, Nigeria',
                 'phone'     => '+234 915 568 8804',
                 'email'     => 'lagos@autozenithparts.com',
-                'bank'      => 'Bank Transfer',
+                'bank'      => 'Moniepoint',
                 'account'   => '5085726530',
                 'acct_name' => 'Gasbok Engineering Nigeria Limited',
                 'warranty'  => '10 days',
@@ -117,7 +117,7 @@ class InvoiceController extends Controller
                 'address'   => 'Ile-Ife, Osun State, Nigeria',
                 'phone'     => '+234 915 568 8804',
                 'email'     => 'ng@autozenithparts.com',
-                'bank'      => 'Bank Transfer',
+                'bank'      => 'Moniepoint',
                 'account'   => '5085726530',
                 'acct_name' => 'Gasbok Engineering Nigeria Limited',
                 'warranty'  => '10 days',
@@ -162,6 +162,37 @@ class InvoiceController extends Controller
             'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
             'acct_name' => 'Accolade Autos and General LLC',
             'warranty'  => '15 days',
+        ];
+    }
+
+    // =========================================================
+    // FOOTER ADDRESSES — printed on every invoice/receipt/transfer-note/
+    // waybill, separate from the header's specific-location business
+    // info above. Nigeria transactions (any Nigerian location — Ile-Ife,
+    // Lagos, Ibadan, Abuja, Akure) show BOTH the Ile-Ife and Lagos
+    // Oshodi addresses together, regardless of which one actually made
+    // the sale. USA transactions show the Waxahachie address. Ghana
+    // currently falls through to the USA address as a placeholder —
+    // flag if Ghana should have its own dedicated footer line.
+    // =========================================================
+    public static function footerAddressesForLocation(string $location): array
+    {
+        $loc = strtolower($location);
+
+        if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife') || str_contains($loc, 'ibadan')
+            || str_contains($loc, 'lagos') || str_contains($loc, 'oshodi') || str_contains($loc, 'abuja')
+            || str_contains($loc, 'akure')) {
+            return [
+                'Auto Zenith Parts Regional HQ — No. 1 Suite B, Gasbok Engineering Avenue, Ibadan Road, Ile-Ife, Osun State, Nigeria',
+                'Shop 3 & 4, Oranmiyan Shopping Complex — Lagere, Ile-Ife, Osun State, Nigeria',
+                'No. 3 Aimasiko Street, Shop 1 (Apaku Mall) — Mafoluku, Oshodi, Lagos State, Nigeria',
+                'No. 11, Zone A Suite 2, Samadex Junction — Molade, Iwo Road, Ibadan, Oyo State, Nigeria',
+            ];
+        }
+
+        // USA (and Ghana placeholder — see note above)
+        return [
+            'Accolade Autos and General LLC — 3230 S Hwy 77, Waxahachie TX 75165',
         ];
     }
 
@@ -296,10 +327,16 @@ class InvoiceController extends Controller
         $subtotalUsd   = $subtotalLocal;
         $invoiceType   = 'order';
 
+        // Footer addresses — same logic as showManual(). Orders table
+        // has no discount columns at all (confirmed), so no discount
+        // display fix is needed here, only the footer.
+        $footerAddresses = self::footerAddressesForLocation($saleLocation);
+
         return view('admin.invoices.show', compact(
             'order', 'lineItems', 'currency', 'subtotalFmt',
             'subtotalUsd', 'invoiceNo', 'businessInfo', 'saleLocation',
-            'location', 'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
+            'location', 'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
+            'footerAddresses'
         ));
     }
 
@@ -422,8 +459,20 @@ class InvoiceController extends Controller
 
         $items = DB::table('invoice_items')->where('invoice_id', $id)->get();
 
+        // Include currently-Available stock AND whatever parts are
+        // already linked to THIS invoice (even if their status is now
+        // 'Sold' from the original sale) — otherwise the part actually
+        // sold on this invoice silently disappears from the picker on
+        // edit, making it look like editing forces a fresh inventory
+        // pick instead of just adjusting the existing sale.
+        $existingPartIds = $items->pluck('part_id')->filter()->values()->toArray();
         $parts = DB::table('parts_inventory')
-            ->where('status', 'Available')
+            ->where(function ($q) use ($existingPartIds) {
+                $q->where('status', 'Available');
+                if (!empty($existingPartIds)) {
+                    $q->orWhereIn('id', $existingPartIds);
+                }
+            })
             ->orderBy('brand')->orderBy('part_name')
             ->get(['id','part_code','part_name','brand','model',
                    'year_from','year_to','price_local','currency_code','price_usd','condition_grade','location']);
@@ -491,18 +540,6 @@ class InvoiceController extends Controller
         $invoice = DB::table('invoices')->where('id', $id)->first();
         if (!$invoice) abort(404);
 
-        // Audit log — every invoice edit is recorded regardless of role,
-        // so there's a full trail of who changed what and when.
-        DB::table('invoice_edit_log')->insert([
-    'invoice_id'      => $id,
-    'edited_by'       => Session::get('staff_name') ?? 'Unknown',
-    'staff_role'      => $role,
-    'override_by'     => $request->override_token ?? null,
-    'changes_summary' => 'Invoice updated via manual edit form',
-    'created_at'      => now(),
-    'updated_at'      => now(),
-]);
-
         $request->validate([
             'customer_name'    => 'required|string|max:120',
             'location'         => 'required|string',
@@ -528,8 +565,16 @@ class InvoiceController extends Controller
                     : min($discValue, $lineGrossLocal);
             }
             $lineLocal = $lineGrossLocal - $discLocal;
-            $part = !empty($item['part_id']) ? DB::table('parts_inventory')->find($item['part_id']) : null;
+            // CRITICAL: keep the real part_id if one was submitted. This
+            // used to be silently discarded (hardcoded null on insert
+            // below), which permanently disconnected every invoice item
+            // from its actual inventory part on ANY edit — breaking
+            // legal-trace tracking and making an edited invoice
+            // indistinguishable from a fresh manual entry. Fixed.
+            $partId = !empty($item['part_id']) ? (int) $item['part_id'] : null;
+            $part   = $partId ? DB::table('parts_inventory')->find($partId) : null;
             return (object)[
+                'part_id'               => $partId,
                 'part_name'             => $item['name'],
                 'part_code'             => $part->part_code ?? 'MANUAL',
                 'brand'                 => $part->brand ?? '',
@@ -589,7 +634,7 @@ class InvoiceController extends Controller
         foreach ($lineItems as $li) {
             DB::table('invoice_items')->insert([
                 'invoice_id'             => $id,
-                'part_id'                => null,
+                'part_id'                => $li->part_id, // FIXED: was hardcoded null, silently unlinking every item from its real inventory part on every edit
                 'part_name'              => $li->part_name,
                 'part_code'              => $li->part_code,
                 'brand'                  => $li->brand,
@@ -610,8 +655,11 @@ class InvoiceController extends Controller
         DB::table('invoice_edit_log')->insert([
             'invoice_id'      => $id,
             'edited_by'       => Session::get('staff_name') ?? 'Unknown',
+            'staff_role'      => $role,
+            'override_by'     => $request->override_token ?? null,
             'changes_summary' => $changesSummary,
             'created_at'      => now(),
+            'updated_at'      => now(),
         ]);
 
         return redirect()->route('admin.invoices.show.manual', $id)
@@ -799,6 +847,29 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
+
+            // ── Phase 4b: record a REAL payment for immediately-paid
+            // sales — every Payment Method except "Credit / Deferred"
+            // means the customer paid at point of sale. Previously
+            // NOTHING was ever inserted into invoice_payments for these,
+            // so the printed invoice's "Payment Applied" line was purely
+            // cosmetic text with zero backing data, while "BALANCE DUE"
+            // (which correctly reads real invoice_payments rows) showed
+            // the FULL amount still owed — two numbers on the same
+            // invoice contradicting each other. This closes that gap.
+            if ($paymentMethod !== 'Credit / Deferred') {
+                DB::table('invoice_payments')->insert([
+                    'invoice_id'             => $invoiceId,
+                    'amount_local'           => $subtotalLocal,
+                    'payment_method'         => $paymentMethod,
+                    'status'                 => 'confirmed',
+                    'confirmed_by_staff_id'  => Session::get('staff_id'),
+                    'confirmed_at'           => $createdAt,
+                    'notes'                  => 'Auto-recorded: paid at point of sale (manual invoice)',
+                    'created_at'             => $createdAt,
+                    'updated_at'             => $createdAt,
+                ]);
+            }
 
             // ── Phase 4: fire PartSold for each real inventory part ──
             // Runs AFTER commit so listener never fires on a rolled-back
@@ -1333,10 +1404,45 @@ class InvoiceController extends Controller
         $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
         $invoiceType   = $invoice->invoice_type ?? 'parts';
 
+        // FIXED: discount was computed and saved correctly on create/edit
+        // (invoices.discount_amount_local) but never read back out here —
+        // the totals block always showed TOTAL == Subtotal with no
+        // discount line at all, regardless of what was actually charged.
+        //
+        // IMPORTANT: invoices.subtotal_local is stored ALREADY NET of
+        // discount (see updateManual()/storeManual() — it's the final
+        // charged amount despite the column name). So for display:
+        //   - the actual charged TOTAL = subtotal_local (as stored)
+        //   - the GROSS "Subtotal" line (before discount) = subtotal_local + discount_amount_local
+        // Showing stored subtotal_local as both "Subtotal" AND deriving
+        // TOTAL from it while also subtracting the discount again would
+        // silently short the total by double-counting the discount.
+        $discountLocal   = (float) ($invoice->discount_amount_local ?? 0);
+        $totalLocal      = $subtotalLocal;                    // the actual stored/charged amount
+        $grossSubtotalLocal = $subtotalLocal + $discountLocal; // add discount back for the pre-discount display line
+        $subtotalFmt     = self::formatLocal($grossSubtotalLocal, $currencyCode); // overwrite the earlier subtotalFmt with the correct GROSS figure
+        $totalFmt        = self::formatLocal($totalLocal, $currencyCode);
+        $discountFmt     = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
+        $discountLabel   = null;
+        if ($discountLocal > 0) {
+            $discountLabel = $invoice->discount_type === 'percent'
+                ? 'Discount (' . rtrim(rtrim(number_format((float) $invoice->discount_value, 2), '0'), '.') . '%):'
+                : 'Discount:';
+        }
+
+        // Footer business-registration addresses — Nigeria transactions
+        // show BOTH the Ile-Ife and Lagos Oshodi addresses regardless of
+        // which specific location made the sale; USA transactions show
+        // the Waxahachie address. This is separate from $businessInfo
+        // above, which still shows the SPECIFIC transacting location's
+        // bank/contact details in the header as before.
+        $footerAddresses = self::footerAddressesForLocation($saleLocation);
+
         return view('admin.invoices.show', compact(
             'invoice', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
-            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
+            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
+            'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt', 'footerAddresses'
         ));
     }
 
@@ -1363,9 +1469,13 @@ class InvoiceController extends Controller
             'amount_local'   => $request->amount_local,
             'payment_method' => $request->payment_method,
             'proof_path'     => $proofPath,
-            'notes'          => $request->notes ?? null,
+            // FIXED: was inserting 'created_by', a column that doesn't
+            // exist on this table (real schema only has
+            // confirmed_by_staff_id, populated later when confirmed —
+            // this table has no "who submitted it" column at all). Kept
+            // the staff name in notes instead so it's not lost entirely.
+            'notes'          => trim(($request->notes ?? '') . ' [Added by: ' . (Session::get('staff_name') ?? 'Staff') . ']'),
             'status'         => 'pending',
-            'created_by'     => Session::get('staff_name') ?? 'Staff',
             'created_at'     => now(),
             'updated_at'     => now(),
         ]);
@@ -1407,15 +1517,23 @@ class InvoiceController extends Controller
         $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
         if (!$invoice) abort(404);
 
-        DB::table('invoice_payment_reminders')->insert([
-            'invoice_id' => $invoiceId,
-            'sent_by'    => Session::get('staff_name') ?? 'Staff',
-            'sent_at'    => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // FIXED: was inserting a 'sent_by' column that doesn't exist on
+        // this table (real column is 'sent_by_staff_id'), plus 'sent_at'
+        // and 'updated_at' which also don't exist — every reminder send
+        // was silently crashing. The button/UI says "SMS + Email", so
+        // this now records one row per channel actually sent, matching
+        // what the real table schema expects (channel is required).
+        $staffId = Session::get('staff_id');
+        foreach (['sms', 'email'] as $channel) {
+            DB::table('invoice_payment_reminders')->insert([
+                'invoice_id'       => $invoiceId,
+                'channel'          => $channel,
+                'sent_by_staff_id' => $staffId,
+                'created_at'       => now(),
+            ]);
+        }
 
-        return back()->with('success', 'Payment reminder sent.');
+        return back()->with('success', 'Payment reminder sent (SMS + Email).');
     }
 
     // =========================================================
