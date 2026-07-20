@@ -1717,48 +1717,133 @@ class InvoiceController extends Controller
     // flow — this is for the ordinary case of just getting the
     // customer their copy, whether or not they're behind on payment.
     // =========================================================
-    public function sendCustomerCopy(int $invoiceId)
+    // =========================================================
+    // Shared data builder for the PDF letterhead template — reuses
+    // the exact same computation as showManual() (gross subtotal,
+    // discount, return credit, footer addresses) so the downloaded
+    // PDF and the on-screen invoice never disagree with each other.
+    // =========================================================
+    private function buildInvoicePdfData(int $invoiceId): ?array
     {
         $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
-        if (!$invoice) abort(404);
+        if (!$invoice) return null;
 
         $items = DB::table('invoice_items')->where('invoice_id', $invoiceId)->get();
-        $currency = self::currencyMeta($invoice->currency_code ?? 'NGN');
+        $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
+        $currency     = self::currencyMeta($currencyCode);
+        $businessInfo = $this->getBusinessInfo($invoice->location);
 
-        $itemRows = $items->map(function ($item) use ($currency, $invoice) {
-            $lineTotal = ($item->unit_price_local ?? $item->unit_price_usd) * $item->qty;
-            return "<tr><td style='padding:6px;border-bottom:1px solid #eee;'>{$item->part_name}</td>"
-                . "<td style='padding:6px;border-bottom:1px solid #eee;text-align:center;'>{$item->qty}</td>"
-                . "<td style='padding:6px;border-bottom:1px solid #eee;text-align:right;'>"
-                . $currency['symbol'] . number_format($lineTotal) . "</td></tr>";
-        })->implode('');
+        $lineItems = $items->map(function ($item) use ($currencyCode) {
+            $priceLocal = $item->unit_price_local ?? $item->unit_price_usd;
+            $lineLocal  = $priceLocal * $item->qty;
+            return (object)[
+                'part_name'       => $item->part_name,
+                'part_code'       => $item->part_code,
+                'brand'           => $item->brand,
+                'model'           => $item->model,
+                'condition_grade' => $item->condition_grade,
+                'qty'             => $item->qty,
+                'unit_price_fmt'  => self::formatLocal($priceLocal, $currencyCode),
+                'total_fmt'       => self::formatLocal($lineLocal, $currencyCode),
+            ];
+        });
 
+        $customerInfo = (object)[
+            'name' => $invoice->customer_name, 'phone' => $invoice->customer_phone,
+            'email' => $invoice->customer_email, 'address' => $invoice->customer_address,
+        ];
+
+        $subtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
         $discountLocal = (float) ($invoice->discount_amount_local ?? 0);
-        $totalFmt = $currency['symbol'] . number_format($invoice->subtotal_local ?? 0);
+        $returnCreditApplied = (float) ($invoice->return_credit_applied_local ?? 0);
+        $grossSubtotalLocal = $subtotalLocal + $discountLocal + $returnCreditApplied;
+
+        $discountLabel = null;
+        if ($discountLocal > 0) {
+            $pct = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
+            $discountLabel = "Discount (" . rtrim(rtrim(number_format($pct, 1), '0'), '.') . "%):";
+        }
+
+        return [
+            'invoiceNo'    => $invoice->invoice_no,
+            'invoice'      => $invoice,
+            'lineItems'    => $lineItems,
+            'currency'     => $currency,
+            'businessInfo' => $businessInfo,
+            'saleLocation' => $invoice->location,
+            'createdAt'    => $invoice->created_at,
+            'customerInfo' => $customerInfo,
+            'paymentMethod'=> $invoice->payment_method,
+            'isVehicleSale'=> ($invoice->invoice_type ?? 'parts') === 'vehicle',
+            'subtotalFmt'  => self::formatLocal($grossSubtotalLocal, $currencyCode),
+            'totalFmt'     => self::formatLocal($subtotalLocal, $currencyCode),
+            'discountLocal'=> $discountLocal,
+            'discountFmt'  => $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null,
+            'discountLabel'=> $discountLabel,
+            'returnCreditApplied' => $returnCreditApplied,
+            'returnCreditFmt'     => $returnCreditApplied > 0 ? self::formatLocal($returnCreditApplied, $currencyCode) : null,
+            'footerAddresses'     => self::footerAddressesForLocation($invoice->location),
+        ];
+    }
+
+    // =========================================================
+    // GET /admin/invoices/{id}/download-pdf
+    // NEW: a real, letterheaded, downloadable PDF — previously
+    // "printing an invoice" only meant the browser's print dialog on
+    // an HTML page. Requires barryvdh/laravel-dompdf (composer require
+    // barryvdh/laravel-dompdf) to be installed.
+    // =========================================================
+    public function downloadPdf(int $invoiceId)
+    {
+        $data = $this->buildInvoicePdfData($invoiceId);
+        abort_if(!$data, 404);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.invoices.invoice-pdf', $data)->setPaper('a4');
+        return $pdf->download("invoice-{$data['invoiceNo']}.pdf");
+    }
+
+    // =========================================================
+    // POST /admin/invoices/{id}/send-customer-copy
+    // A real "Send" button for emailing the customer copy of a
+    // receipt/invoice directly. Now attaches the actual letterheaded
+    // PDF instead of just plain HTML in the email body.
+    // =========================================================
+    public function sendCustomerCopy(int $invoiceId)
+    {
+        $data = $this->buildInvoicePdfData($invoiceId);
+        abort_if(!$data, 404);
+        $invoice = $data['invoice'];
+
+        // Render the same PDF used for download, as raw bytes to
+        // attach directly to the email — no temp file needed.
+        $pdfBinary = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.invoices.invoice-pdf', $data)->setPaper('a4')->output();
 
         $emailHtml = "<p>Hi {$invoice->customer_name},</p>"
-            . "<p>Here's your receipt for invoice <strong>{$invoice->invoice_no}</strong>:</p>"
-            . "<table style='width:100%;border-collapse:collapse;margin:12px 0;'>"
-            . "<thead><tr><th style='text-align:left;padding:6px;border-bottom:2px solid #333;'>Item</th><th style='padding:6px;border-bottom:2px solid #333;'>Qty</th><th style='text-align:right;padding:6px;border-bottom:2px solid #333;'>Amount</th></tr></thead>"
-            . "<tbody>{$itemRows}</tbody></table>"
-            . ($discountLocal > 0 ? "<p>Discount applied: -" . $currency['symbol'] . number_format($discountLocal) . "</p>" : "")
-            . "<p><strong>Total: {$totalFmt}</strong></p>"
+            . "<p>Please find attached your receipt for invoice <strong>{$invoice->invoice_no}</strong>.</p>"
+            . "<p><strong>Total: {$data['totalFmt']}</strong></p>"
             . "<p>Thank you for your business!</p><p>— Auto Zenith Parts</p>";
+        $message = "Hi {$invoice->customer_name}, here's your receipt for invoice {$invoice->invoice_no} — Total: {$data['totalFmt']}. — Auto Zenith Parts";
 
-        $message = "Hi {$invoice->customer_name}, here's your receipt for invoice {$invoice->invoice_no} — Total: {$totalFmt}. — Auto Zenith Parts";
+        $emailSent = false;
+        if (!empty($invoice->customer_email)) {
+            $emailSent = \App\Services\NotificationService::sendEmail(
+                $invoice->customer_email,
+                $invoice->customer_name,
+                "Your Receipt — Invoice {$invoice->invoice_no}",
+                $emailHtml,
+                [], // no file-path attachments
+                [['data' => $pdfBinary, 'filename' => "invoice-{$invoice->invoice_no}.pdf", 'mime' => 'application/pdf']]
+            );
+        }
+        $whatsappLink = !empty($invoice->customer_phone)
+            ? \App\Services\NotificationService::whatsappLink($invoice->customer_phone, $message)
+            : null;
 
-        $result = \App\Services\NotificationService::notify(
-            ['email' => $invoice->customer_email, 'phone' => $invoice->customer_phone, 'name' => $invoice->customer_name],
-            "Your Receipt — Invoice {$invoice->invoice_no}",
-            $message,
-            $emailHtml
-        );
-
-        $statusMsg = $result['email']
-            ? 'Customer copy emailed.'
+        $statusMsg = $emailSent
+            ? 'Customer copy emailed with PDF attached.'
             : 'Could not send email (check customer has an email on file).';
 
-        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
+        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $whatsappLink);
     }
 
     // =========================================================

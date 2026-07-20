@@ -82,6 +82,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::delete('/{id}',               [OrderAdminController::class, 'destroy'])->name('destroy');
             Route::post('/{id}/status',          [OrderAdminController::class, 'updateStatus'])->name('status');
             Route::post('/{id}/email-receipt',   [OrderAdminController::class, 'emailReceipt'])->name('email-receipt');
+            Route::get('/{id}/download-pdf', [OrderAdminController::class, 'downloadPdf'])->name('download-pdf');
+            Route::post('/{id}/send-customer-copy', [OrderAdminController::class, 'sendCustomerCopy'])->name('send-customer-copy');
         });
 
         // Customers (auto-aggregated from orders + invoices)
@@ -94,6 +96,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('/contacts/{id}',       [CustomerController::class, 'updateContact'])->name('contacts.update');
             Route::delete('/contacts/{id}',    [CustomerController::class, 'destroyContact'])->name('contacts.destroy');
             Route::get('/{phone}',             [CustomerController::class, 'show'])->name('show');
+            Route::post('/{phone}/notes',      [CustomerController::class, 'addNote'])->name('notes.add');
+            Route::delete('/notes/{id}',       [CustomerController::class, 'destroyNote'])->name('notes.destroy');
+            Route::post('/{phone}/send-message', [CustomerController::class, 'sendMessage'])->name('send-message');
         });
         // Inventory audit sessions
         Route::prefix('audit')->name('audit.')->group(function () {
@@ -260,6 +265,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/payments/{paymentId}/reject', [InvoiceController::class, 'rejectPayment'])->name('payments.reject');
             Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendReminder'])->name('send-reminder');
             Route::post('/{id}/send-customer-copy', [InvoiceController::class, 'sendCustomerCopy'])->name('send-customer-copy');
+            Route::get('/{id}/download-pdf', [InvoiceController::class, 'downloadPdf'])->name('download-pdf');
 
             // Quick Receipt — services/labor/misc, never touches inventory
             Route::get('/service', fn() => redirect()->route('admin.invoices.service.create'));

@@ -26,24 +26,93 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class NotificationService
 {
     // =========================================================
-    // EMAIL — live, via your cPanel SMTP mailbox
+    // UNSUBSCRIBE / MUTE — deterministic, stateless token generation.
+    // No database row needs to exist ahead of time for a link to
+    // work: the token is a signed hash of the phone number, verified
+    // the same way on the receiving end. A notification_preferences
+    // row only gets CREATED the first time someone actually opts out
+    // of something — see the migration's design note.
     // =========================================================
-    public static function sendEmail(string $toEmail, string $toName, string $subject, string $bodyHtml, array $attachments = []): bool
+    public static function unsubscribeToken(string $phone): string
+    {
+        $normalized = preg_replace('/\D/', '', $phone);
+        return hash_hmac('sha256', $normalized, config('app.key'));
+    }
+
+    public static function verifyUnsubscribeToken(string $phone, string $token): bool
+    {
+        return hash_equals(self::unsubscribeToken($phone), $token);
+    }
+
+    private static function isOptedOut(string $phone, string $channel): bool
+    {
+        $normalized = preg_replace('/\D/', '', $phone);
+        if ($normalized === '') return false;
+        $column = $channel . '_opt_out'; // 'email_opt_out', 'sms_opt_out', 'whatsapp_opt_out'
+        return (bool) DB::table('notification_preferences')
+            ->where('phone', $normalized)
+            ->value($column);
+    }
+
+    // Public entry point for the same check — for code that sends
+    // through a DIFFERENT mechanism than this service (e.g. a
+    // Mailable class) but still needs to respect an opt-out choice.
+    public static function isOptedOutPublic(string $phone, string $channel): bool
+    {
+        return self::isOptedOut($phone, $channel);
+    }
+
+    // =========================================================
+    // EMAIL — live, via your cPanel SMTP mailbox
+    // $attachments: array of file PATHS on disk (existing behavior)
+    // $rawAttachments: array of ['data'=>binary,'filename'=>...,
+    //   'mime'=>...] — for content generated in-memory (e.g. a PDF)
+    //   that was never written to a file, avoiding temp-file cleanup.
+    // $customerPhone: optional — if provided, an unsubscribe link is
+    //   automatically appended to the email footer, AND this checks
+    //   whether the customer has already opted out of email before
+    //   sending at all.
+    // =========================================================
+    public static function sendEmail(string $toEmail, string $toName, string $subject, string $bodyHtml, array $attachments = [], array $rawAttachments = [], ?string $customerPhone = null): bool
     {
         if (empty($toEmail)) {
             Log::warning('NotificationService::sendEmail — no recipient email, skipped.', ['subject' => $subject]);
             return false;
         }
 
+        if ($customerPhone && self::isOptedOut($customerPhone, 'email')) {
+            Log::info('NotificationService::sendEmail — recipient has opted out of email, skipped.', ['phone' => $customerPhone]);
+            return false;
+        }
+
+        // Append an unsubscribe footer — required for any real
+        // marketing/transactional email practice, and was completely
+        // absent before. Only added when we have a phone number to
+        // build the link from (every notify() call site has one).
+        if ($customerPhone) {
+            $token = self::unsubscribeToken($customerPhone);
+            $unsubUrl = url('/unsubscribe/' . preg_replace('/\D/', '', $customerPhone) . '/' . $token . '/email');
+            $bodyHtml .= "<p style='font-size:11px;color:#999;margin-top:24px;border-top:1px solid #eee;padding-top:10px;'>"
+                . "Don't want these emails? <a href='{$unsubUrl}' style='color:#999;'>Unsubscribe</a></p>";
+        }
+
         try {
-            Mail::html($bodyHtml, function ($message) use ($toEmail, $toName, $subject, $attachments) {
+            Mail::html($bodyHtml, function ($message) use ($toEmail, $toName, $subject, $attachments, $rawAttachments) {
                 $message->to($toEmail, $toName)->subject($subject);
                 foreach ($attachments as $path) {
                     if (file_exists($path)) $message->attach($path);
+                }
+                foreach ($rawAttachments as $raw) {
+                    if (!empty($raw['data']) && !empty($raw['filename'])) {
+                        $message->attachData($raw['data'], $raw['filename'], [
+                            'mime' => $raw['mime'] ?? 'application/octet-stream',
+                        ]);
+                    }
                 }
             });
             return true;
@@ -74,6 +143,11 @@ class NotificationService
     // =========================================================
     public static function sendSms(string $phone, string $message): bool
     {
+        if (self::isOptedOut($phone, 'sms')) {
+            Log::info('NotificationService::sendSms — recipient has opted out of SMS, skipped.', ['phone' => $phone]);
+            return false;
+        }
+
         Log::info('NotificationService::sendSms — SMS not configured yet, message NOT sent.', [
             'phone' => $phone,
             'message_preview' => mb_substr($message, 0, 50),
@@ -105,12 +179,19 @@ class NotificationService
                 $recipient['email'],
                 $recipient['name'] ?? '',
                 $subject,
-                $emailHtml ?? nl2br(e($message))
+                $emailHtml ?? nl2br(e($message)),
+                [], [],
+                $recipient['phone'] ?? null // enables opt-out check + unsubscribe footer
             );
         }
 
         if (!empty($recipient['phone'])) {
-            $results['whatsapp_link'] = self::whatsappLink($recipient['phone'], $message);
+            // WhatsApp is manual-send-only (staff taps Send), but we
+            // still respect an explicit opt-out — no link generated
+            // at all if the customer asked to be muted on this channel.
+            if (!self::isOptedOut($recipient['phone'], 'whatsapp')) {
+                $results['whatsapp_link'] = self::whatsappLink($recipient['phone'], $message);
+            }
             $results['sms'] = self::sendSms($recipient['phone'], $message); // currently always false, logged above
         }
 

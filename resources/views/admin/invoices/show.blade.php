@@ -263,13 +263,37 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     $paySummary = ($resolvedInvoiceId && !isset($order)) ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId) : null;
 @endphp
 @if(isset($order) && $order)
-<div class="payments-panel" style="text-align:center; display:flex; gap:10px; justify-content:center;">
-    <a href="{{ route('admin.orders.show', $order->id) }}" style="display:inline-block; background:#0d1b2a; color:#fff; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
-        Manage Payments on Order {{ $order->order_ref }} →
-    </a>
-    @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
-    <a href="{{ route('admin.orders.edit', $order->id) }}" style="display:inline-block; background:#c9a84c; color:#0d1b2a; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
-        ✎ Edit Order
+<div class="payments-panel" style="text-align:center;">
+    <div style="display:flex; gap:10px; justify-content:center; margin-bottom:10px;">
+        <a href="{{ route('admin.orders.show', $order->id) }}" style="display:inline-block; background:#0d1b2a; color:#fff; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
+            Manage Payments on Order {{ $order->order_ref }} →
+        </a>
+        @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
+        <a href="{{ route('admin.orders.edit', $order->id) }}" style="display:inline-block; background:#c9a84c; color:#0d1b2a; font-weight:700; font-size:13px; padding:10px 20px; border-radius:8px; text-decoration:none;">
+            ✎ Edit Order
+        </a>
+        @endif
+    </div>
+    {{-- NEW: same PDF letterhead + Send Customer Copy capability the
+         invoice branch below already has — was previously only
+         available for manual invoices, not orders viewed through
+         this same unified template. --}}
+    <div style="display:flex; gap:10px; justify-content:center;">
+        <a href="{{ route('admin.orders.download-pdf', $order->id) }}" target="_blank"
+           style="display:inline-block; background:#f5f0e6; border:1px solid #d9c99a; color:#8a6d1f; font-weight:700; font-size:13px; padding:8px 16px; border-radius:8px; text-decoration:none;">
+            📄 Download PDF
+        </a>
+        <form method="POST" action="{{ route('admin.orders.send-customer-copy', $order->id) }}" onsubmit="return confirm('Email the customer their receipt now?')">
+            @csrf
+            <button type="submit" style="background:#eef4fb; border:1px solid #b3d1f0; color:#1a4d8f; font-weight:700; font-size:13px; padding:8px 16px; border-radius:8px; cursor:pointer;">
+                ✉ Send Customer Copy
+            </button>
+        </form>
+    </div>
+    @if(session('whatsapp_reminder_link'))
+    <a href="{{ session('whatsapp_reminder_link') }}" target="_blank"
+       style="display:block; text-align:center; margin-top:10px; background:#e8f7ee; border:1px solid #25D366; color:#1b7a3d; font-size:12px; font-weight:700; padding:8px; border-radius:6px; text-decoration:none;">
+        💬 Message Customer via WhatsApp (opens pre-filled — tap Send to actually deliver it)
     </a>
     @endif
 </div>
@@ -297,6 +321,13 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
         @csrf
         <button type="submit" style="width:100%; background:#eef4fb; border:1px solid #b3d1f0; color:#1a4d8f; font-size:12px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">✉ Send Customer Copy (Email)</button>
     </form>
+    {{-- NEW: real, letterheaded, downloadable PDF — separate from the
+         browser print dialog, and the same PDF now gets attached to
+         the email above instead of plain HTML. --}}
+    <a href="{{ route('admin.invoices.download-pdf', $resolvedInvoiceId) }}" target="_blank"
+       style="display:block; text-align:center; width:100%; background:#f5f0e6; border:1px solid #d9c99a; color:#8a6d1f; font-size:12px; font-weight:700; padding:8px; border-radius:6px; text-decoration:none; margin-bottom:8px; box-sizing:border-box;">
+        📄 Download PDF
+    </a>
     @if($paySummary['balanceDue'] > 0)
     <form method="POST" action="{{ route('admin.invoices.send-reminder', $resolvedInvoiceId) }}" onsubmit="return confirm('Send a payment reminder email, and get a WhatsApp link ready to send manually?')" style="margin-bottom:8px;">
         @csrf

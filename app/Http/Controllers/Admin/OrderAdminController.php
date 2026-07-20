@@ -65,6 +65,123 @@ class OrderAdminController extends Controller
     }
 
     // =========================================================
+    // Shared data builder for the PDF letterhead template — mirrors
+    // InvoiceController::buildInvoicePdfData() exactly, sourced from
+    // orders/order_items instead of invoices/invoice_items, reusing
+    // the SAME PDF Blade view so orders and invoices produce
+    // identically-formatted PDFs. Orders have no discount or return-
+    // credit columns at all (confirmed earlier this session), so
+    // those fields are simply left at 0/null — the template already
+    // guards on them being empty.
+    // =========================================================
+    private function buildOrderPdfData(int $orderId): ?array
+    {
+        $order = DB::table('orders')->where('id', $orderId)->first();
+        if (!$order) return null;
+
+        $items = DB::table('order_items')->where('order_id', $orderId)->get();
+        $currencyCode = $order->currency_code ?? ($order->total_amount_ngn ? 'NGN' : 'USD');
+        $syms = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
+        $sym  = $syms[$currencyCode] ?? '$';
+        $fmt  = fn($n) => $sym . number_format((float) $n, $currencyCode === 'NGN' ? 0 : 2);
+
+        $lineItems = $items->map(function ($item) use ($fmt) {
+            $priceLocal = $item->unit_price_local ?? $item->unit_price_ngn ?? $item->unit_price_usd ?? 0;
+            $qty = $item->qty ?? 1;
+            return (object)[
+                'part_name'       => $item->part_name,
+                'part_code'       => $item->part_code,
+                'brand'           => $item->brand ?? null,
+                'model'           => $item->model ?? null,
+                'condition_grade' => $item->condition_grade ?? null,
+                'qty'             => $qty,
+                'unit_price_fmt'  => $fmt($priceLocal),
+                'total_fmt'       => $fmt($priceLocal * $qty),
+            ];
+        });
+
+        $customerInfo = (object)[
+            'name' => $order->customer_name, 'phone' => $order->customer_phone,
+            'email' => $order->customer_email, 'address' => $order->customer_address ?? null,
+        ];
+
+        $totalLocal = $order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0;
+        $businessInfo = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($order->location ?? 'Waxahachie TX');
+
+        return [
+            'invoiceNo'    => $order->order_ref,
+            'invoice'      => $order,
+            'lineItems'    => $lineItems,
+            'currency'     => ['code' => $currencyCode, 'symbol' => $sym],
+            'businessInfo' => $businessInfo,
+            'saleLocation' => $order->location ?? '',
+            'createdAt'    => $order->created_at,
+            'customerInfo' => $customerInfo,
+            'paymentMethod'=> $order->payment_method ?? 'Online',
+            'isVehicleSale'=> false,
+            'subtotalFmt'  => $fmt($totalLocal),
+            'totalFmt'     => $fmt($totalLocal),
+            'discountLocal'=> 0,
+            'discountFmt'  => null,
+            'discountLabel'=> null,
+            'returnCreditApplied' => 0,
+            'returnCreditFmt'     => null,
+            'footerAddresses'     => \App\Http\Controllers\Admin\InvoiceController::footerAddressesForLocation($order->location ?? ''),
+        ];
+    }
+
+    // =========================================================
+    // GET /admin/orders/{id}/download-pdf
+    // =========================================================
+    public function downloadPdf(int $orderId)
+    {
+        $data = $this->buildOrderPdfData($orderId);
+        abort_if(!$data, 404);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.invoices.invoice-pdf', $data)->setPaper('a4');
+        return $pdf->download("order-{$data['invoiceNo']}.pdf");
+    }
+
+    // =========================================================
+    // POST /admin/orders/{id}/send-customer-copy
+    // =========================================================
+    public function sendCustomerCopy(int $orderId)
+    {
+        $data = $this->buildOrderPdfData($orderId);
+        abort_if(!$data, 404);
+        $order = $data['invoice']; // same key name as the invoice builder, holds the order row here
+
+        $pdfBinary = \Barryvdh\DomPDF\Facade\Pdf::loadView('admin.invoices.invoice-pdf', $data)->setPaper('a4')->output();
+
+        $emailHtml = "<p>Hi {$order->customer_name},</p>"
+            . "<p>Please find attached your receipt for order <strong>{$order->order_ref}</strong>.</p>"
+            . "<p><strong>Total: {$data['totalFmt']}</strong></p>"
+            . "<p>Thank you for your business!</p><p>— Auto Zenith Parts</p>";
+        $message = "Hi {$order->customer_name}, here's your receipt for order {$order->order_ref} — Total: {$data['totalFmt']}. — Auto Zenith Parts";
+
+        $emailSent = false;
+        if (!empty($order->customer_email)) {
+            $emailSent = \App\Services\NotificationService::sendEmail(
+                $order->customer_email,
+                $order->customer_name,
+                "Your Receipt — Order {$order->order_ref}",
+                $emailHtml,
+                [],
+                [['data' => $pdfBinary, 'filename' => "order-{$order->order_ref}.pdf", 'mime' => 'application/pdf']]
+            );
+        }
+        $whatsappLink = !empty($order->customer_phone)
+            ? \App\Services\NotificationService::whatsappLink($order->customer_phone, $message)
+            : null;
+
+        $statusMsg = $emailSent
+            ? 'Customer copy emailed with PDF attached.'
+            : 'Could not send email (check customer has an email on file).';
+
+        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $whatsappLink);
+    }
+
+    // =========================================================
     // GET /admin/orders/{id}/edit — admin/manager only
     // =========================================================
     public function edit(int $id)
@@ -268,6 +385,16 @@ class OrderAdminController extends Controller
 
         if (!$order->customer_email) {
             return response()->json(['success' => false, 'error' => 'This customer has no email address on file.'], 422);
+        }
+
+        // FIXED: this method bypassed NotificationService entirely,
+        // meaning it never checked whether the customer had unsubscribed
+        // from email — a real compliance gap now that unsubscribe
+        // actually exists. Kept as its own separate mechanism (per
+        // your decision to keep both buttons), but now honors opt-out
+        // the same way every other email in the app does.
+        if ($order->customer_phone && \App\Services\NotificationService::isOptedOutPublic($order->customer_phone, 'email')) {
+            return response()->json(['success' => false, 'error' => 'This customer has unsubscribed from email notifications.'], 422);
         }
 
         $items      = DB::table('order_items')->where('order_id', $id)->get();
