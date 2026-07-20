@@ -38,6 +38,31 @@
       </div>
     </div>
     <div id="customerHistoryNote" class="hidden mt-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs font-body text-blue-700"></div>
+
+    {{-- NEW: Apply Return Credit — a returned part's refund value can
+         go toward this new invoice (e.g. a defective part swapped for
+         a replacement) instead of, or alongside, a separate cash
+         refund. Searches by the same phone number entered above. --}}
+    <div class="mt-3 border-t border-gray-100 pt-3">
+      <button type="button" onclick="toggleReturnCredit()" id="returnCreditToggleBtn"
+        class="text-xs font-body font-700 text-green-700 border border-green-200 bg-green-50 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
+        💳 Apply a Return Credit
+      </button>
+      <div id="returnCreditSection" class="hidden mt-3">
+        <p class="text-xs text-gray-400 font-body mb-2">Checks for unused return credits on the phone number entered above.</p>
+        <button type="button" onclick="searchReturnCredits()"
+          class="text-xs font-body font-700 bg-navy text-white px-3 py-1.5 rounded-lg hover:bg-opacity-90 transition-colors">
+          Search Credits for This Customer
+        </button>
+        <div id="returnCreditResults" class="mt-2 space-y-1"></div>
+        <div id="selectedReturnCredit" class="hidden mt-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between">
+          <span class="text-xs font-body text-green-800" id="selectedReturnCreditLabel"></span>
+          <button type="button" onclick="clearReturnCredit()" class="text-xs text-green-600 underline">Remove</button>
+        </div>
+        <input type="hidden" name="return_credit_id" id="returnCreditIdInput">
+        <input type="hidden" id="returnCreditAmountInput" value="0">
+      </div>
+    </div>
   </div>
 
   {{-- Sale Details --}}
@@ -124,6 +149,10 @@
                 <option value="percent">%</option>
             </select>
           </div>
+        </div>
+        <div id="returnCreditDisplayRow" class="hidden flex justify-between items-center text-sm font-body py-1 text-green-700">
+          <span>Return Credit Applied:</span>
+          <span id="returnCreditDisplay">-$0.00</span>
         </div>
         <div class="flex justify-between text-sm font-body py-1 border-t border-gray-200 mt-1 pt-2">
           <span class="font-display font-700 text-navy uppercase tracking-wide">TOTAL:</span>
@@ -475,13 +504,29 @@ function updateTotal() {
 
     const invDiscVal  = document.getElementById('invoiceDiscountInput')?.value;
     const invDiscType = document.getElementById('invoiceDiscountType')?.value || 'fixed';
-    const { discounted: total, discountAmt: invoiceDiscountLocal } = applyDiscount(subtotal, invDiscVal, invDiscType);
+    const { discounted: totalBeforeCredit, discountAmt: invoiceDiscountLocal } = applyDiscount(subtotal, invDiscVal, invDiscType);
     const totalDiscountLocal = totalLineDiscountLocal + invoiceDiscountLocal;
     const grossLocal = subtotal + totalLineDiscountLocal;
     const discountPct        = grossLocal > 0 ? (totalDiscountLocal / grossLocal) * 100 : 0;
 
+    // NEW: apply return credit for the live preview — capped at the
+    // total so it never shows a negative number here either. The
+    // server re-validates and re-caps this independently regardless
+    // of what this preview shows.
+    const creditAmount = parseFloat(document.getElementById('returnCreditAmountInput')?.value || 0);
+    const appliedCredit = Math.min(creditAmount, totalBeforeCredit);
+    const total = totalBeforeCredit - appliedCredit;
+
     document.getElementById('subtotalDisplay').textContent = currency.symbol + (currency.code === 'NGN' ? Math.round(grossLocal).toLocaleString() : grossLocal.toFixed(2));
     document.getElementById('totalDisplay').textContent    = currency.symbol + (currency.code === 'NGN' ? Math.round(total).toLocaleString()     : total.toFixed(2));
+
+    const creditRow = document.getElementById('returnCreditDisplayRow');
+    if (appliedCredit > 0) {
+        creditRow.classList.remove('hidden');
+        document.getElementById('returnCreditDisplay').textContent = '-' + currency.symbol + (currency.code === 'NGN' ? Math.round(appliedCredit).toLocaleString() : appliedCredit.toFixed(2));
+    } else {
+        creditRow.classList.add('hidden');
+    }
 
     checkDiscountCap(totalDiscountLocal, discountPct);
 }
@@ -514,6 +559,53 @@ document.addEventListener('click', function(e) {
         if (!el.contains(e.target) && e.target !== ownInput) el.classList.add('hidden');
     });
 });
+
+// ── Return Credit search/select ──────────────────────────────────
+function toggleReturnCredit() {
+    document.getElementById('returnCreditSection').classList.toggle('hidden');
+}
+
+async function searchReturnCredits() {
+    const phone = document.getElementById('customerPhoneInput').value.trim();
+    const box = document.getElementById('returnCreditResults');
+    if (!phone) {
+        box.innerHTML = '<div class="text-xs text-red-500 font-body">Enter the customer\'s phone number above first.</div>';
+        return;
+    }
+    box.innerHTML = '<div class="text-xs text-gray-400 font-body">Searching...</div>';
+    try {
+        const res = await fetch(`{{ route('admin.returns.customer-credits') }}?phone=${encodeURIComponent(phone)}`);
+        const data = await res.json();
+        if (!data.credits || data.credits.length === 0) {
+            box.innerHTML = '<div class="text-xs text-gray-400 font-body">No unused return credits found for this phone number.</div>';
+            return;
+        }
+        box.innerHTML = data.credits.map(c => `
+            <button type="button" onclick='selectReturnCredit(${c.id}, ${c.refund_amount_local}, "${c.part_name} (${c.part_code}) — ₦${Number(c.refund_amount_local).toLocaleString()} credit from invoice ${c.invoice_no || 'N/A'}")'
+                class="block w-full text-left text-xs font-body border border-gray-200 rounded-lg px-3 py-2 hover:border-gold transition-colors">
+                <strong>${c.part_name}</strong> (${c.part_code}) — ₦${Number(c.refund_amount_local).toLocaleString()} credit available
+            </button>
+        `).join('');
+    } catch (e) {
+        box.innerHTML = '<div class="text-xs text-red-500 font-body">Search failed.</div>';
+    }
+}
+
+function selectReturnCredit(id, amount, label) {
+    document.getElementById('returnCreditIdInput').value = id;
+    document.getElementById('returnCreditAmountInput').value = amount;
+    document.getElementById('selectedReturnCreditLabel').textContent = label;
+    document.getElementById('selectedReturnCredit').classList.remove('hidden');
+    document.getElementById('returnCreditResults').innerHTML = '';
+    updateTotal();
+}
+
+function clearReturnCredit() {
+    document.getElementById('returnCreditIdInput').value = '';
+    document.getElementById('returnCreditAmountInput').value = 0;
+    document.getElementById('selectedReturnCredit').classList.add('hidden');
+    updateTotal();
+}
 
 updateCurrency();
 addItem();

@@ -102,12 +102,38 @@ class ReturnsController extends Controller
             ->get()
             ->map(function ($item) {
                 $item->line_total_local = ($item->unit_price_local * $item->qty) - ($item->discount_amount_local ?? 0);
-                return $item;
-            });
+                return $item;            });
 
         $currencyCode = DB::table('invoices')->where('id', $invoiceId)->value('currency_code') ?? 'NGN';
 
         return response()->json(['items' => $items, 'currency_code' => $currencyCode]);
+    }
+
+    // =========================================================
+    // AJAX: GET /admin/returns/customer-credits?phone=...
+    // Finds resolved returns for this customer that have a real
+    // refund_amount_local and haven't already been applied to another
+    // invoice — used by the manual invoice form's "Apply Return
+    // Credit" search, so a returned part's value can go toward a
+    // replacement purchase instead of (or alongside) a cash refund.
+    // =========================================================
+    public function searchCustomerCredits(Request $request)
+    {
+        $phone = preg_replace('/\D/', '', $request->get('phone', ''));
+        if ($phone === '') return response()->json(['credits' => []]);
+
+        $credits = DB::table('returns as r')
+            ->join('parts_inventory as p', 'p.id', '=', 'r.part_id')
+            ->leftJoin('invoices as i', 'i.id', '=', 'r.invoice_id')
+            ->whereRaw("REPLACE(REPLACE(REPLACE(i.customer_phone, '+', ''), ' ', ''), '-', '') = ?", [$phone])
+            ->where('r.status', 'resolved')
+            ->where('r.refund_amount_local', '>', 0)
+            ->whereNull('r.credit_applied_at')
+            ->select('r.id', 'r.refund_amount_local', 'r.created_at', 'p.part_name', 'p.part_code', 'i.invoice_no', 'i.customer_name')
+            ->orderByDesc('r.created_at')
+            ->get();
+
+        return response()->json(['credits' => $credits]);
     }
 
     // =========================================================

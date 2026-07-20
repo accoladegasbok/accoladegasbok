@@ -22,7 +22,7 @@ class BinLabelController extends Controller
     {
         $shelf = $this->enrichShelf(
             DB::table('storage_shelves as ss')
-                ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
+                ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
                 ->where('ss.id', $shelfId)
                 ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
                 ->first()
@@ -41,8 +41,8 @@ class BinLabelController extends Controller
         if (!$room) abort(404);
 
         $shelves = DB::table('storage_shelves as ss')
-            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
-            ->where('ss.room_id', $roomId)
+            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
+            ->where('ss.storage_room_id', $roomId)
             ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
             ->orderBy('ss.full_bin_code')
             ->get()
@@ -61,7 +61,7 @@ class BinLabelController extends Controller
         if (empty($ids)) abort(400, 'No bin IDs provided.');
 
         $shelves = DB::table('storage_shelves as ss')
-            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
+            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
             ->whereIn('ss.id', $ids)
             ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
             ->orderByRaw('FIELD(ss.id, ' . implode(',', $ids) . ')')
@@ -85,7 +85,7 @@ class BinLabelController extends Controller
         $shelves = collect();
         if ($request->boolean('include_bins')) {
             $shelves = DB::table('storage_shelves as ss')
-                ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.room_id')
+                ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
                 ->when($location, fn($q) => $q->where('sr.location', $location))
                 ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
                 ->orderBy('sr.name')->orderBy('ss.full_bin_code')

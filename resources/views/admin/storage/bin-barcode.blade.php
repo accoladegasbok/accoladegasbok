@@ -7,46 +7,47 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
     .toolbar { text-align: center; padding: 16px; }
-    .print-btn { background: #C8960C; color: #0A1F5C; border: none; padding: 10px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+    .toolbar h3 { font-size: 13px; color: #333; margin-bottom: 8px; }
+    .pos-btn { padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; border: 2px solid #0A1F5C; background: white; color: #0A1F5C; margin: 0 4px; }
+    .pos-btn.active { background: #0A1F5C; color: white; }
+    .print-btn { background: #C8960C; color: #0A1F5C; border: none; padding: 10px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; margin-top: 12px; }
 
-    /* ── SHEET: A4 landscape, 3 equal 90mm-wide panels ──
-       297mm wide / 3 = 99mm per panel slot, with a 90mm actual
-       printable label inset from a 9mm gap so the cut line sits
-       cleanly between labels rather than through printed content. */
-    @page { size: A4 landscape; margin: 0; }
+    /* ── SHEET: A4 PORTRAIT, 3 equal STACKED horizontal bands ──
+       210mm wide x 297mm tall / 3 = 99mm per band. Only the chosen
+       band (Top/Middle/Bottom) actually renders a label — the other
+       two stay completely blank (no border, no ink at all), so this
+       same physical sheet can be fed back into the printer later to
+       add labels into the OTHER positions from separate print jobs
+       without any risk of overlapping prior content.
+       Label itself is a compact, upright card — bin code bold on top,
+       barcode at its natural width below (not stretched full-width),
+       matching a normal shelf-tag look rather than a wide banner. */
+    @page { size: A4 portrait; margin: 0; }
     .sheet {
-        width: 297mm; height: 210mm;
-        display: flex;
+        width: 210mm; height: 297mm;
+        display: flex; flex-direction: column;
         background: #fff;
         margin: 0 auto;
     }
-    .panel-slot {
-        width: 99mm; height: 210mm;
+    .band {
+        width: 210mm; height: 99mm;
         display: flex; align-items: center; justify-content: center;
         box-sizing: border-box;
-        border-right: 2px dashed #000; /* deep, clear cut line between panels */
     }
-    .panel-slot:last-child { border-right: none; }
     .label {
-        width: 90mm; height: 200mm;
+        width: 200mm; height: 90mm;
         box-sizing: border-box;
-        border: 2px solid #000; /* deep border for easy cut/trim to exact size */
+        border: 2px solid #000; /* deep border for easy cut/trim */
         border-radius: 4mm;
-        padding: 8mm 4mm;
+        padding: 6mm 10mm;
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         text-align: center;
     }
-    .label .bin-code {
-        font-size: 28px; font-weight: 900; color: #0A1F5C;
-        margin-bottom: 10mm; letter-spacing: 1px;
-        writing-mode: horizontal-tb;
-    }
-    .label svg { max-width: 78mm; height: auto; }
-    .label .bin-code-repeat {
-        font-size: 16px; font-weight: 700; color: #333;
-        margin-top: 10mm; font-family: monospace;
-    }
+    .label .bin-code { font-size: 64px; font-weight: 900; color: #0A1F5C; letter-spacing: 1px; line-height: 1; }
+    .label .room-label { font-size: 18px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 2px; margin-top: 3mm; margin-bottom: 4mm; }
+    .label svg { max-width: 180mm; height: auto; }
+    .label .bin-code-repeat { font-size: 20px; font-weight: 700; color: #333; margin-top: 3mm; font-family: monospace; }
 
     @media print {
         .no-print { display: none !important; }
@@ -59,20 +60,18 @@
 </head>
 <body>
   <div class="toolbar no-print">
-    <button class="print-btn" onclick="window.print()">🖨 Print Label (3-up, A4 landscape)</button>
-    <p style="font-size:12px;color:#666;margin-top:8px;">Prints 3 copies of this bin's label on one A4 sheet — cut along the dashed lines.</p>
+    <h3>Choose position on the A4 sheet (portrait) — the other two bands print blank, so this sheet can take more labels later</h3>
+    <button class="pos-btn active" id="btn-top" onclick="setPosition('top')">⬆ Top</button>
+    <button class="pos-btn" id="btn-middle" onclick="setPosition('middle')">— Middle</button>
+    <button class="pos-btn" id="btn-bottom" onclick="setPosition('bottom')">⬇ Bottom</button>
+    <br>
+    <button class="print-btn" onclick="window.print()">🖨 Print Label</button>
   </div>
 
   <div class="sheet">
-    @for ($i = 0; $i < 3; $i++)
-    <div class="panel-slot">
-        <div class="label">
-            <div class="bin-code">{{ $shelf->full_bin_code }}</div>
-            <svg id="barcode-{{ $i }}"></svg>
-            <div class="bin-code-repeat">{{ $shelf->full_bin_code }}</div>
-        </div>
-    </div>
-    @endfor
+    <div class="band" id="band-top"></div>
+    <div class="band" id="band-middle"></div>
+    <div class="band" id="band-bottom"></div>
   </div>
 
   <script>
@@ -94,8 +93,7 @@
         global.renderBarcode = function (elementId, text, opts = {}) {
             const svg = document.getElementById(elementId);
             if (!svg) return;
-            const barHeight = opts.height || 70, barWidth = opts.width || 2.4;
-            const showText = opts.displayValue !== false, fontSize = opts.fontSize || 14;
+            const barHeight = opts.height || 110, barWidth = opts.width || 4.4;
             const codes = encode(text);
             let x = 10, bars = '';
             codes.forEach(code => {
@@ -107,23 +105,39 @@
                     x += w; isBar = !isBar;
                 }
             });
-            const totalWidth = x + 10, totalHeight = barHeight + (showText ? fontSize + 10 : 5);
+            const totalWidth = x + 10, totalHeight = barHeight + 5;
             svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
             svg.setAttribute('width', totalWidth);
             svg.setAttribute('height', totalHeight);
-            // Barcode value only (no repeated text label baked into the
-            // SVG itself) — the bin code already appears large above and
-            // below each barcode in the label layout.
             svg.innerHTML = bars;
         };
     })(window);
 
-    // Render the same barcode into all 3 panel copies on this sheet.
-    for (let i = 0; i < 3; i++) {
-        renderBarcode("barcode-" + i, "{{ $shelf->full_bin_code }}", {
-            width: 2.4, height: 70, displayValue: false,
-        });
+    const BIN_CODE = "{{ $shelf->full_bin_code }}";
+    const ROOM_NAME = "{{ $shelf->room_name ?? '' }}";
+
+    function labelHtml(svgId) {
+        return `
+            <div class="label">
+                <div class="bin-code">${BIN_CODE}</div>
+                ${ROOM_NAME ? `<div class="room-label">${ROOM_NAME}</div>` : ''}
+                <svg id="${svgId}"></svg>
+                <div class="bin-code-repeat">${BIN_CODE}</div>
+            </div>`;
     }
+
+    function setPosition(pos) {
+        ['top','middle','bottom'].forEach(p => {
+            document.getElementById('btn-' + p).classList.toggle('active', p === pos);
+            document.getElementById('band-' + p).innerHTML = ''; // blank by default
+        });
+        const bandId = 'band-' + pos;
+        const svgId = 'barcode-' + pos;
+        document.getElementById(bandId).innerHTML = labelHtml(svgId);
+        renderBarcode(svgId, BIN_CODE, { width: 4.4, height: 110 });
+    }
+
+    setPosition('top'); // default
   </script>
 </body>
 </html>

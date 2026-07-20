@@ -387,6 +387,78 @@ class OrderAdminController extends Controller
         return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
     }
 
+    // =========================================================
+    // POST /admin/orders/{id}/payments/{paymentId}/confirm
+    // FIXED: this route (name: admin.orders.payments.confirm) already
+    // existed pointing to 'confirmPaymentRecord' — but that method
+    // never existed at all, meaning every attempt to confirm a
+    // recorded order payment was a hard "undefined method" crash.
+    // addPayment() records a payment as 'pending' (matching the
+    // invoice pattern exactly), and paymentSummary()'s confirmedPaid
+    // only ever sums status = 'confirmed' — so with no way to reach
+    // this method, confirmed totals stayed at 0 forever regardless of
+    // what staff recorded. This is that missing method, matching
+    // InvoiceController::confirmPayment() exactly, plus fires the
+    // Payment Received notification at the actual moment a specific
+    // payment is confirmed.
+    // =========================================================
+    public function confirmPaymentRecord(int $id, int $paymentId)
+    {
+        DB::table('order_payments')
+            ->where('id', $paymentId)
+            ->where('order_id', $id)
+            ->update([
+                'status'                => 'confirmed',
+                'confirmed_by_staff_id' => Session::get('staff_id'),
+                'confirmed_at'          => now(),
+                'updated_at'            => now(),
+            ]);
+
+        $order   = DB::table('orders')->where('id', $id)->first();
+        $payment = DB::table('order_payments')->where('id', $paymentId)->first();
+        if ($order && $payment) {
+            $currencySym = ['NGN'=>'₦','USD'=>'$','GHS'=>'GH₵'][$order->currency_code ?? 'NGN'] ?? '₦';
+            $amount      = $payment->amount_local ?? $payment->amount_ngn ?? $payment->amount_usd ?? 0;
+            $amountFmt   = $currencySym . number_format($amount);
+            $summary     = self::paymentSummary($id);
+            $balanceFmt  = $currencySym . number_format($summary['balanceDue']);
+            $stillOwed   = $summary['balanceDue'] > 0 ? " Remaining balance: {$balanceFmt}." : ' Order is now fully paid — thank you!';
+
+            $message = "Hi {$order->customer_name}, we've received your payment of {$amountFmt} for order {$order->order_ref}.{$stillOwed} — Auto Zenith Parts";
+            $emailHtml = "<p>Hi {$order->customer_name},</p>"
+                . "<p>We've received your payment of <strong>{$amountFmt}</strong> for order <strong>{$order->order_ref}</strong>.</p>"
+                . "<p>{$stillOwed}</p><p>— Auto Zenith Parts</p>";
+
+            \App\Services\NotificationService::notify(
+                ['email' => $order->customer_email, 'phone' => $order->customer_phone, 'name' => $order->customer_name],
+                "Payment Received — Order {$order->order_ref}",
+                $message,
+                $emailHtml
+            );
+        }
+
+        return back()->with('success', 'Payment confirmed.');
+    }
+
+    // =========================================================
+    // POST /admin/orders/{id}/payments/{paymentId}/reject
+    // FIXED: same gap as above — this route already existed pointing
+    // to 'rejectPayment', which also never existed.
+    // =========================================================
+    public function rejectPayment(Request $request, int $id, int $paymentId)
+    {
+        $payment = DB::table('order_payments')->where('id', $paymentId)->where('order_id', $id)->first();
+        abort_if(!$payment, 404);
+
+        DB::table('order_payments')->where('id', $paymentId)->update([
+            'status'     => 'rejected',
+            'notes'      => trim(($payment->notes ?? '') . ' [Rejected: ' . ($request->reason ?? 'no reason given') . ']'),
+            'updated_at' => now(),
+        ]);
+
+        return back()->with('success', 'Payment rejected.');
+    }
+
     public function confirmPayment(Request $request, int $id)
     {
         $request->validate(['confirmed_by' => 'nullable|string|max:80']);
@@ -424,6 +496,23 @@ class OrderAdminController extends Controller
                     'order'
                 );
             }
+        }
+
+        // ── Notification Idea: "Payment received" — order-level
+        // confirmation, mirrors the invoice version. ──
+        $currency  = ['NGN'=>'₦','USD'=>'$','GHS'=>'GH₵'][$currencyCode] ?? '₦';
+        $totalFmt  = $currency . number_format($order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0);
+        if ($order->customer_email || $order->customer_phone) {
+            $message = "Hi {$order->customer_name}, we've received your payment for order {$order->order_ref} — Total: {$totalFmt}. Thank you! — Auto Zenith Parts";
+            $emailHtml = "<p>Hi {$order->customer_name},</p>"
+                . "<p>We've received your payment for order <strong>{$order->order_ref}</strong> — Total: <strong>{$totalFmt}</strong>.</p>"
+                . "<p>Thank you for your business!</p><p>— Auto Zenith Parts</p>";
+            \App\Services\NotificationService::notify(
+                ['email' => $order->customer_email, 'phone' => $order->customer_phone, 'name' => $order->customer_name],
+                "Payment Received — Order {$order->order_ref}",
+                $message,
+                $emailHtml
+            );
         }
 
         return response()->json(['success' => true, 'message' => 'Payment confirmed.']);
@@ -506,6 +595,30 @@ class OrderAdminController extends Controller
                     );
                 }
             }
+        }
+
+        // ── Notification Ideas: "Order shipped" and "Delivery
+        // confirmation" — fire on the specific status transitions
+        // that mean those things, using the same real-send service
+        // as every other event wired today. ──
+        if (in_array($request->order_status, ['shipped', 'completed']) && ($order->customer_email || $order->customer_phone)) {
+            $isShipped = $request->order_status === 'shipped';
+            $subject = $isShipped
+                ? "Your Order Has Shipped — {$order->order_ref}"
+                : "Order Delivered — {$order->order_ref}";
+            $message = $isShipped
+                ? "Hi {$order->customer_name}, your order {$order->order_ref} is on its way! We'll let you know once it's delivered. — Auto Zenith Parts"
+                : "Hi {$order->customer_name}, your order {$order->order_ref} has been marked delivered. Thank you for your business! — Auto Zenith Parts";
+            $emailHtml = $isShipped
+                ? "<p>Hi {$order->customer_name},</p><p>Your order <strong>{$order->order_ref}</strong> is on its way!</p><p>We'll let you know once it's delivered.</p><p>— Auto Zenith Parts</p>"
+                : "<p>Hi {$order->customer_name},</p><p>Your order <strong>{$order->order_ref}</strong> has been marked delivered.</p><p>Thank you for your business!</p><p>— Auto Zenith Parts</p>";
+
+            \App\Services\NotificationService::notify(
+                ['email' => $order->customer_email, 'phone' => $order->customer_phone, 'name' => $order->customer_name],
+                $subject,
+                $message,
+                $emailHtml
+            );
         }
 
         return response()->json(['success' => true]);

@@ -678,6 +678,10 @@ class InvoiceController extends Controller
             'items.*.name'     => 'required|string',
             'items.*.price'    => 'required|numeric|min:0',
             'items.*.qty'      => 'required|integer|min:1',
+            // NEW: optional return credit to apply toward this invoice
+            // — e.g. a returned defective part's value going toward a
+            // replacement purchase instead of / alongside a cash refund.
+            'return_credit_id' => 'nullable|exists:returns,id',
         ]);
 
         $saleLocation = $request->location;
@@ -732,8 +736,34 @@ class InvoiceController extends Controller
         }
 
         $subtotalLocal      = $subtotalAfterLineDiscounts - $invoiceDiscLocal;
-        $subtotalFmt        = self::formatLocal($subtotalLocal, $currencyCode);
         $totalDiscountLocal = $lineItems->sum('discount_amount_local') + $invoiceDiscLocal;
+
+        // ── Apply return credit, if selected ──
+        // Re-validated here (not just at the form-validation layer)
+        // since the credit's real-time availability could have changed
+        // between page load and submit — never trust the amount typed
+        // in the form, always re-check against the actual DB row.
+        $returnCreditId = null;
+        $returnCreditApplied = 0;
+        if ($request->return_credit_id) {
+            $returnCredit = DB::table('returns')
+                ->where('id', $request->return_credit_id)
+                ->where('status', 'resolved')
+                ->whereNull('credit_applied_at')
+                ->first();
+            if ($returnCredit && $returnCredit->refund_amount_local > 0) {
+                $returnCreditId = $returnCredit->id;
+                // Never apply more credit than the invoice is actually
+                // worth — cap at whichever is smaller, so a large
+                // credit against a small purchase doesn't produce a
+                // negative total (any leftover credit simply isn't
+                // consumed and remains available for a future invoice).
+                $returnCreditApplied = min((float) $returnCredit->refund_amount_local, $subtotalLocal);
+                $subtotalLocal -= $returnCreditApplied;
+            }
+        }
+
+        $subtotalFmt = self::formatLocal($subtotalLocal, $currencyCode);
 
         $currentStaffForCap          = DB::table('staff')->where('id', Session::get('staff_id'))->first();
         $grossLocal                  = $subtotalAfterLineDiscounts + $lineItems->sum('discount_amount_local');
@@ -805,12 +835,24 @@ class InvoiceController extends Controller
                 'discount_value'           => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
                 'discount_override'        => $exceedsCap,
                 'discount_override_reason' => $exceedsCap ? $request->discount_override_reason : null,
+                'return_credit_id'             => $returnCreditId,
+                'return_credit_applied_local'   => $returnCreditApplied,
                 'payment_method'           => $paymentMethod,
                 'created_by'               => Session::get('staff_name') ?? 'Admin',
                 'notes'                    => $request->notes ?? null,
                 'created_at'               => $createdAt,
                 'updated_at'               => $createdAt,
             ]);
+
+            // Mark the return credit as consumed — prevents it being
+            // applied twice to a different invoice later.
+            if ($returnCreditId) {
+                DB::table('returns')->where('id', $returnCreditId)->update([
+                    'credit_applied_at'      => now(),
+                    'applied_to_invoice_id'  => $invoiceId,
+                    'updated_at'             => now(),
+                ]);
+            }
 
             foreach ($lineItems as $li) {
                 DB::table('invoice_items')->insert([
@@ -901,6 +943,24 @@ class InvoiceController extends Controller
 
         $this->creditCommissionIfApplicable($invoiceId, $subtotalUsd, $currency['code']);
         $invoiceType = 'parts';
+
+        // ── Notification Idea: "Order confirmation" — fires once the
+        // sale is fully committed, using real invoice totals. Skipped
+        // silently if the customer has no email/phone on file (walk-in
+        // customers with no contact info shouldn't cause an error). ──
+        if ($customerInfo->email || $customerInfo->phone) {
+            $message = "Hi {$customerInfo->name}, thank you for your purchase! Invoice {$invoiceNo} — Total: {$subtotalFmt}. — Auto Zenith Parts";
+            $emailHtml = "<p>Hi {$customerInfo->name},</p>"
+                . "<p>Thank you for your purchase! Here's your confirmation:</p>"
+                . "<p><strong>Invoice:</strong> {$invoiceNo}<br><strong>Total:</strong> {$subtotalFmt}</p>"
+                . "<p>— Auto Zenith Parts</p>";
+            \App\Services\NotificationService::notify(
+                ['email' => $customerInfo->email, 'phone' => $customerInfo->phone, 'name' => $customerInfo->name],
+                "Order Confirmation — Invoice {$invoiceNo}",
+                $message,
+                $emailHtml
+            );
+        }
 
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
@@ -1269,6 +1329,22 @@ class InvoiceController extends Controller
         $location    = $saleLocation;
         $invoiceType = 'vehicle';
 
+        // ── Notification Idea: "Order confirmation" — same pattern as
+        // storeManual(), for whole-vehicle sales. ──
+        if ($customerInfo->email || $customerInfo->phone) {
+            $message = "Hi {$customerInfo->name}, thank you for your vehicle purchase! Receipt {$invoiceNo} — Total: {$subtotalFmt}. — Auto Zenith Parts";
+            $emailHtml = "<p>Hi {$customerInfo->name},</p>"
+                . "<p>Thank you for your vehicle purchase! Here's your confirmation:</p>"
+                . "<p><strong>Receipt:</strong> {$invoiceNo}<br><strong>Total:</strong> {$subtotalFmt}</p>"
+                . "<p>— Auto Zenith Parts</p>";
+            \App\Services\NotificationService::notify(
+                ['email' => $customerInfo->email, 'phone' => $customerInfo->phone, 'name' => $customerInfo->name],
+                "Order Confirmation — Receipt {$invoiceNo}",
+                $message,
+                $emailHtml
+            );
+        }
+
         return view('admin.invoices.show', compact(
             'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
@@ -1448,16 +1524,31 @@ class InvoiceController extends Controller
         // silently short the total by double-counting the discount.
         $discountLocal   = (float) ($invoice->discount_amount_local ?? 0);
         $totalLocal      = $subtotalLocal;                    // the actual stored/charged amount
-        $grossSubtotalLocal = $subtotalLocal + $discountLocal; // add discount back for the pre-discount display line
+        $grossSubtotalLocal = $subtotalLocal + $discountLocal + (float) ($invoice->return_credit_applied_local ?? 0); // add both discount AND return credit back for the pre-deduction display line, so Subtotal - Discount - Return Credit = Total exactly
         $subtotalFmt     = self::formatLocal($grossSubtotalLocal, $currencyCode); // overwrite the earlier subtotalFmt with the correct GROSS figure
         $totalFmt        = self::formatLocal($totalLocal, $currencyCode);
         $discountFmt     = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
         $discountLabel   = null;
         if ($discountLocal > 0) {
-            $discountLabel = $invoice->discount_type === 'percent'
-                ? 'Discount (' . rtrim(rtrim(number_format((float) $invoice->discount_value, 2), '0'), '.') . '%):'
-                : 'Discount:';
+            // FIXED: previously only showed a percentage for discounts
+            // originally entered AS a percentage — a fixed-amount
+            // discount just said "Discount:" with no indication of what
+            // share of the sale that amount actually represents. Now
+            // always computes and shows the effective percentage
+            // either way, so the math "makes up the sum" transparently
+            // regardless of how the discount was entered.
+            $effectivePercent = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
+            $percentStr = rtrim(rtrim(number_format($effectivePercent, 1), '0'), '.');
+            $discountLabel = "Discount ({$percentStr}%):";
         }
+
+        // NEW: return credit applied to this invoice, if any — shown
+        // as its own line, separate from an ordinary discount, so
+        // staff and the customer can both see clearly that part of
+        // the total came from a return rather than a promotional
+        // discount.
+        $returnCreditApplied = (float) ($invoice->return_credit_applied_local ?? 0);
+        $returnCreditFmt = $returnCreditApplied > 0 ? self::formatLocal($returnCreditApplied, $currencyCode) : null;
 
         // Footer business-registration addresses — Nigeria transactions
         // show BOTH the Ile-Ife and Lagos Oshodi addresses regardless of
@@ -1471,7 +1562,8 @@ class InvoiceController extends Controller
             'invoice', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
-            'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt', 'footerAddresses'
+            'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt', 'footerAddresses',
+            'returnCreditApplied', 'returnCreditFmt'
         ));
     }
 
@@ -1521,6 +1613,30 @@ class InvoiceController extends Controller
             ->where('id', $paymentId)
             ->where('invoice_id', $invoiceId)
             ->update(['status' => 'confirmed', 'updated_at' => now()]);
+
+        // ── Notification Idea: "Payment received" — fires the moment
+        // a payment is actually confirmed, not just recorded pending. ──
+        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        $payment = DB::table('invoice_payments')->where('id', $paymentId)->first();
+        if ($invoice && $payment) {
+            $currency   = self::currencyMeta($invoice->currency_code ?? 'NGN');
+            $amountFmt  = $currency['symbol'] . number_format($payment->amount_local, $invoice->currency_code === 'NGN' ? 0 : 2);
+            $summary    = self::invoicePaymentSummary($invoiceId);
+            $balanceFmt = $currency['symbol'] . number_format($summary['balanceDue'], $invoice->currency_code === 'NGN' ? 0 : 2);
+            $stillOwed  = $summary['balanceDue'] > 0 ? " Remaining balance: {$balanceFmt}." : ' Invoice is now fully paid — thank you!';
+
+            $message = "Hi {$invoice->customer_name}, we've received your payment of {$amountFmt} for invoice {$invoice->invoice_no}.{$stillOwed} — Auto Zenith Parts";
+            $emailHtml = "<p>Hi {$invoice->customer_name},</p>"
+                . "<p>We've received your payment of <strong>{$amountFmt}</strong> for invoice <strong>{$invoice->invoice_no}</strong>.</p>"
+                . "<p>{$stillOwed}</p><p>— Auto Zenith Parts</p>";
+
+            \App\Services\NotificationService::notify(
+                ['email' => $invoice->customer_email, 'phone' => $invoice->customer_phone, 'name' => $invoice->customer_name],
+                "Payment Received — Invoice {$invoice->invoice_no}",
+                $message,
+                $emailHtml
+            );
+        }
 
         return back()->with('success', 'Payment confirmed.');
     }
@@ -1590,6 +1706,57 @@ class InvoiceController extends Controller
         if ($result['whatsapp_link']) {
             $statusMsg .= ' WhatsApp link ready — click "Message customer" to send manually.';
         }
+
+        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
+    }
+
+    // =========================================================
+    // POST /admin/invoices/{id}/send-customer-copy
+    // NEW: a real "Send" button for emailing the customer copy of a
+    // receipt/invoice directly, distinct from the payment-reminder
+    // flow — this is for the ordinary case of just getting the
+    // customer their copy, whether or not they're behind on payment.
+    // =========================================================
+    public function sendCustomerCopy(int $invoiceId)
+    {
+        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        if (!$invoice) abort(404);
+
+        $items = DB::table('invoice_items')->where('invoice_id', $invoiceId)->get();
+        $currency = self::currencyMeta($invoice->currency_code ?? 'NGN');
+
+        $itemRows = $items->map(function ($item) use ($currency, $invoice) {
+            $lineTotal = ($item->unit_price_local ?? $item->unit_price_usd) * $item->qty;
+            return "<tr><td style='padding:6px;border-bottom:1px solid #eee;'>{$item->part_name}</td>"
+                . "<td style='padding:6px;border-bottom:1px solid #eee;text-align:center;'>{$item->qty}</td>"
+                . "<td style='padding:6px;border-bottom:1px solid #eee;text-align:right;'>"
+                . $currency['symbol'] . number_format($lineTotal) . "</td></tr>";
+        })->implode('');
+
+        $discountLocal = (float) ($invoice->discount_amount_local ?? 0);
+        $totalFmt = $currency['symbol'] . number_format($invoice->subtotal_local ?? 0);
+
+        $emailHtml = "<p>Hi {$invoice->customer_name},</p>"
+            . "<p>Here's your receipt for invoice <strong>{$invoice->invoice_no}</strong>:</p>"
+            . "<table style='width:100%;border-collapse:collapse;margin:12px 0;'>"
+            . "<thead><tr><th style='text-align:left;padding:6px;border-bottom:2px solid #333;'>Item</th><th style='padding:6px;border-bottom:2px solid #333;'>Qty</th><th style='text-align:right;padding:6px;border-bottom:2px solid #333;'>Amount</th></tr></thead>"
+            . "<tbody>{$itemRows}</tbody></table>"
+            . ($discountLocal > 0 ? "<p>Discount applied: -" . $currency['symbol'] . number_format($discountLocal) . "</p>" : "")
+            . "<p><strong>Total: {$totalFmt}</strong></p>"
+            . "<p>Thank you for your business!</p><p>— Auto Zenith Parts</p>";
+
+        $message = "Hi {$invoice->customer_name}, here's your receipt for invoice {$invoice->invoice_no} — Total: {$totalFmt}. — Auto Zenith Parts";
+
+        $result = \App\Services\NotificationService::notify(
+            ['email' => $invoice->customer_email, 'phone' => $invoice->customer_phone, 'name' => $invoice->customer_name],
+            "Your Receipt — Invoice {$invoice->invoice_no}",
+            $message,
+            $emailHtml
+        );
+
+        $statusMsg = $result['email']
+            ? 'Customer copy emailed.'
+            : 'Could not send email (check customer has an email on file).';
 
         return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
     }

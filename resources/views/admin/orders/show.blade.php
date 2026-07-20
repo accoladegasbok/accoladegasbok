@@ -113,12 +113,20 @@
       </div>
 
       @if($paySummary['balanceDue'] > 0)
-      <form method="POST" action="{{ route('admin.orders.send-reminder', $order->id) }}" onsubmit="return confirm('Send a payment reminder by SMS and email?')" class="mb-4">
+      <form method="POST" action="{{ route('admin.orders.send-reminder', $order->id) }}" onsubmit="return confirm('Send a payment reminder email, and get a WhatsApp link ready to send manually?')" class="mb-2">
         @csrf
         <button type="submit" class="w-full border border-amber-300 bg-amber-50 text-amber-700 font-body font-500 text-xs py-2.5 rounded-xl hover:bg-amber-100 transition-colors">
-          📩 Send Payment Reminder (SMS + Email)
+          📩 Send Payment Reminder (Email)
         </button>
       </form>
+      {{-- FIXED: sendReminder() already generates a real WhatsApp link
+           — it just never had anywhere to show up until now. --}}
+      @if(session('whatsapp_reminder_link'))
+      <a href="{{ session('whatsapp_reminder_link') }}" target="_blank"
+         class="block text-center w-full border border-green-300 bg-green-50 text-green-700 font-body font-500 text-xs py-2.5 rounded-xl hover:bg-green-100 transition-colors mb-4">
+        💬 Message Customer via WhatsApp (opens pre-filled — tap Send to actually deliver it)
+      </a>
+      @endif
       @endif
 
       {{-- Payment history --}}

@@ -121,6 +121,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::delete('/{id}',                   [\App\Http\Controllers\Admin\StorageController::class, 'destroyRoom'])->name('destroy');
             Route::post('/{id}/shelves',              [\App\Http\Controllers\Admin\StorageController::class, 'addShelf'])->name('shelves.add');
             Route::post('/{id}/shelves/bulk',          [\App\Http\Controllers\Admin\StorageController::class, 'bulkGenerateShelves'])->name('shelves.bulk');
+            // NEW: bins could only be Added or Deleted before, never
+            // edited/renamed/moved in place — this is what makes the
+            // new StorageController::updateShelf() reachable.
+            Route::put('/shelves/{shelfId}',           [\App\Http\Controllers\Admin\StorageController::class, 'updateShelf'])->name('shelves.update');
+            // NEW: relocate everything currently IN a bin to a
+            // different, already-existing bin — deliberately separate
+            // from renaming/editing the bin itself above.
+            Route::post('/shelves/{shelfId}/relocate-items', [\App\Http\Controllers\Admin\StorageController::class, 'relocateItems'])->name('shelves.relocate-items');
             Route::delete('/shelves/{shelfId}',        [\App\Http\Controllers\Admin\StorageController::class, 'destroyShelf'])->name('shelves.destroy');
             Route::get('/shelves/{shelfId}/barcode',   [\App\Http\Controllers\Admin\StorageController::class, 'shelfBarcode'])->name('shelves.barcode');
         });
@@ -251,6 +259,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/payments/{paymentId}/confirm', [InvoiceController::class, 'confirmPayment'])->name('payments.confirm');
             Route::post('/{id}/payments/{paymentId}/reject', [InvoiceController::class, 'rejectPayment'])->name('payments.reject');
             Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendReminder'])->name('send-reminder');
+            Route::post('/{id}/send-customer-copy', [InvoiceController::class, 'sendCustomerCopy'])->name('send-customer-copy');
 
             // Quick Receipt — services/labor/misc, never touches inventory
             Route::get('/service', fn() => redirect()->route('admin.invoices.service.create'));

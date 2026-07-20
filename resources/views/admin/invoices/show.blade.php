@@ -42,9 +42,10 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     background: #fff; border: 1px solid #e2e2e2; border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.06); position: relative; z-index: 1;
 }
+@page { size: A4; margin: 0; }
 @media print { .payments-panel { display: none !important; } }
 .invoice {
-    background: white; width: 210mm; min-height: 148mm;
+    background: white; width: 210mm; min-height: 297mm; /* FIXED: was 148mm — half of real A4 height (297mm), causing every printed copy to look small/cramped on a full A4 sheet */
     margin: 0 auto 20px; padding: 16mm 14mm;
     box-shadow: 0 2px 16px rgba(0,0,0,0.12);
     position: relative; page-break-after: always;
@@ -288,11 +289,28 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
             <div style="font-size:18px; font-weight:700; color:{{ $paySummary['balanceDue'] > 0 ? '#c0392b' : '#1b9e5c' }};">{{ $currency['symbol'] }}{{ number_format($paySummary['balanceDue']) }}</div>
         </div>
     </div>
-    @if($paySummary['balanceDue'] > 0)
-    <form method="POST" action="{{ route('admin.invoices.send-reminder', $resolvedInvoiceId) }}" onsubmit="return confirm('Send a payment reminder by SMS and email?')" style="margin-bottom:12px;">
+    {{-- NEW: a real Send button for emailing the customer their copy —
+         previously there was no way to send a receipt directly, only
+         print/download it manually. Available regardless of payment
+         status, unlike the reminder button below. --}}
+    <form method="POST" action="{{ route('admin.invoices.send-customer-copy', $resolvedInvoiceId) }}" onsubmit="return confirm('Email the customer their receipt now?')" style="margin-bottom:8px;">
         @csrf
-        <button type="submit" style="width:100%; background:#fff8e6; border:1px solid #e6c656; color:#8a6d1f; font-size:12px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">📩 Send Payment Reminder (SMS + Email)</button>
+        <button type="submit" style="width:100%; background:#eef4fb; border:1px solid #b3d1f0; color:#1a4d8f; font-size:12px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">✉ Send Customer Copy (Email)</button>
     </form>
+    @if($paySummary['balanceDue'] > 0)
+    <form method="POST" action="{{ route('admin.invoices.send-reminder', $resolvedInvoiceId) }}" onsubmit="return confirm('Send a payment reminder email, and get a WhatsApp link ready to send manually?')" style="margin-bottom:8px;">
+        @csrf
+        <button type="submit" style="width:100%; background:#fff8e6; border:1px solid #e6c656; color:#8a6d1f; font-size:12px; font-weight:700; padding:8px; border-radius:6px; cursor:pointer;">📩 Send Payment Reminder (Email)</button>
+    </form>
+    {{-- FIXED: sendReminder() already generates a real WhatsApp link
+         (message pre-filled, staff taps Send manually) — it just never
+         had anywhere to actually show up until now. --}}
+    @if(session('whatsapp_reminder_link'))
+    <a href="{{ session('whatsapp_reminder_link') }}" target="_blank"
+       style="display:block; text-align:center; width:100%; background:#e8f7ee; border:1px solid #25D366; color:#1b7a3d; font-size:12px; font-weight:700; padding:8px; border-radius:6px; text-decoration:none; margin-bottom:12px;">
+        💬 Message Customer via WhatsApp (opens pre-filled — tap Send to actually deliver it)
+    </a>
+    @endif
     @endif
     @if($paySummary['payments']->count())
     <table style="width:100%; font-size:12px; margin-bottom:12px; border-collapse:collapse;">
@@ -545,6 +563,9 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                     <tr><td>Subtotal:</td><td>{{ $subtotalFmt }}</td></tr>
                     @if(($discountLocal ?? 0) > 0)
                     <tr><td>{{ $discountLabel }}</td><td>-{{ $discountFmt }}</td></tr>
+                    @endif
+                    @if(($returnCreditApplied ?? 0) > 0)
+                    <tr style="color:#1a6b3c;"><td>Return Credit Applied:</td><td>-{{ $returnCreditFmt }}</td></tr>
                     @endif
                     <tr class="total-row"><td><strong>TOTAL:</strong></td><td><strong>{{ $totalFmt ?? $subtotalFmt }}</strong></td></tr>
                 </table>
