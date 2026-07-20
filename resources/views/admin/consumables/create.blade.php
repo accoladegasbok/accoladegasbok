@@ -7,7 +7,7 @@
 @section('content')
 <div class="max-w-2xl">
 
-  <form method="POST" action="{{ route('admin.inventory.consumable.store') }}">
+  <form method="POST" action="{{ route('admin.inventory.consumable.store') }}" enctype="multipart/form-data">
     @csrf
 
     @if($errors->any())
@@ -92,6 +92,15 @@
           <textarea name="description" rows="2"
                     class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 resize-none"
                     placeholder="Part number, compatibility notes, supplier info...">{{ old('description') }}</textarea>
+        </div>
+
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Photos <span class="font-normal text-gray-300">(optional, up to 6 — was missing from this form entirely)</span>
+          </label>
+          <input type="file" name="photos[]" multiple accept="image/*"
+                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 bg-white">
+          <p class="text-[10px] text-gray-400 mt-1">JPG/PNG, max 5MB each. Select multiple files at once, or add more later from the edit page.</p>
         </div>
 
       </div>

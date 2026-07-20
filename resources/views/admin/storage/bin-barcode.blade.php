@@ -5,22 +5,74 @@
   <meta charset="UTF-8">
   <title>Bin Barcode — {{ $shelf->full_bin_code }}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f4; }
-    .toolbar { text-align: center; margin-bottom: 16px; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
+    .toolbar { text-align: center; padding: 16px; }
     .print-btn { background: #C8960C; color: #0A1F5C; border: none; padding: 10px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
-    .label { width: 280px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin: 0 auto; text-align: center; }
-    .label .bin-code { font-size: 18px; font-weight: bold; color: #0A1F5C; margin-bottom: 8px; }
-    @media print { .no-print { display: none; } body { margin: 0; padding: 0; background: #fff; } }
+
+    /* ── SHEET: A4 landscape, 3 equal 90mm-wide panels ──
+       297mm wide / 3 = 99mm per panel slot, with a 90mm actual
+       printable label inset from a 9mm gap so the cut line sits
+       cleanly between labels rather than through printed content. */
+    @page { size: A4 landscape; margin: 0; }
+    .sheet {
+        width: 297mm; height: 210mm;
+        display: flex;
+        background: #fff;
+        margin: 0 auto;
+    }
+    .panel-slot {
+        width: 99mm; height: 210mm;
+        display: flex; align-items: center; justify-content: center;
+        box-sizing: border-box;
+        border-right: 2px dashed #000; /* deep, clear cut line between panels */
+    }
+    .panel-slot:last-child { border-right: none; }
+    .label {
+        width: 90mm; height: 200mm;
+        box-sizing: border-box;
+        border: 2px solid #000; /* deep border for easy cut/trim to exact size */
+        border-radius: 4mm;
+        padding: 8mm 4mm;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        text-align: center;
+    }
+    .label .bin-code {
+        font-size: 28px; font-weight: 900; color: #0A1F5C;
+        margin-bottom: 10mm; letter-spacing: 1px;
+        writing-mode: horizontal-tb;
+    }
+    .label svg { max-width: 78mm; height: auto; }
+    .label .bin-code-repeat {
+        font-size: 16px; font-weight: 700; color: #333;
+        margin-top: 10mm; font-family: monospace;
+    }
+
+    @media print {
+        .no-print { display: none !important; }
+        body { margin: 0; padding: 0; background: #fff; }
+    }
+    @media screen {
+        .sheet { box-shadow: 0 2px 16px rgba(0,0,0,0.15); margin-top: 12px; }
+    }
   </style>
 </head>
 <body>
   <div class="toolbar no-print">
-    <button class="print-btn" onclick="window.print()">🖨 Print Label</button>
+    <button class="print-btn" onclick="window.print()">🖨 Print Label (3-up, A4 landscape)</button>
+    <p style="font-size:12px;color:#666;margin-top:8px;">Prints 3 copies of this bin's label on one A4 sheet — cut along the dashed lines.</p>
   </div>
 
-  <div class="label">
-    <div class="bin-code">{{ $shelf->full_bin_code }}</div>
-    <svg id="barcode"></svg>
+  <div class="sheet">
+    @for ($i = 0; $i < 3; $i++)
+    <div class="panel-slot">
+        <div class="label">
+            <div class="bin-code">{{ $shelf->full_bin_code }}</div>
+            <svg id="barcode-{{ $i }}"></svg>
+            <div class="bin-code-repeat">{{ $shelf->full_bin_code }}</div>
+        </div>
+    </div>
+    @endfor
   </div>
 
   <script>
@@ -42,7 +94,7 @@
         global.renderBarcode = function (elementId, text, opts = {}) {
             const svg = document.getElementById(elementId);
             if (!svg) return;
-            const barHeight = opts.height || 50, barWidth = opts.width || 2;
+            const barHeight = opts.height || 70, barWidth = opts.width || 2.4;
             const showText = opts.displayValue !== false, fontSize = opts.fontSize || 14;
             const codes = encode(text);
             let x = 10, bars = '';
@@ -59,13 +111,19 @@
             svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
             svg.setAttribute('width', totalWidth);
             svg.setAttribute('height', totalHeight);
-            svg.innerHTML = bars + (showText ? `<text x="${totalWidth/2}" y="${barHeight+fontSize+2}" font-family="monospace" font-size="${fontSize}" text-anchor="middle" fill="#000">${text}</text>` : '');
+            // Barcode value only (no repeated text label baked into the
+            // SVG itself) — the bin code already appears large above and
+            // below each barcode in the label layout.
+            svg.innerHTML = bars;
         };
     })(window);
 
-    renderBarcode("barcode", "{{ $shelf->full_bin_code }}", {
-        width: 2, height: 50, displayValue: true, fontSize: 14,
-    });
+    // Render the same barcode into all 3 panel copies on this sheet.
+    for (let i = 0; i < 3; i++) {
+        renderBarcode("barcode-" + i, "{{ $shelf->full_bin_code }}", {
+            width: 2.4, height: 70, displayValue: false,
+        });
+    }
   </script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 @section('content')
 <div class="max-w-2xl">
 
-  <form method="POST" action="{{ route('admin.inventory.consumable.update', $item->id) }}">
+  <form method="POST" action="{{ route('admin.inventory.consumable.update', $item->id) }}" enctype="multipart/form-data">
     @csrf @method('PUT')
 
     @if($errors->any())
@@ -69,6 +69,37 @@
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Notes</label>
           <textarea name="description" rows="2"
                     class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 resize-none">{{ old('description', $item->description) }}</textarea>
+        </div>
+
+        {{-- FIXED: photo upload/display was completely missing from
+             this form — editing a consumable could never add or manage
+             a photo, regardless of what staff tried. --}}
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Current Photos</label>
+          @php $existingPhotos = json_decode($item->photos ?? '[]', true) ?: []; @endphp
+          @if(count($existingPhotos) > 0)
+          <div class="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-3">
+            @foreach($existingPhotos as $idx => $photoPath)
+            <div class="relative group">
+              <img src="{{ asset('storage/' . $photoPath) }}" class="w-full h-20 object-cover rounded-lg border border-gray-200">
+              <label class="absolute top-1 right-1 bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center cursor-pointer hover:bg-red-700">
+                <input type="checkbox" name="remove_photos[]" value="{{ $idx }}" class="sr-only">
+                ✕
+              </label>
+            </div>
+            @endforeach
+          </div>
+          <p class="text-[10px] text-gray-400 mb-3">Click the ✕ on a photo to remove it when you save.</p>
+          @else
+          <p class="text-xs text-gray-400 mb-3">No photos yet.</p>
+          @endif
+
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Add Photos <span class="font-normal text-gray-300">(optional, up to 6 total)</span>
+          </label>
+          <input type="file" name="photos[]" multiple accept="image/*"
+                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 bg-white">
+          <p class="text-[10px] text-gray-400 mt-1">JPG/PNG, max 5MB each.</p>
         </div>
 
       </div>

@@ -156,39 +156,53 @@ function addVehicle() {
             <span class="text-xs font-display font-700 text-navy uppercase">Vehicle #${i}</span>
             <button type="button" onclick="removeVehicle(${i})" class="text-red-400 hover:text-red-600 text-xs">✕ Remove</button>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+
+        {{-- FIXED: VIN was optional and required a fully manual model
+             field. Now VIN is required, and decoding it auto-fills
+             Brand, Model, Year, and Engine details (displacement,
+             engine code, I4/V6/V8) — same decode flow used everywhere
+             else in the app. Staff can still override anything after
+             decoding, or skip decode and fill it in by hand. --}}
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+            <div class="col-span-2 sm:col-span-1">
+                <label class="block text-xs text-gray-400 mb-1">VIN * <span class="text-gold">(required)</span></label>
+                <div class="flex gap-1">
+                    <input type="text" name="vehicles[${i}][vin]" id="vehicle-vin-${i}" maxlength="17" required placeholder="17-character VIN"
+                        class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono uppercase focus:outline-none focus:border-gold">
+                    <button type="button" onclick="decodeVehicleVin(${i})"
+                        class="bg-navy text-white text-xs font-700 px-2.5 rounded-lg whitespace-nowrap hover:bg-opacity-90">Decode</button>
+                </div>
+                <div id="vin-status-${i}" class="text-[10px] mt-1"></div>
+            </div>
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Brand *</label>
-                <select name="vehicles[${i}][brand]" required class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-gold">
+                <select name="vehicles[${i}][brand]" id="vehicle-brand-${i}" onchange="loadVehicleModels(${i})" required class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-gold">
+                    <option value="">Select brand</option>
                     ${BRANDS.map(b => `<option value="${b}">${b}</option>`).join('')}
                 </select>
             </div>
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Model *</label>
-                <input type="text" name="vehicles[${i}][model]" required placeholder="e.g. Camry"
-                    class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
+                <select name="vehicles[${i}][model]" id="vehicle-model-${i}" required class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-gold">
+                    <option value="">Select Brand first</option>
+                </select>
             </div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Year *</label>
-                <select name="vehicles[${i}][year]" required class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-gold">
+                <select name="vehicles[${i}][year]" id="vehicle-year-${i}" required class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-gold">
                     ${YEARS.map(y => `<option value="${y}">${y}</option>`).join('')}
                 </select>
             </div>
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Colour</label>
-                <input type="text" name="vehicles[${i}][colour]" placeholder="e.g. Silver"
+                <input type="text" name="vehicles[${i}][colour]" id="vehicle-colour-${i}" placeholder="e.g. Silver"
                     class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
-            </div>
-        </div>
-        <div class="grid grid-cols-3 gap-2">
-            <div>
-                <label class="block text-xs text-gray-400 mb-1">VIN (optional)</label>
-                <input type="text" name="vehicles[${i}][vin]" maxlength="17" placeholder="17-character VIN"
-                    class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono uppercase focus:outline-none focus:border-gold">
             </div>
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Mileage</label>
-                <input type="number" name="vehicles[${i}][mileage]" min="0" placeholder="e.g. 85000"
+                <input type="number" name="vehicles[${i}][mileage]" id="vehicle-mileage-${i}" min="0" placeholder="e.g. 85000"
                     class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
             </div>
             <div>
@@ -198,8 +212,108 @@ function addVehicle() {
                     class="price-input w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-gold">
             </div>
         </div>
+        <div class="grid grid-cols-3 gap-2">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Engine Displacement (L)</label>
+                <input type="number" step="0.1" min="0" max="10" name="vehicles[${i}][engine_l]" id="vehicle-engine-l-${i}" placeholder="e.g. 2.4"
+                    class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Engine Code / Name</label>
+                <input type="text" name="vehicles[${i}][engine_code]" id="vehicle-engine-code-${i}" placeholder="e.g. 2AZ-FE"
+                    class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-gold">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Cylinders</label>
+                <select name="vehicles[${i}][cylinders]" id="vehicle-cylinders-${i}" class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-gold">
+                    <option value="">—</option>
+                    <option value="I3">I3</option>
+                    <option value="I4">I4</option>
+                    <option value="I5">I5</option>
+                    <option value="I6">I6</option>
+                    <option value="V6">V6</option>
+                    <option value="V8">V8</option>
+                    <option value="V10">V10</option>
+                    <option value="V12">V12</option>
+                </select>
+            </div>
+        </div>
     `;
     container.appendChild(row);
+}
+
+async function loadVehicleModels(i) {
+    const brand = document.getElementById('vehicle-brand-' + i).value;
+    const modelSelect = document.getElementById('vehicle-model-' + i);
+    if (!brand) { modelSelect.innerHTML = '<option value="">Select Brand first</option>'; return; }
+    modelSelect.innerHTML = '<option value="">Loading...</option>';
+    try {
+        const res = await fetch(`{{ route('parts.models') }}?make=${encodeURIComponent(brand)}`);
+        const data = await res.json();
+        modelSelect.innerHTML = '<option value="">Select model</option>' +
+            (data.models || []).map(m => `<option value="${m}">${m}</option>`).join('') +
+            '<option value="__other__">Other (type below)</option>';
+    } catch (e) {
+        modelSelect.innerHTML = '<option value="">Could not load models</option>';
+    }
+}
+
+async function decodeVehicleVin(i) {
+    const vin = document.getElementById('vehicle-vin-' + i).value.trim().toUpperCase();
+    const status = document.getElementById('vin-status-' + i);
+    if (vin.length !== 17) {
+        status.textContent = 'VIN must be exactly 17 characters.';
+        status.className = 'text-[10px] mt-1 text-red-500';
+        return;
+    }
+    status.textContent = 'Decoding...';
+    status.className = 'text-[10px] mt-1 text-gray-400';
+    try {
+        const res = await fetch(`{{ route('parts.vin-decode') }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ vin }),
+        });
+        const data = await res.json();
+        if (data.error || !data.vehicle) {
+            status.textContent = data.error || 'Could not decode this VIN.';
+            status.className = 'text-[10px] mt-1 text-red-500';
+            return;
+        }
+        const v = data.vehicle;
+        // Fill brand, then load models for it, then set model + rest
+        const brandSelect = document.getElementById('vehicle-brand-' + i);
+        const brandUpper = (v.make || '').toUpperCase();
+        if ([...brandSelect.options].some(o => o.value.toUpperCase() === brandUpper)) {
+            brandSelect.value = [...brandSelect.options].find(o => o.value.toUpperCase() === brandUpper).value;
+        }
+        await loadVehicleModels(i);
+        const modelSelect = document.getElementById('vehicle-model-' + i);
+        const modelUpper = (v.model || '').toUpperCase();
+        const modelOpt = [...modelSelect.options].find(o => o.value.toUpperCase() === modelUpper);
+        if (modelOpt) { modelSelect.value = modelOpt.value; }
+        else if (v.model) {
+            const opt = document.createElement('option');
+            opt.value = v.model; opt.textContent = v.model; opt.selected = true;
+            modelSelect.insertBefore(opt, modelSelect.firstChild.nextSibling);
+        }
+
+        if (v.year) document.getElementById('vehicle-year-' + i).value = v.year;
+        if (v.engine_l) document.getElementById('vehicle-engine-l-' + i).value = v.engine_l;
+        if (v.oem_engine_code) document.getElementById('vehicle-engine-code-' + i).value = v.oem_engine_code;
+        if (v.engine_cyl) {
+            const cylMap = { '3':'I3','4':'I4','5':'I5','6':'V6','8':'V8','10':'V10','12':'V12' };
+            const cylSelect = document.getElementById('vehicle-cylinders-' + i);
+            const guess = cylMap[String(v.engine_cyl)];
+            if (guess && [...cylSelect.options].some(o => o.value === guess)) cylSelect.value = guess;
+        }
+
+        status.textContent = `✓ Decoded: ${v.year || ''} ${v.make || ''} ${v.model || ''}${v.engine_l ? ' · ' + v.engine_l + 'L' : ''}${v.engine_cyl ? ' · ' + v.engine_cyl + '-cyl' : ''} — review and adjust as needed.`;
+        status.className = 'text-[10px] mt-1 text-green-600';
+    } catch (e) {
+        status.textContent = 'Network error — try again.';
+        status.className = 'text-[10px] mt-1 text-red-500';
+    }
 }
 
 function removeVehicle(i) {

@@ -182,6 +182,11 @@ class InventoryController extends Controller
             'compatible_trims'    => 'nullable|string|max:200',
             'not_compatible_note' => 'nullable|string|max:200',
             'source_ref'          => 'nullable|string|max:6',
+            // FIXED: stock_qty was completely missing from this method
+            // — not validated, not saved. Editing a part could never
+            // actually change its quantity at all, regardless of what
+            // the form submitted.
+            'stock_qty'           => 'nullable|integer|min:0|max:999',
         ]);
 
         // ── Part name guard (admin-only for unlisted names) ──────────
@@ -281,6 +286,12 @@ class InventoryController extends Controller
             'compat_year_to'         => $request->compat_year_to,
             'compatible_trims'       => $request->compatible_trims,
             'not_compatible_note'    => $request->not_compatible_note,
+            // FIXED: was never included, so quantity edits were
+            // silently discarded no matter what staff entered.
+            // Only update if the field was actually submitted —
+            // if the edit form doesn't have this field yet, this
+            // stays a no-op rather than accidentally zeroing stock.
+            ...($request->has('stock_qty') ? ['stock_qty' => $request->stock_qty] : []),
             'updated_at'             => now(),
         ]);
 

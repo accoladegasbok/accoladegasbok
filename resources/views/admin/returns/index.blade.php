@@ -38,6 +38,7 @@
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Part</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Type</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Reason</th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Refund</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Status</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Logged</th>
           <th class="px-4 py-3"></th>
@@ -54,6 +55,9 @@
             <span class="badge {{ $r->return_type === 'customer' ? 'badge-blue' : 'badge-gray' }}">{{ ucfirst($r->return_type) }}</span>
           </td>
           <td class="px-4 py-3 text-xs text-gray-600 max-w-xs truncate">{{ $r->reason }}</td>
+          <td class="px-4 py-3 text-xs font-mono text-gray-700">
+            {{ $r->refund_amount_local ? '₦' . number_format($r->refund_amount_local, 2) : '—' }}
+          </td>
           <td class="px-4 py-3">
             @if($r->status === 'pending_inspection')
               <span class="badge badge-amber">Pending Inspection</span>
@@ -69,7 +73,7 @@
           </td>
         </tr>
         @empty
-        <tr><td colspan="6" class="px-4 py-12 text-center text-gray-400 text-sm">No returns in this view.</td></tr>
+        <tr><td colspan="7" class="px-4 py-12 text-center text-gray-400 text-sm">No returns in this view.</td></tr>
         @endforelse
       </tbody>
     </table>

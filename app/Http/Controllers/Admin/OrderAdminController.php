@@ -328,6 +328,65 @@ class OrderAdminController extends Controller
     // =========================================================
     // POST /admin/orders/{id}/confirm-payment
     // =========================================================
+    // =========================================================
+    // POST /admin/orders/{id}/send-reminder
+    // Route existed, method never did — same "undefined method"
+    // crash pattern as addPayment() had. Uses the real
+    // payment_reminders table (order_id, channel, sent_by_staff_id —
+    // no updated_at column) confirmed from the actual migration.
+    // Records one row per channel (SMS + Email), matching what the
+    // button already says it does.
+    //
+    // NOTE: this only LOGS that a reminder was sent — it does not
+    // actually dispatch an SMS or email yet. That's a separate,
+    // larger integration (real SMS/email provider setup) — see the
+    // broader email/WhatsApp request, which needs provider details
+    // before it can be built.
+    // =========================================================
+    public function sendReminder(Request $request, int $id)
+    {
+        $order = DB::table('orders')->where('id', $id)->first();
+        abort_if(!$order, 404);
+
+        $summary    = self::paymentSummary($id);
+        $currency   = ['NGN'=>'₦','USD'=>'$','GHS'=>'GH₵'][$order->currency_code ?? 'NGN'] ?? '₦';
+        $balanceFmt = $currency . number_format($summary['balanceDue'] ?? 0);
+
+        $message = "Hi {$order->customer_name}, this is a reminder that order {$order->order_ref} "
+            . "has an outstanding balance of {$balanceFmt}. Please reach out to arrange payment. — Auto Zenith Parts";
+
+        $emailHtml = "<p>Hi {$order->customer_name},</p>"
+            . "<p>This is a reminder that order <strong>{$order->order_ref}</strong> has an outstanding balance of <strong>{$balanceFmt}</strong>.</p>"
+            . "<p>Please reach out to arrange payment at your earliest convenience.</p>"
+            . "<p>— Auto Zenith Parts</p>";
+
+        $result = \App\Services\NotificationService::notify(
+            ['email' => $order->customer_email, 'phone' => $order->customer_phone, 'name' => $order->customer_name],
+            "Payment Reminder — Order {$order->order_ref}",
+            $message,
+            $emailHtml
+        );
+
+        $staffId = Session::get('staff_id');
+        foreach (['email', 'sms'] as $channel) {
+            DB::table('payment_reminders')->insert([
+                'order_id'         => $id,
+                'channel'          => $channel,
+                'sent_by_staff_id' => $staffId,
+                'created_at'       => now(),
+            ]);
+        }
+
+        $statusMsg = $result['email']
+            ? 'Payment reminder emailed.'
+            : 'Could not send email (check customer has an email on file).';
+        if ($result['whatsapp_link']) {
+            $statusMsg .= ' WhatsApp link ready — click "Message customer" to send manually.';
+        }
+
+        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
+    }
+
     public function confirmPayment(Request $request, int $id)
     {
         $request->validate(['confirmed_by' => 'nullable|string|max:80']);

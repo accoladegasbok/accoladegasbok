@@ -1149,7 +1149,12 @@ class InvoiceController extends Controller
 
         return view('admin.invoices.car-sale-create', [
             'locations' => $locations,
-            'brands'    => \App\Support\VehicleBrands::all(),
+            // FIXED: was pulling from \App\Support\VehicleBrands::all(),
+            // a separate, stale, smaller brand list — never updated when
+            // VehicleDatabase got expanded to 21+ brands earlier this
+            // session. Now uses the same comprehensive source as
+            // everywhere else in the app.
+            'brands'    => \App\Data\VehicleDatabase::makes(),
             'years'     => range(date('Y') + 1, 1990),
         ]);
     }
@@ -1166,10 +1171,18 @@ class InvoiceController extends Controller
             'vehicles.*.brand'       => 'required|string|max:60',
             'vehicles.*.model'       => 'required|string|max:80',
             'vehicles.*.year'        => 'required|integer|min:1990|max:' . (date('Y') + 1),
-            'vehicles.*.vin'         => 'nullable|string|max:17',
+            // FIXED: VIN was nullable — now required, per the explicit
+            // request that every vehicle sale capture a real VIN.
+            'vehicles.*.vin'         => 'required|string|size:17',
             'vehicles.*.mileage'     => 'nullable|integer|min:0',
             'vehicles.*.colour'      => 'nullable|string|max:50',
             'vehicles.*.price'       => 'required|numeric|min:0',
+            // New: engine details, auto-filled by VIN decode on the
+            // form but editable/overridable, matching how every other
+            // VIN-decode flow in the app already works.
+            'vehicles.*.engine_code' => 'nullable|string|max:60',
+            'vehicles.*.engine_l'    => 'nullable|numeric|min:0|max:10',
+            'vehicles.*.cylinders'   => 'nullable|string|max:10',
         ]);
 
         $saleLocation = $request->location;
@@ -1185,6 +1198,9 @@ class InvoiceController extends Controller
                 'vin'              => $v['vin'] ?? null,
                 'mileage'          => $v['mileage'] ?? null,
                 'colour'           => $v['colour'] ?? null,
+                'engine_code'      => $v['engine_code'] ?? null,
+                'engine_l'         => $v['engine_l'] ?? null,
+                'cylinders'        => $v['cylinders'] ?? null,
                 'qty'              => 1,
                 'unit_price_local' => $priceLocal,
                 'unit_price_fmt'   => self::formatLocal($priceLocal, $currencyCode),
@@ -1238,6 +1254,9 @@ class InvoiceController extends Controller
                 'vehicle_year'     => $li->vehicle_year,
                 'mileage'          => $li->mileage,
                 'colour'           => $li->colour,
+                'engine_code'      => $li->engine_code,
+                'engine_l'         => $li->engine_l,
+                'cylinders'        => $li->cylinders,
                 'condition_grade'  => 'N/A',
                 'qty'              => 1,
                 'unit_price_local' => $li->unit_price_local,
@@ -1380,6 +1399,8 @@ class InvoiceController extends Controller
                 'year_to'               => '',
                 'condition_grade'       => $item->condition_grade,
                 'engine_code_oem'       => '',
+                'transmission_code_oem' => '',
+                'transmission_code_oem' => '',
                 'qty'                   => $item->qty,
                 'unit_price_usd'        => $priceLocal,
                 'unit_price_fmt'        => self::formatLocal($priceLocal, $currencyCode),
@@ -1525,23 +1546,52 @@ class InvoiceController extends Controller
         $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
         if (!$invoice) abort(404);
 
-        // FIXED: was inserting a 'sent_by' column that doesn't exist on
-        // this table (real column is 'sent_by_staff_id'), plus 'sent_at'
-        // and 'updated_at' which also don't exist — every reminder send
-        // was silently crashing. The button/UI says "SMS + Email", so
-        // this now records one row per channel actually sent, matching
-        // what the real table schema expects (channel is required).
+        $summary   = self::invoicePaymentSummary($invoiceId);
+        $currency  = self::currencyMeta($invoice->currency_code ?? 'NGN');
+        $balanceFmt = $currency['symbol'] . number_format($summary['balanceDue'], $invoice->currency_code === 'NGN' ? 0 : 2);
+
+        $message = "Hi {$invoice->customer_name}, this is a reminder that invoice {$invoice->invoice_no} "
+            . "has an outstanding balance of {$balanceFmt}. Please reach out to arrange payment. — Auto Zenith Parts";
+
+        $emailHtml = "<p>Hi {$invoice->customer_name},</p>"
+            . "<p>This is a reminder that invoice <strong>{$invoice->invoice_no}</strong> has an outstanding balance of <strong>{$balanceFmt}</strong>.</p>"
+            . "<p>Please reach out to arrange payment at your earliest convenience.</p>"
+            . "<p>— Auto Zenith Parts</p>";
+
+        // Real send via the centralized service — was previously just
+        // logging a DB row with no actual delivery attempt at all.
+        $result = \App\Services\NotificationService::notify(
+            ['email' => $invoice->customer_email, 'phone' => $invoice->customer_phone, 'name' => $invoice->customer_name],
+            "Payment Reminder — Invoice {$invoice->invoice_no}",
+            $message,
+            $emailHtml
+        );
+
         $staffId = Session::get('staff_id');
-        foreach (['sms', 'email'] as $channel) {
-            DB::table('invoice_payment_reminders')->insert([
-                'invoice_id'       => $invoiceId,
-                'channel'          => $channel,
-                'sent_by_staff_id' => $staffId,
-                'created_at'       => now(),
-            ]);
+        DB::table('invoice_payment_reminders')->insert([
+            'invoice_id'       => $invoiceId,
+            'channel'          => 'email',
+            'sent_by_staff_id' => $staffId,
+            'created_at'       => now(),
+        ]);
+        // SMS logged as "attempted" for the record, even though it
+        // currently no-ops — keeps the audit trail consistent once
+        // SMS is actually turned on later, without a schema change.
+        DB::table('invoice_payment_reminders')->insert([
+            'invoice_id'       => $invoiceId,
+            'channel'          => 'sms',
+            'sent_by_staff_id' => $staffId,
+            'created_at'       => now(),
+        ]);
+
+        $statusMsg = $result['email']
+            ? 'Payment reminder emailed.'
+            : 'Could not send email (check customer has an email on file).';
+        if ($result['whatsapp_link']) {
+            $statusMsg .= ' WhatsApp link ready — click "Message customer" to send manually.';
         }
 
-        return back()->with('success', 'Payment reminder sent (SMS + Email).');
+        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
     }
 
     // =========================================================

@@ -92,12 +92,22 @@ class ReturnsController extends Controller
     public function invoiceItems(Request $request)
     {
         $invoiceId = (int) $request->get('invoice_id');
+        // FIXED: was only selecting id/part_id/part_name/part_code/qty —
+        // no price data at all, so the return form had nothing to
+        // autofill cost from even though the invoice already has it.
         $items = DB::table('invoice_items')
             ->where('invoice_id', $invoiceId)
-            ->select('id', 'part_id', 'part_name', 'part_code', 'qty')
-            ->get();
+            ->select('id', 'part_id', 'part_name', 'part_code', 'qty',
+                     'unit_price_local', 'discount_amount_local')
+            ->get()
+            ->map(function ($item) {
+                $item->line_total_local = ($item->unit_price_local * $item->qty) - ($item->discount_amount_local ?? 0);
+                return $item;
+            });
 
-        return response()->json(['items' => $items]);
+        $currencyCode = DB::table('invoices')->where('id', $invoiceId)->value('currency_code') ?? 'NGN';
+
+        return response()->json(['items' => $items, 'currency_code' => $currencyCode]);
     }
 
     // =========================================================
@@ -111,6 +121,11 @@ class ReturnsController extends Controller
             'reason'           => 'required|string|max:1000',
             'invoice_id'       => 'nullable|exists:invoices,id',
             'invoice_item_id'  => 'nullable|exists:invoice_items,id',
+            // FIXED: nothing here captured what the part/labour actually
+            // cost on the original receipt — the returns table had no
+            // place to save it at all, so even a correctly-autofilled
+            // amount on the form had nowhere to go.
+            'refund_amount_local' => 'nullable|numeric|min:0',
         ]);
 
         $part = DB::table('parts_inventory')->where('id', $request->part_id)->first();
@@ -123,6 +138,7 @@ class ReturnsController extends Controller
                 'invoice_item_id'     => $request->invoice_item_id,
                 'return_type'         => $request->return_type,
                 'reason'              => $request->reason,
+                'refund_amount_local' => $request->refund_amount_local,
                 'status'              => 'pending_inspection',
                 'created_by_staff_id' => Session::get('staff_id'),
                 'created_at'          => now(),

@@ -24,7 +24,7 @@ class AuditController extends Controller
     // =========================================================
     // GET /admin/audit/create — choose location + category to start
     // =========================================================
-    public function create()
+    public function create(Request $request)
     {
         $locations = [
             'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
@@ -35,7 +35,35 @@ class AuditController extends Controller
             'Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels','Consumable',
         ];
 
-        return view('admin.audit.create', compact('locations', 'categories'));
+        // FIXED: audit previously only chose Location + Category, with
+        // no way to scope down to a specific room — meaning a big
+        // location with several storage rooms had no way to audit just
+        // one room at a time. Rooms are loaded for whichever location
+        // is selected (or all rooms if none picked yet, so the initial
+        // page load isn't empty).
+        $selectedLocation = $request->get('location', '');
+        $roomsQuery = DB::table('storage_rooms')->orderBy('location')->orderBy('name');
+        if ($selectedLocation) {
+            $roomsQuery->where('location', $selectedLocation);
+        }
+        $rooms = $roomsQuery->get();
+
+        return view('admin.audit.create', compact('locations', 'categories', 'rooms', 'selectedLocation'));
+    }
+
+    // =========================================================
+    // AJAX: GET /admin/audit/rooms-for-location?location=...
+    // Powers the location -> room dropdown cascade on the create form.
+    // =========================================================
+    public function roomsForLocation(Request $request)
+    {
+        $location = $request->get('location', '');
+        $rooms = DB::table('storage_rooms')
+            ->when($location, fn($q) => $q->where('location', $location))
+            ->orderBy('name')
+            ->get(['id', 'name', 'code']);
+
+        return response()->json(['rooms' => $rooms]);
     }
 
     // =========================================================
@@ -45,23 +73,50 @@ class AuditController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'location' => 'required|string',
-            'category' => 'required|string',
+            'location'   => 'required|string',
+            // FIXED: category used to be a single required value —
+            // now accepts an array, and an empty/omitted array means
+            // "all categories", matching the "all category option
+            // should be available too" request. room_id is new and
+            // optional — omitted means "whole location", same as the
+            // old behavior, so nothing breaks for existing workflows
+            // that don't care about room-level scoping.
+            'category'   => 'nullable|array',
+            'category.*' => 'string',
+            'room_id'    => 'nullable|exists:storage_rooms,id',
         ]);
 
-        $parts = DB::table('parts_inventory')
+        $categories = $request->input('category', []);
+        $allCategories = empty($categories); // no selection = every category
+
+        $query = DB::table('parts_inventory')
             ->where('location', $request->location)
-            ->where('part_category', $request->category)
-            ->where('status', 'Available')
-            ->get(['id', 'part_code', 'part_name', 'stock_qty']);
+            ->where('status', 'Available');
+
+        if (!$allCategories) {
+            $query->whereIn('part_category', $categories);
+        }
+
+        $roomName = null;
+        if ($request->room_id) {
+            $shelfIds = DB::table('storage_shelves')->where('room_id', $request->room_id)->pluck('id');
+            $query->whereIn('storage_shelf_id', $shelfIds);
+            $roomName = DB::table('storage_rooms')->where('id', $request->room_id)->value('name');
+        }
+
+        $parts = $query->get(['id', 'part_code', 'part_name', 'stock_qty']);
 
         if ($parts->isEmpty()) {
-            return back()->with('error', 'No available parts found for this location and category.');
+            return back()->with('error', 'No available parts found for this location/room/category selection.');
         }
+
+        $categoryLabel = $allCategories ? 'All Categories' : implode(', ', $categories);
 
         $sessionId = DB::table('audit_sessions')->insertGetId([
             'location'    => $request->location,
-            'category'    => $request->category,
+            'category'    => $categoryLabel,
+            'room_id'     => $request->room_id,
+            'room_name'   => $roomName,
             'started_by'  => Session::get('staff_name', Session::get('staff_role', 'Staff')),
             'status'      => 'in_progress',
             'total_items' => $parts->count(),

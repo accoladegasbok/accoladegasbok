@@ -166,6 +166,80 @@ class StorageController extends Controller
     }
 
     // =========================================================
+    // PUT /admin/storage/shelves/{shelfId} — edit a bin in place, or
+    // move it (and every part currently assigned to it) to a
+    // different room, even within the same location. Previously bins
+    // could only be Added or Deleted — correcting a typo or
+    // restructuring a shelf layout meant deleting and recreating,
+    // which would have orphaned any parts still assigned there.
+    // =========================================================
+    public function updateShelf(Request $request, int $shelfId)
+    {
+        $shelf = DB::table('storage_shelves')->where('id', $shelfId)->first();
+        abort_if(!$shelf, 404);
+
+        $request->validate([
+            'storage_room_id' => 'required|exists:storage_rooms,id',
+            'shelf_code'      => 'required|string|max:20',
+            'column_number'   => 'nullable|integer|min:0|max:999',
+            'space_number'    => 'nullable|integer|min:0|max:999',
+            'capacity'        => 'nullable|integer|min:1',
+            'notes'           => 'nullable|string|max:300',
+        ]);
+
+        $targetRoom = DB::table('storage_rooms')->where('id', $request->storage_room_id)->first();
+        abort_if(!$targetRoom, 404);
+
+        $fullCode = $this->buildFullBinCode($targetRoom->code, $request->shelf_code, $request->column_number, $request->space_number);
+
+        // Uniqueness check excludes this shelf's own current row —
+        // otherwise saving without changing anything would falsely
+        // collide with itself.
+        if (DB::table('storage_shelves')->where('full_bin_code', $fullCode)->where('id', '!=', $shelfId)->exists()) {
+            return back()->withErrors(['shelf_code' => "Bin code {$fullCode} already exists."])->withInput();
+        }
+
+        $movingRooms = (int) $request->storage_room_id !== (int) $shelf->storage_room_id;
+
+        DB::beginTransaction();
+        try {
+            DB::table('storage_shelves')->where('id', $shelfId)->update([
+                'storage_room_id' => $request->storage_room_id,
+                'shelf_code'      => strtoupper(trim($request->shelf_code)),
+                'column_number'   => $request->column_number,
+                'space_number'    => $request->space_number,
+                'full_bin_code'   => $fullCode,
+                'capacity'        => $request->capacity,
+                'notes'           => $request->notes,
+                'updated_at'      => now(),
+            ]);
+
+            // Keep every part currently sitting in this bin in sync —
+            // both the bin_location text and, if the bin moved rooms,
+            // the part's location field too (so a part physically
+            // relocated within the same city, not a cross-location
+            // Stock Transfer, still shows the right place correctly).
+            DB::table('parts_inventory')->where('storage_shelf_id', $shelfId)->update([
+                'bin_location' => $fullCode,
+                'location'     => $targetRoom->location,
+                'updated_at'   => now(),
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withErrors(['error' => 'Could not update bin: ' . $e->getMessage()])->withInput();
+        }
+
+        $msg = "Bin updated to {$fullCode}.";
+        if ($movingRooms) {
+            $msg .= " Moved to {$targetRoom->name} — any parts assigned here moved with it.";
+        }
+
+        return redirect()->route('admin.storage.show', $request->storage_room_id)->with('success', $msg);
+    }
+
+    // =========================================================
     // POST /admin/storage/{id}/shelves/bulk — bulk-generate a grid
     // e.g. shelves A-F, columns 1-10, spaces 1-4 each = 240 bins at once
     // =========================================================

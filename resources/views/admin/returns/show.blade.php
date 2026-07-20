@@ -22,6 +22,7 @@
       <div><div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Logged</div><div class="font-500 text-navy">{{ \Carbon\Carbon::parse($return->created_at)->format('d M Y, H:i') }}</div></div>
       <div><div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Logged By</div><div class="font-500 text-navy">{{ $createdBy ?? '—' }}</div></div>
       <div><div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Part Location</div><div class="font-500 text-navy">{{ $return->location }}</div></div>
+      <div><div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Refund / Cost</div><div class="font-500 text-navy">{{ $return->refund_amount_local ? '₦' . number_format($return->refund_amount_local, 2) : '—' }}</div></div>
     </div>
     @if($invoice)
     <div class="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-3 text-sm font-body text-blue-800">

@@ -387,6 +387,36 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
             </div>
         </div>
 
+        @php
+            $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
+            if (isset($order) && $order) {
+                $printPaySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
+                $printPaySummary['payments'] = $printPaySummary['payments']->map(function ($p) {
+                    $p->amount_local = $p->amount_local ?? $p->amount_ngn;
+                    return $p;
+                });
+            } else {
+                $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
+            }
+
+            // Real 3-state payment status — was hardcoded to always show
+            // 'PAID' for every manual invoice (since $order is never set
+            // for those, the old fallback silently defaulted to PAID
+            // regardless of actual payment state). Now derived from the
+            // real confirmed-payments total vs balance due.
+            $confirmedPaidAmt = $printPaySummary
+                ? $printPaySummary['payments']->where('status', 'confirmed')->sum('amount_local')
+                : 0;
+            $balanceDueAmt = $printPaySummary['balanceDue'] ?? 0;
+            if ($balanceDueAmt <= 0 && $confirmedPaidAmt > 0) {
+                $paymentStatusLabel = 'PAID';
+            } elseif ($confirmedPaidAmt > 0 && $balanceDueAmt > 0) {
+                $paymentStatusLabel = 'PARTIAL';
+            } else {
+                $paymentStatusLabel = 'UNPAID';
+            }
+        @endphp
+
         <div class="inv-parties">
             <div class="info-box">
                 <h4>{{ $isVehicleSale ? 'Buyer' : 'Bill To' }}</h4>
@@ -401,7 +431,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                 <h4>Payment Details</h4>
                 <p>
                     <strong>Method:</strong> {{ $paymentMethod }}<br>
-                    <strong>Status:</strong> {{ $order->payment_status ?? 'PAID' }}<br>
+                    <strong>Status:</strong> <span style="color: {{ $paymentStatusLabel === 'PAID' ? '#1b9e5c' : ($paymentStatusLabel === 'PARTIAL' ? '#e65100' : '#c0392b') }}; font-weight:700;">{{ $paymentStatusLabel }}</span><br>
                     @if(!empty($businessInfo['bank']))
                     <strong>{{ $businessInfo['bank'] }}:</strong> {{ $businessInfo['account'] }}<br>
                     <strong>Name:</strong> {{ $businessInfo['acct_name'] }}
@@ -521,18 +551,6 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
             </div>
         </div>
 
-        @php
-            $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
-            if (isset($order) && $order) {
-                $printPaySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
-                $printPaySummary['payments'] = $printPaySummary['payments']->map(function ($p) {
-                    $p->amount_local = $p->amount_local ?? $p->amount_ngn;
-                    return $p;
-                });
-            } else {
-                $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
-            }
-        @endphp
         <div class="inv-totals" style="margin-top: -6px;">
             <div class="totals-box" style="border-top: 1px dashed #ccc; padding-top: 8px;">
                 <table>

@@ -58,6 +58,21 @@
       </div>
     </div>
 
+    {{-- FIXED: refund/cost amount was never captured anywhere on this
+         form — auto-fills from the selected invoice item's real price
+         (parts) or can be typed manually (e.g. for labour, or when no
+         invoice is linked). --}}
+    <div class="stat-card mb-5" id="refundSection">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Refund / Cost Amount</h2>
+      <p class="text-xs text-gray-400 font-body mb-3">Auto-fills from the invoice item selected above — adjust if only partially refunding, or enter manually for labour/no-invoice cases.</p>
+      <div class="relative max-w-xs">
+        <span id="refundCurrencySymbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₦</span>
+        <input type="number" name="refund_amount_local" id="refundAmountInput" step="0.01" min="0"
+          class="w-full border border-gray-200 rounded-xl pl-7 pr-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
+          placeholder="0">
+      </div>
+    </div>
+
     {{-- Part being returned --}}
     <div class="stat-card mb-5">
       <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Part Being Returned *</h2>
@@ -143,8 +158,13 @@ async function selectInvoice(id, label) {
     try {
         const res = await fetch(`{{ route('admin.returns.invoice-items') }}?invoice_id=${id}`);
         const data = await res.json();
+        // FIXED: currency symbol now matches the actual invoice's
+        // currency instead of always showing ₦, and each option
+        // carries its real line total for the refund autofill below.
+        const symbols = { NGN: '₦', USD: '$', GHS: 'GH₵' };
+        document.getElementById('refundCurrencySymbol').textContent = symbols[data.currency_code] || '₦';
         itemSelect.innerHTML = '<option value="">Select item</option>' +
-            (data.items || []).map(it => `<option value="${it.id}" data-part-id="${it.part_id || ''}" data-label="${it.part_name} (${it.part_code})">${it.part_name} — Qty ${it.qty}</option>`).join('');
+            (data.items || []).map(it => `<option value="${it.id}" data-part-id="${it.part_id || ''}" data-label="${it.part_name} (${it.part_code})" data-line-total="${it.line_total_local || 0}">${it.part_name} — Qty ${it.qty}</option>`).join('');
     } catch (e) {
         itemSelect.innerHTML = '<option value="">Could not load items</option>';
     }
@@ -160,6 +180,11 @@ document.getElementById('invoiceItemSelect').addEventListener('change', function
         document.getElementById('selectedPart').classList.remove('hidden');
         document.getElementById('partSearchInput').value = '';
         document.getElementById('partResults').classList.add('hidden');
+    }
+    // Autofill refund amount from the invoice item's real line total —
+    // staff can still adjust it if only partially refunding.
+    if (opt && opt.dataset.lineTotal) {
+        document.getElementById('refundAmountInput').value = parseFloat(opt.dataset.lineTotal).toFixed(2);
     }
 });
 

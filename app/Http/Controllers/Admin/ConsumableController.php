@@ -105,6 +105,10 @@ class ConsumableController extends Controller
             'location'    => 'required|string',
             'price_local' => 'required|numeric|min:0',
             'stock_qty'   => 'required|integer|min:1',
+            // FIXED: photo upload never existed on this form at all —
+            // 'photos' was hardcoded to an empty array on every save.
+            'photos'      => 'nullable|array|max:6',
+            'photos.*'    => 'nullable|image|max:5120', // 5MB per photo
         ]);
 
         $currency = InvoiceController::currencyForLocation($request->location);
@@ -115,6 +119,18 @@ class ConsumableController extends Controller
             ->orderByDesc('id')->value('part_code');
         $nextNum  = $lastCode ? (int) substr($lastCode, 4) + 1 : 1;
         $partCode = 'CON-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+
+        // Store uploaded photos (if any) — same disk/path convention
+        // as the rest of the app (public disk, so they serve through
+        // the /media symlink like every other part photo).
+        $photoPaths = [];
+        if ($request->hasFile('photos')) {
+            foreach ($request->file('photos') as $photo) {
+                if ($photo && $photo->isValid()) {
+                    $photoPaths[] = $photo->store('parts-photos', 'public');
+                }
+            }
+        }
 
         DB::table('parts_inventory')->insert([
             'part_code'        => $partCode,
@@ -138,7 +154,7 @@ class ConsumableController extends Controller
             'origin'           => 'N/A',
             'origin_market'    => 'N/A',
             'description'      => $request->description ?? null,
-            'photos'           => '[]',
+            'photos'           => json_encode($photoPaths),
             'created_at'       => now(),
             'updated_at'       => now(),
         ]);
@@ -175,7 +191,35 @@ class ConsumableController extends Controller
             'part_name'   => 'required|string|max:191',
             'price_local' => 'required|numeric|min:0',
             'stock_qty'   => 'required|integer|min:0',
+            // FIXED: same gap as store() — edit form could never
+            // actually save a photo, regardless of what was uploaded.
+            'photos'         => 'nullable|array|max:6',
+            'photos.*'       => 'nullable|image|max:5120',
+            'remove_photos'  => 'nullable|array', // indices of existing photos staff want removed
         ]);
+
+        $item = DB::table('parts_inventory')->where('id', $id)->first();
+        $existingPhotos = json_decode($item->photos ?? '[]', true) ?: [];
+
+        // Remove any photos staff flagged for deletion
+        if (!empty($request->remove_photos)) {
+            foreach ($request->remove_photos as $idx) {
+                if (isset($existingPhotos[$idx])) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($existingPhotos[$idx]);
+                    unset($existingPhotos[$idx]);
+                }
+            }
+            $existingPhotos = array_values($existingPhotos);
+        }
+
+        // Append newly uploaded photos to whatever's left
+        if ($request->hasFile('photos')) {
+            foreach ($request->file('photos') as $photo) {
+                if ($photo && $photo->isValid()) {
+                    $existingPhotos[] = $photo->store('parts-photos', 'public');
+                }
+            }
+        }
 
         DB::table('parts_inventory')->where('id', $id)->update([
             'part_name'       => $request->part_name,
@@ -186,6 +230,7 @@ class ConsumableController extends Controller
             'stock_qty'       => (int) $request->stock_qty,
             'status'          => $request->stock_qty > 0 ? 'Available' : 'Out of Stock',
             'description'     => $request->description ?? null,
+            'photos'          => json_encode($existingPhotos),
             'updated_at'      => now(),
         ]);
 
