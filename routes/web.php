@@ -38,6 +38,9 @@ Route::get('/register', function () { return redirect('https://accounts.autozeni
 // ── Public receipt ─────────────────────────────────────────────────
 Route::get('/receipt/{orderRef}',  [\App\Http\Controllers\Admin\OrderAdminController::class, 'receiptPublic'])->name('orders.receipt.public');
 
+// ── Public unsubscribe (no auth) — clicked from an email footer ────
+Route::get('/unsubscribe/{phone}/{token}/{channel}', [\App\Http\Controllers\UnsubscribeController::class, 'show'])->name('unsubscribe.show');
+
 // ── Public compatibility checker page ─────────────────────────────
 Route::get('/parts/compatibility', [\App\Http\Controllers\PartsSearchController::class, 'compatibility'])->name('parts.compatibility');
 

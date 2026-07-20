@@ -240,6 +240,28 @@ class CustomerController extends Controller
 
         $totalSpent = $orders->sum('total_amount_usd') + $invoices->sum('subtotal_usd');
 
+        // NEW: return/credit history for this customer — joined via
+        // the invoice their return was originally linked to (same
+        // matching approach ReturnsController::searchCustomerCredits()
+        // already uses). Shows both used and still-available credits,
+        // so staff have the full picture, not just what's redeemable.
+        $returnHistory = DB::table('returns as r')
+            ->join('parts_inventory as p', 'p.id', '=', 'r.part_id')
+            ->leftJoin('invoices as i', 'i.id', '=', 'r.invoice_id')
+            ->whereRaw("REPLACE(REPLACE(REPLACE(i.customer_phone, '+', ''), ' ', ''), '-', '') = ?", [$normalizedPhone])
+            ->select('r.id', 'r.status', 'r.refund_amount_local', 'r.credit_applied_at',
+                     'r.applied_to_invoice_id', 'r.created_at', 'p.part_name', 'p.part_code')
+            ->orderByDesc('r.created_at')
+            ->get();
+
+        // NEW: staff notes on this customer profile
+        $notes = DB::table('customer_notes as n')
+            ->leftJoin('staff as s', 's.id', '=', 'n.staff_id')
+            ->where('n.phone', $normalizedPhone)
+            ->select('n.id', 'n.note', 'n.created_at', 's.name as staff_name')
+            ->orderByDesc('n.created_at')
+            ->get();
+
         return view('admin.customers.show', [
             'phone'      => $normalizedPhone,
             'name'       => $latest->customer_name ?? 'Unknown',
@@ -250,7 +272,74 @@ class CustomerController extends Controller
             'topItems'   => $topItems,
             'totalSpent' => $totalSpent,
             'totalCount' => $orders->count() + $invoices->count(),
+            'returnHistory' => $returnHistory,
+            'notes'         => $notes,
         ]);
+    }
+
+    // =========================================================
+    // POST /admin/customers/{phone}/notes — add a staff note
+    // =========================================================
+    public function addNote(Request $request, string $phone)
+    {
+        $request->validate(['note' => 'required|string|max:1000']);
+        $normalizedPhone = $this->normalizePhone($phone);
+
+        DB::table('customer_notes')->insert([
+            'phone'      => $normalizedPhone,
+            'note'       => $request->note,
+            'staff_id'   => \Illuminate\Support\Facades\Session::get('staff_id'),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return back()->with('success', 'Note added.');
+    }
+
+    // =========================================================
+    // DELETE /admin/customers/notes/{id}
+    // =========================================================
+    public function destroyNote(int $id)
+    {
+        DB::table('customer_notes')->where('id', $id)->delete();
+        return back()->with('success', 'Note removed.');
+    }
+
+    // =========================================================
+    // POST /admin/customers/{phone}/send-message — quick-action to
+    // message a customer directly from their profile, without
+    // needing an invoice/order context. Uses the same centralized
+    // NotificationService as everything else.
+    // =========================================================
+    public function sendMessage(Request $request, string $phone)
+    {
+        $request->validate(['subject' => 'required|string|max:150', 'message' => 'required|string|max:2000']);
+        $normalizedPhone = $this->normalizePhone($phone);
+
+        // Pull the most recent known email/name for this phone from
+        // either orders or invoices — whichever has more recent data.
+        $recent = DB::table('invoices')
+            ->whereRaw("REPLACE(REPLACE(REPLACE(customer_phone, '+', ''), ' ', ''), '-', '') = ?", [$normalizedPhone])
+            ->orderByDesc('created_at')->first()
+            ?? DB::table('orders')
+            ->whereRaw("REPLACE(REPLACE(REPLACE(customer_phone, '+', ''), ' ', ''), '-', '') = ?", [$normalizedPhone])
+            ->orderByDesc('created_at')->first();
+
+        if (!$recent) {
+            return back()->with('error', 'No customer record found for this phone number.');
+        }
+
+        $emailHtml = "<p>Hi {$recent->customer_name},</p><p>" . nl2br(e($request->message)) . "</p><p>— Auto Zenith Parts</p>";
+
+        $result = \App\Services\NotificationService::notify(
+            ['email' => $recent->customer_email ?? null, 'phone' => $recent->customer_phone, 'name' => $recent->customer_name],
+            $request->subject,
+            $request->message,
+            $emailHtml
+        );
+
+        $statusMsg = $result['email'] ? 'Message emailed.' : 'Could not send email (no email on file).';
+        return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
     }
 
     // =========================================================

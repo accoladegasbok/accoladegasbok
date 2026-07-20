@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>Labels — {{ count($parts) }} part(s)</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&family=Inter:wght@400;600;700;900&display=swap');
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px; }
 
@@ -31,7 +30,8 @@ body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px;
     padding:2px 4px; page-break-inside:avoid; overflow:hidden;
 }
 .label-small .vehicle { font-size:6px; font-weight:700; color:#555; text-align:center; margin-bottom:1px; white-space:nowrap; overflow:hidden; }
-.label-small .bc { font-family:'Libre Barcode 128',monospace; font-size:40px; line-height:1; color:#000; width:100%; text-align:center; }
+.label-small .bc-svg { width:100%; display:flex; justify-content:center; }
+.label-small .bc-svg svg { max-width:100%; height:auto; }
 .label-small .code { font-size:7px; font-weight:700; color:#000; letter-spacing:1px; margin-top:1px; text-align:center; }
 .label-small .name { font-size:5px; color:#777; text-align:center; margin-top:1px; }
 
@@ -87,7 +87,8 @@ body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px;
 .flag.legal { background:#fce4ec; color:#c62828; border:1px solid #ef9a9a; }
 
 .lbl-barcode { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 12px 6px; }
-.lbl-barcode .bc { font-family:'Libre Barcode 128',monospace; font-size:68px; line-height:1; color:#000; text-align:center; width:100%; }
+.lbl-barcode .bc-svg { width:100%; display:flex; justify-content:center; }
+.lbl-barcode .bc-svg svg { max-width:95%; height:auto; }
 .lbl-barcode .bc-text { font-size:11px; font-weight:700; letter-spacing:2px; margin-top:2px; font-family:monospace; }
 
 .lbl-footer { padding:5px 12px; border-top:1px solid #ccc; display:flex; justify-content:space-between; align-items:center; font-size:7.5px; color:#888; background:#fafafa; }
@@ -138,7 +139,7 @@ body.size-large .label-small { display:none; }
 {{-- 2×1 SMALL — barcode + vehicle + part name --}}
 <div class="label-small">
     <div class="vehicle">{{ $vehicle ?: 'UNIVERSAL' }}</div>
-    <div class="bc">{{ $part->part_code }}</div>
+    <div class="bc-svg"><svg id="barcode-small-{{ $part->id }}"></svg></div>
     <div class="code">{{ $part->part_code }}</div>
     <div class="name">{{ Str::limit($part->part_name, 35) }}</div>
 </div>
@@ -243,7 +244,7 @@ body.size-large .label-small { display:none; }
 
     {{-- Barcode --}}
     <div class="lbl-barcode">
-        <div class="bc">{{ $part->part_code }}</div>
+        <div class="bc-svg"><svg id="barcode-large-{{ $part->id }}"></svg></div>
         <div class="bc-text">{{ $part->part_code }}</div>
     </div>
 
@@ -259,6 +260,57 @@ body.size-large .label-small { display:none; }
 </div>
 
 <script>
+// ── Checksummed Code128 SVG barcode — same reliable generator used
+// elsewhere in the app (bin labels), replacing the "Libre Barcode 128"
+// Google Font this label used to rely on. That font-based approach had
+// NO checksum digit and could render inconsistently (or fail entirely
+// if the font didn't load), which is very likely why a printed label
+// wasn't reading on a real scanner. ──
+(function (global) {
+    const CHARSET = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+    const PATTERNS = ["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
+    const START_B = 104, STOP = 106;
+    function encode(text) {
+        const values = [];
+        for (let i = 0; i < text.length; i++) {
+            const idx = CHARSET.indexOf(text[i]);
+            if (idx === -1) throw new Error(`Unsupported char: ${text[i]}`);
+            values.push(idx);
+        }
+        let checksum = START_B;
+        values.forEach((v, i) => { checksum += v * (i + 1); });
+        return [START_B, ...values, checksum % 103, STOP];
+    }
+    global.renderBarcode = function (elementId, text, opts = {}) {
+        const svg = document.getElementById(elementId);
+        if (!svg) return;
+        const barHeight = opts.height || 60, barWidth = opts.width || 2;
+        const codes = encode(text);
+        let x = 10, bars = '';
+        codes.forEach(code => {
+            const pattern = PATTERNS[code];
+            let isBar = true;
+            for (let i = 0; i < pattern.length; i++) {
+                const w = parseInt(pattern[i]) * barWidth;
+                if (isBar) bars += `<rect x="${x}" y="0" width="${w}" height="${barHeight}" fill="#000"/>`;
+                x += w; isBar = !isBar;
+            }
+        });
+        const totalWidth = x + 10, totalHeight = barHeight + 5;
+        svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
+        svg.setAttribute('width', totalWidth);
+        svg.setAttribute('height', totalHeight);
+        svg.innerHTML = bars;
+    };
+})(window);
+
+// Render both the small and large barcode for every part on this page.
+const PART_CODES = @json($parts->pluck('part_code', 'id'));
+Object.keys(PART_CODES).forEach(id => {
+    renderBarcode('barcode-small-' + id, PART_CODES[id], { width: 1.6, height: 40 });
+    renderBarcode('barcode-large-' + id, PART_CODES[id], { width: 2.6, height: 65 });
+});
+
 function setSize(size) {
     document.getElementById('btn-small').className = 'ctrl-btn ' + (size==='small'?'on':'off');
     document.getElementById('btn-large').className = 'ctrl-btn ' + (size==='large'?'on':'off');
