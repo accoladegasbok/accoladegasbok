@@ -443,7 +443,18 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                 <tr>
                     <td>{{ $i + 1 }}</td>
                     <td>
-                        <div class="part-name">{{ $item->part_name }}</div>
+                        <div class="part-name">
+                            {{ $item->part_name }}
+                            @if(($item->discount_amount_local ?? 0) > 0 && $copyKey !== 'waybill')
+                            <span style="display:inline-block; background:#fff3e0; color:#e65100; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">
+                                @if($item->discount_type === 'percent')
+                                    -{{ rtrim(rtrim(number_format((float) $item->discount_value, 2), '0'), '.') }}%
+                                @else
+                                    -{{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($item->discount_amount_local) : number_format($item->discount_amount_local, 2) }}
+                                @endif
+                            </span>
+                            @endif
+                        </div>
                         <div class="part-sub">
                             @if($isVehicleSale)
                                 @if(!empty($item->colour)){{ $item->colour }} · @endif
@@ -535,7 +546,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                     @else
                     <tr style="font-size: 12px; color: #555;">
                         <td>Payment Applied (Paid at point of sale)</td>
-                        <td>– {{ $subtotalFmt }}</td>
+                        <td>– {{ $totalFmt ?? $subtotalFmt }}</td>
                     </tr>
                     @endif
                     <tr class="total-row" style="{{ ($printPaySummary['balanceDue'] ?? 0) > 0 ? 'color:#c0392b;' : 'color:#1b9e5c;' }}">

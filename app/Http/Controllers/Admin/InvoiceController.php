@@ -1372,18 +1372,26 @@ class InvoiceController extends Controller
             $priceLocal = $item->unit_price_local ?? $item->unit_price_usd;
             $lineLocal  = $priceLocal * $item->qty;
             return (object)[
-                'part_name'       => $item->part_name,
-                'part_code'       => $item->part_code,
-                'brand'           => $item->brand,
-                'model'           => $item->model,
-                'year_from'       => '',
-                'year_to'         => '',
-                'condition_grade' => $item->condition_grade,
-                'engine_code_oem' => '',
-                'qty'             => $item->qty,
-                'unit_price_usd'  => $priceLocal,
-                'unit_price_fmt'  => self::formatLocal($priceLocal, $currencyCode),
-                'total_fmt'       => self::formatLocal($lineLocal, $currencyCode),
+                'part_name'             => $item->part_name,
+                'part_code'             => $item->part_code,
+                'brand'                 => $item->brand,
+                'model'                 => $item->model,
+                'year_from'             => '',
+                'year_to'               => '',
+                'condition_grade'       => $item->condition_grade,
+                'engine_code_oem'       => '',
+                'qty'                   => $item->qty,
+                'unit_price_usd'        => $priceLocal,
+                'unit_price_fmt'        => self::formatLocal($priceLocal, $currencyCode),
+                'total_fmt'             => self::formatLocal($lineLocal, $currencyCode),
+                // Per-line discount — was stored on invoice_items all
+                // along but never surfaced to the view, so a line that
+                // had its own discount (separate from the invoice-wide
+                // one shown in the totals box) was invisible on the
+                // printed invoice.
+                'discount_type'         => $item->discount_type ?? null,
+                'discount_value'        => $item->discount_value ?? null,
+                'discount_amount_local' => $item->discount_amount_local ?? 0,
             ];
         });
 
