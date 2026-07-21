@@ -80,8 +80,31 @@ class OrderAdminController extends Controller
         if (!$order) return null;
 
         $items = DB::table('order_items')->where('order_id', $orderId)->get();
-        $currencyCode = $order->currency_code ?? ($order->total_amount_ngn ? 'NGN' : 'USD');
-        $syms = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
+
+        // FIXED: location previously fell straight through to a
+        // hardcoded 'Waxahachie TX' default whenever orders.location
+        // was empty, with no fallback at all — meaning an Ile-Ife order
+        // with a blank location column would print with the WRONG
+        // business identity entirely (Accolade Autos/USA instead of
+        // Gasbok Engineering/Nigeria). InvoiceController::show()
+        // already had a more reliable fallback chain (check the
+        // order's actual items for a real location) — matching that
+        // here.
+        $resolvedLocation = $order->location
+            ?: ($items->first()->location ?? null)
+            ?: 'Waxahachie TX';
+
+        $currencyCode = $order->currency_code
+            ?? \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($resolvedLocation)['code'];
+
+        // FIXED: DomPDF's default font can't render the ₦ Unicode
+        // glyph — it silently prints as a literal "?" instead, which
+        // is exactly what showed up on a real downloaded receipt. Use
+        // the plain "NGN" text prefix for the PDF specifically
+        // (guaranteed correct regardless of font Unicode coverage)
+        // rather than the pretty symbol used everywhere else in the
+        // browser-rendered views, where it renders fine.
+        $syms = ['NGN' => 'NGN ', 'GHS' => 'GHS ', 'USD' => '$'];
         $sym  = $syms[$currencyCode] ?? '$';
         $fmt  = fn($n) => $sym . number_format((float) $n, $currencyCode === 'NGN' ? 0 : 2);
 
@@ -106,7 +129,7 @@ class OrderAdminController extends Controller
         ];
 
         $totalLocal = $order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0;
-        $businessInfo = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($order->location ?? 'Waxahachie TX');
+        $businessInfo = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($resolvedLocation);
 
         // NEW: orders now have real discount columns (store() was
         // fixed to actually save them) — read them the same way
@@ -125,7 +148,7 @@ class OrderAdminController extends Controller
             'lineItems'    => $lineItems,
             'currency'     => ['code' => $currencyCode, 'symbol' => $sym],
             'businessInfo' => $businessInfo,
-            'saleLocation' => $order->location ?? '',
+            'saleLocation' => $resolvedLocation,
             'createdAt'    => $order->created_at,
             'customerInfo' => $customerInfo,
             'paymentMethod'=> $order->payment_method ?? 'Online',
@@ -137,7 +160,7 @@ class OrderAdminController extends Controller
             'discountLabel'=> $discountLabel,
             'returnCreditApplied' => 0,
             'returnCreditFmt'     => null,
-            'footerAddresses'     => \App\Http\Controllers\Admin\InvoiceController::footerAddressesForLocation($order->location ?? ''),
+            'footerAddresses'     => \App\Http\Controllers\Admin\InvoiceController::footerAddressesForLocation($resolvedLocation),
         ];
     }
 

@@ -1749,10 +1749,22 @@ class InvoiceController extends Controller
 
         $items = DB::table('invoice_items')->where('invoice_id', $invoiceId)->get();
         $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
-        $currency     = self::currencyMeta($currencyCode);
+
+        // FIXED: DomPDF's default font can't render the ₦ Unicode glyph
+        // — it silently prints as a literal "?" instead of the Naira
+        // symbol, confirmed on a real downloaded receipt. Uses plain
+        // "NGN"/"GHS" text prefixes for the PDF specifically (guaranteed
+        // correct regardless of font Unicode coverage), while every
+        // browser-rendered view elsewhere keeps the pretty ₦ symbol via
+        // the shared currencyMeta()/formatLocal() — this override only
+        // affects this one PDF data builder.
+        $pdfSyms = ['NGN' => 'NGN ', 'GHS' => 'GHS ', 'USD' => '$'];
+        $pdfSym  = $pdfSyms[$currencyCode] ?? '$';
+        $pdfFmt  = fn($n) => $pdfSym . number_format((float) $n, $currencyCode === 'NGN' ? 0 : 2);
+        $currency     = ['code' => $currencyCode, 'symbol' => $pdfSym];
         $businessInfo = $this->getBusinessInfo($invoice->location);
 
-        $lineItems = $items->map(function ($item) use ($currencyCode) {
+        $lineItems = $items->map(function ($item) use ($currencyCode, $pdfFmt) {
             $priceLocal = $item->unit_price_local ?? $item->unit_price_usd;
             $lineLocal  = $priceLocal * $item->qty;
             return (object)[
@@ -1762,8 +1774,8 @@ class InvoiceController extends Controller
                 'model'           => $item->model,
                 'condition_grade' => $item->condition_grade,
                 'qty'             => $item->qty,
-                'unit_price_fmt'  => self::formatLocal($priceLocal, $currencyCode),
-                'total_fmt'       => self::formatLocal($lineLocal, $currencyCode),
+                'unit_price_fmt'  => $pdfFmt($priceLocal),
+                'total_fmt'       => $pdfFmt($lineLocal),
             ];
         });
 
@@ -1794,13 +1806,13 @@ class InvoiceController extends Controller
             'customerInfo' => $customerInfo,
             'paymentMethod'=> $invoice->payment_method,
             'isVehicleSale'=> ($invoice->invoice_type ?? 'parts') === 'vehicle',
-            'subtotalFmt'  => self::formatLocal($grossSubtotalLocal, $currencyCode),
-            'totalFmt'     => self::formatLocal($subtotalLocal, $currencyCode),
+            'subtotalFmt'  => $pdfFmt($grossSubtotalLocal),
+            'totalFmt'     => $pdfFmt($subtotalLocal),
             'discountLocal'=> $discountLocal,
-            'discountFmt'  => $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null,
+            'discountFmt'  => $discountLocal > 0 ? $pdfFmt($discountLocal) : null,
             'discountLabel'=> $discountLabel,
             'returnCreditApplied' => $returnCreditApplied,
-            'returnCreditFmt'     => $returnCreditApplied > 0 ? self::formatLocal($returnCreditApplied, $currencyCode) : null,
+            'returnCreditFmt'     => $returnCreditApplied > 0 ? $pdfFmt($returnCreditApplied) : null,
             'footerAddresses'     => self::footerAddressesForLocation($invoice->location),
         ];
     }
