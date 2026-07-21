@@ -327,16 +327,32 @@ class InvoiceController extends Controller
         $subtotalUsd   = $subtotalLocal;
         $invoiceType   = 'order';
 
-        // Footer addresses — same logic as showManual(). Orders table
-        // has no discount columns at all (confirmed), so no discount
-        // display fix is needed here, only the footer.
+        // NEW: orders now have real discount columns (added alongside
+        // fixing AdminOrderController::store(), which previously
+        // computed a discount in the browser preview but never saved
+        // it anywhere). Same gross-subtotal reconstruction and
+        // percentage-label approach as showManual(), so orders and
+        // manual invoices display discounts identically.
+        $discountLocal = (float) ($order->discount_amount_local ?? 0);
+        $totalLocal    = $subtotalLocal; // the actual net/charged amount already stored
+        $grossSubtotalLocal = $subtotalLocal + $discountLocal;
+        $subtotalFmt   = self::formatLocal($grossSubtotalLocal, $currencyCode); // overwrite with the correct GROSS figure
+        $totalFmt      = self::formatLocal($totalLocal, $currencyCode);
+        $discountFmt   = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
+        $discountLabel = null;
+        if ($discountLocal > 0) {
+            $pct = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
+            $discountLabel = "Discount (" . rtrim(rtrim(number_format($pct, 1), '0'), '.') . "%):";
+        }
+
+        // Footer addresses — same logic as showManual().
         $footerAddresses = self::footerAddressesForLocation($saleLocation);
 
         return view('admin.invoices.show', compact(
             'order', 'lineItems', 'currency', 'subtotalFmt',
             'subtotalUsd', 'invoiceNo', 'businessInfo', 'saleLocation',
             'location', 'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
-            'footerAddresses'
+            'footerAddresses', 'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt'
         ));
     }
 

@@ -108,6 +108,17 @@ class OrderAdminController extends Controller
         $totalLocal = $order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0;
         $businessInfo = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($order->location ?? 'Waxahachie TX');
 
+        // NEW: orders now have real discount columns (store() was
+        // fixed to actually save them) — read them the same way
+        // InvoiceController::show() does for consistency.
+        $discountLocal = (float) ($order->discount_amount_local ?? 0);
+        $grossTotalLocal = $totalLocal + $discountLocal;
+        $discountLabel = null;
+        if ($discountLocal > 0) {
+            $pct = $grossTotalLocal > 0 ? ($discountLocal / $grossTotalLocal) * 100 : 0;
+            $discountLabel = "Discount (" . rtrim(rtrim(number_format($pct, 1), '0'), '.') . "%):";
+        }
+
         return [
             'invoiceNo'    => $order->order_ref,
             'invoice'      => $order,
@@ -119,11 +130,11 @@ class OrderAdminController extends Controller
             'customerInfo' => $customerInfo,
             'paymentMethod'=> $order->payment_method ?? 'Online',
             'isVehicleSale'=> false,
-            'subtotalFmt'  => $fmt($totalLocal),
+            'subtotalFmt'  => $fmt($grossTotalLocal),
             'totalFmt'     => $fmt($totalLocal),
-            'discountLocal'=> 0,
-            'discountFmt'  => null,
-            'discountLabel'=> null,
+            'discountLocal'=> $discountLocal,
+            'discountFmt'  => $discountLocal > 0 ? $fmt($discountLocal) : null,
+            'discountLabel'=> $discountLabel,
             'returnCreditApplied' => 0,
             'returnCreditFmt'     => null,
             'footerAddresses'     => \App\Http\Controllers\Admin\InvoiceController::footerAddressesForLocation($order->location ?? ''),

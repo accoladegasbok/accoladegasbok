@@ -124,6 +124,13 @@ class AdminOrderController extends Controller
             'items.*.item_type'=> 'required|in:part,service',
             'items.*.id'       => 'required|integer',
             'items.*.qty'      => 'required|integer|min:1',
+            // FIXED: the form already had a fully working discount UI
+            // with live preview and cap checking — this controller
+            // simply never read any of it, meaning a discount entered
+            // on this page silently vanished and never made it onto
+            // the actual order or its printed invoice.
+            'invoice_discount_value' => 'nullable|numeric|min:0',
+            'invoice_discount_type'  => 'nullable|in:fixed,percent',
         ]);
 
         // ── STOCK ENFORCEMENT for parts; services have no stock to
@@ -181,6 +188,21 @@ class AdminOrderController extends Controller
             $totalLocal += $priceLocal * $li['qty'];
         }
 
+        // NEW: apply the discount that was already being computed and
+        // shown in the browser's live preview, but never actually read
+        // server-side. Re-derived here (never trust the client's math)
+        // and capped so it can never exceed the order's own subtotal.
+        $grossTotalLocal = $totalLocal;
+        $discountType    = $request->invoice_discount_type ?: 'fixed';
+        $discountValueIn = (float) ($request->invoice_discount_value ?? 0);
+        $discountLocal   = 0;
+        if ($discountValueIn > 0) {
+            $discountLocal = $discountType === 'percent'
+                ? $totalLocal * ($discountValueIn / 100)
+                : min($discountValueIn, $totalLocal);
+            $totalLocal -= $discountLocal;
+        }
+
         $orderRef = $this->generateOrderRef();
 
         // ── Every order ALWAYS starts as awaiting_payment — no
@@ -232,6 +254,9 @@ class AdminOrderController extends Controller
                 // figure for a USA order, no fabricated USD figure for
                 // a Nigeria order.
                 'total_amount_local'  => round($totalLocal, 2),
+                'discount_amount_local' => round($discountLocal, 2),
+                'discount_type'         => $discountLocal > 0 ? $discountType : null,
+                'discount_value'        => $discountLocal > 0 ? $discountValueIn : null,
                 'currency_code'       => $orderCurrencyCode,
                 'total_amount_ngn'    => $orderCurrencyCode === 'NGN' ? round($totalLocal) : null,
                 'total_amount_usd'    => $orderCurrencyCode === 'USD' ? round($totalLocal, 2) : null,
