@@ -90,8 +90,19 @@ class OrderAdminController extends Controller
         // already had a more reliable fallback chain (check the
         // order's actual items for a real location) — matching that
         // here.
+        // FIXED: crashed with "Undefined property: stdClass::$location" —
+        // order_items doesn't actually have a column by that exact
+        // name (my earlier fix guessed wrong without seeing the real
+        // schema). Using data_get() here instead of direct property
+        // access, which safely returns null for a genuinely missing
+        // property instead of erroring — this keeps the fallback
+        // working for whichever real column name is present, and
+        // degrades gracefully to the Waxahachie default if none of
+        // them exist, rather than crashing the whole PDF download.
+        $firstItem = $items->first();
         $resolvedLocation = $order->location
-            ?: ($items->first()->location ?? null)
+            ?: data_get($firstItem, 'location')
+            ?: data_get($firstItem, 'part_location')
             ?: 'Waxahachie TX';
 
         $currencyCode = $order->currency_code
