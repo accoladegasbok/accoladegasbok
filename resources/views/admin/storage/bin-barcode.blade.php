@@ -12,38 +12,35 @@
     .pos-btn.active { background: #0A1F5C; color: white; }
     .print-btn { background: #C8960C; color: #0A1F5C; border: none; padding: 10px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; margin-top: 12px; }
 
-    /* FIXED: matches the batch print page's actual layout — 90mm wide
-       x 200mm tall cards, tiled SIDE BY SIDE (not stacked) on a
-       landscape A4 sheet, 3 slots of 99mm each = 297mm total width.
-       Position choice reoriented Left/Middle/Right to match this
-       horizontal arrangement (was Top/Middle/Bottom for a stacked
-       layout that doesn't match the batch page's design). */
-    @page { size: A4 landscape; margin: 0; }
+    /* REVERTED: back to the correct portrait/Top-Middle-Bottom layout
+       — the previous "landscape to match batch page" change was
+       wrong; this version is the one actually wanted. */
+    @page { size: A4 portrait; margin: 0; }
     .sheet {
-        width: 297mm; height: 210mm;
-        display: flex;
+        width: 210mm; height: 297mm;
+        display: flex; flex-direction: column;
         background: #fff;
         margin: 0 auto;
     }
-    .slot {
-        width: 99mm; height: 210mm;
+    .band {
+        width: 210mm; height: 99mm;
         display: flex; align-items: center; justify-content: center;
         box-sizing: border-box;
     }
     .label {
-        width: 90mm; height: 200mm;
+        width: 200mm; height: 90mm;
         box-sizing: border-box;
         border: 2px solid #000;
         border-radius: 4mm;
-        padding: 8mm 4mm;
+        padding: 6mm 10mm;
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         text-align: center;
     }
-    .label .bin-code { font-size: 34px; font-weight: 900; color: #0A1F5C; letter-spacing: 1px; line-height: 1; }
-    .label .room-label { font-size: 13px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 2px; margin-top: 4mm; margin-bottom: 8mm; }
-    .label svg { max-width: 78mm; height: auto; }
-    .label .bin-code-repeat { font-size: 16px; font-weight: 700; color: #333; margin-top: 6mm; font-family: monospace; }
+    .label .bin-code { font-size: 64px; font-weight: 900; color: #0A1F5C; letter-spacing: 1px; line-height: 1; }
+    .label .room-label { font-size: 18px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 2px; margin-top: 3mm; margin-bottom: 4mm; }
+    .label svg { max-width: 180mm; height: auto; }
+    .label .bin-code-repeat { font-size: 20px; font-weight: 700; color: #333; margin-top: 3mm; font-family: monospace; }
 
     @media print {
         .no-print { display: none !important; }
@@ -56,18 +53,18 @@
 </head>
 <body>
   <div class="toolbar no-print">
-    <h3>Choose position on the A4 sheet — the other two slots print blank, so this sheet can take more labels later</h3>
-    <button class="pos-btn active" id="btn-left" onclick="setPosition('left')">◀ Left</button>
+    <h3>Choose position on the A4 sheet (portrait) — the other two bands print blank, so this sheet can take more labels later</h3>
+    <button class="pos-btn active" id="btn-top" onclick="setPosition('top')">⬆ Top</button>
     <button class="pos-btn" id="btn-middle" onclick="setPosition('middle')">— Middle</button>
-    <button class="pos-btn" id="btn-right" onclick="setPosition('right')">▶ Right</button>
+    <button class="pos-btn" id="btn-bottom" onclick="setPosition('bottom')">⬇ Bottom</button>
     <br>
     <button class="print-btn" onclick="window.print()">🖨 Print Label</button>
   </div>
 
   <div class="sheet">
-    <div class="slot" id="slot-left"></div>
-    <div class="slot" id="slot-middle"></div>
-    <div class="slot" id="slot-right"></div>
+    <div class="band" id="band-top"></div>
+    <div class="band" id="band-middle"></div>
+    <div class="band" id="band-bottom"></div>
   </div>
 
   <script>
@@ -89,7 +86,7 @@
         global.renderBarcode = function (elementId, text, opts = {}) {
             const svg = document.getElementById(elementId);
             if (!svg) return;
-            const barHeight = opts.height || 100, barWidth = opts.width || 4.4;
+            const barHeight = opts.height || 110, barWidth = opts.width || 4.4;
             const codes = encode(text);
             let x = 10, bars = '';
             codes.forEach(code => {
@@ -123,16 +120,17 @@
     }
 
     function setPosition(pos) {
-        ['left','middle','right'].forEach(p => {
+        ['top','middle','bottom'].forEach(p => {
             document.getElementById('btn-' + p).classList.toggle('active', p === pos);
-            document.getElementById('slot-' + p).innerHTML = '';
+            document.getElementById('band-' + p).innerHTML = '';
         });
+        const bandId = 'band-' + pos;
         const svgId = 'barcode-' + pos;
-        document.getElementById('slot-' + pos).innerHTML = labelHtml(svgId);
-        renderBarcode(svgId, BIN_CODE, { width: 4.4, height: 100 });
+        document.getElementById(bandId).innerHTML = labelHtml(svgId);
+        renderBarcode(svgId, BIN_CODE, { width: 4.4, height: 110 });
     }
 
-    setPosition('left'); // default
+    setPosition('top'); // default
   </script>
 </body>
 </html>
