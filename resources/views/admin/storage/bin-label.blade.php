@@ -68,8 +68,14 @@ body { font-family:'Inter',Arial,sans-serif; background:#eee; }
 }
 
 /* Toggle visibility */
-body.rooms-only .bin-sheet    { display:none; }
-body.bins-only  .room-sheet   { display:none; }
+/* FIXED: room sheets share the .bin-sheet class (for reused styling),
+   so "body.rooms-only .bin-sheet { display:none }" was hiding room
+   sheets too, since they also carry that class — meaning "Rooms Only"
+   hid EVERYTHING, including the rooms themselves. Selectors now
+   distinguish properly: .bin-sheet.room-sheet for actual room sheets,
+   .bin-sheet:not(.room-sheet) for actual bin sheets. */
+body.rooms-only .bin-sheet:not(.room-sheet) { display:none; }
+body.bins-only  .bin-sheet.room-sheet       { display:none; }
 body.rooms-only .bins-title   { display:none; }
 body.bins-only  .rooms-title  { display:none; }
 </style>
