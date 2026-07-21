@@ -137,6 +137,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/shelves/{shelfId}/relocate-items', [\App\Http\Controllers\Admin\StorageController::class, 'relocateItems'])->name('shelves.relocate-items');
             Route::delete('/shelves/{shelfId}',        [\App\Http\Controllers\Admin\StorageController::class, 'destroyShelf'])->name('shelves.destroy');
             Route::get('/shelves/{shelfId}/barcode',   [\App\Http\Controllers\Admin\StorageController::class, 'shelfBarcode'])->name('shelves.barcode');
+            Route::get('/shelves/{shelfId}/contents',  [\App\Http\Controllers\Admin\StorageController::class, 'shelfContents'])->name('shelves.contents');
+            // NEW: room-level barcode + unified scan-lookup + room contents view
+            Route::get('/scan', [\App\Http\Controllers\Admin\StorageController::class, 'scanLookup'])->name('scan');
+            Route::get('/{roomId}/barcode', [\App\Http\Controllers\Admin\StorageController::class, 'roomBarcode'])->name('room-barcode');
+            Route::get('/{roomId}/contents', [\App\Http\Controllers\Admin\StorageController::class, 'roomContents'])->name('room-contents');
         });
 
         // Returns (Phase B2)

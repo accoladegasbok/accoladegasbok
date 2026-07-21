@@ -394,6 +394,112 @@ class StorageController extends Controller
     }
 
     // =========================================================
+    // GET /admin/storage/{roomId}/barcode — a NEW room-level barcode,
+    // separate from a bin barcode. Encodes the room's own code
+    // (e.g. "FE-LE1"), reusing the exact same 200×90mm/Top-Middle-
+    // Bottom-position/checksummed-barcode template as bin labels, so
+    // it prints and scans exactly the same way — just for the whole
+    // room instead of one bin.
+    // =========================================================
+    public function roomBarcode(int $roomId)
+    {
+        $room = DB::table('storage_rooms')->where('id', $roomId)->first();
+        abort_if(!$room, 404);
+
+        // Reuses the bin-barcode view/template — it only needs
+        // full_bin_code and room_name, so a lightweight stdClass
+        // standing in for a "shelf" works without duplicating the
+        // whole barcode-rendering template for rooms specifically.
+        $shelf = (object) [
+            'full_bin_code' => $room->code,
+            'room_name'     => $room->name,
+        ];
+
+        return view('admin.storage.bin-barcode', compact('shelf'));
+    }
+
+    // =========================================================
+    // GET /admin/storage/scan?code=X — unified scan-lookup, "just as
+    // in bin": type or scan EITHER a room code or a bin code here, and
+    // land on the right page — a room code shows every item across
+    // every bin in that room; a bin code goes straight to that bin's
+    // room page. One lookup box works for both, matching how staff
+    // already scan bin codes elsewhere in the app.
+    // =========================================================
+    public function scanLookup(Request $request)
+    {
+        $code = trim($request->get('code', ''));
+        if ($code === '') {
+            return view('admin.storage.scan-lookup', ['error' => null]);
+        }
+
+        // Try as a room code first (shorter, e.g. "FE-LE1")
+        $room = DB::table('storage_rooms')->where('code', $code)->first();
+        if ($room) {
+            return redirect()->route('admin.storage.room-contents', $room->id);
+        }
+
+        // Fall back to a bin code (e.g. "FE-LE1-A-01-02")
+        $shelf = DB::table('storage_shelves')->where('full_bin_code', $code)->first();
+        if ($shelf) {
+            return redirect()->route('admin.storage.shelves.contents', $shelf->id);
+        }
+
+        return view('admin.storage.scan-lookup', ['error' => "Code \"{$code}\" doesn't match any room or bin."]);
+    }
+
+    // =========================================================
+    // GET /admin/storage/shelves/{shelfId}/contents — every item
+    // actually IN this one bin. FIXED: a bin scan previously only
+    // landed on the room's bin LIST (showing a count per bin, not
+    // the actual items) — this is the real per-bin equivalent of
+    // roomContents(), so scanning a bin code now shows exactly what's
+    // in it, the same way a room code shows everything in the room.
+    // =========================================================
+    public function shelfContents(int $shelfId)
+    {
+        $shelf = DB::table('storage_shelves as ss')
+            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
+            ->where('ss.id', $shelfId)
+            ->select('ss.*', 'sr.name as room_name', 'sr.location')
+            ->first();
+        abort_if(!$shelf, 404);
+
+        $items = DB::table('parts_inventory')
+            ->where('storage_shelf_id', $shelfId)
+            ->whereNull('deleted_at')
+            ->select('id', 'part_code', 'part_name', 'part_category', 'brand', 'model',
+                     'condition_grade', 'stock_qty', 'status')
+            ->orderBy('part_name')
+            ->get();
+
+        return view('admin.storage.bin-contents', compact('shelf', 'items'));
+    }
+
+    // =========================================================
+    // GET /admin/storage/{roomId}/contents — every item across every
+    // bin in this room, flattened into one list. This is what a room
+    // barcode scan actually resolves to.
+    // =========================================================
+    public function roomContents(int $roomId)
+    {
+        $room = DB::table('storage_rooms')->where('id', $roomId)->first();
+        abort_if(!$room, 404);
+
+        $items = DB::table('parts_inventory as p')
+            ->join('storage_shelves as ss', 'ss.id', '=', 'p.storage_shelf_id')
+            ->where('ss.storage_room_id', $roomId)
+            ->whereNull('p.deleted_at')
+            ->select('p.id', 'p.part_code', 'p.part_name', 'p.part_category', 'p.brand', 'p.model',
+                     'p.condition_grade', 'p.stock_qty', 'p.status', 'ss.full_bin_code')
+            ->orderBy('ss.full_bin_code')
+            ->orderBy('p.part_name')
+            ->get();
+
+        return view('admin.storage.room-contents', compact('room', 'items'));
+    }
+
+    // =========================================================
     // AJAX: GET /admin/storage/all-bins-for-location?location=X
     // Returns every bin across every room at one location, with the
     // room name included — used for per-item bin pickers (e.g. the

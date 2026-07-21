@@ -48,7 +48,12 @@
     <tbody>
       @forelse($customers as $c)
       <tr class="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-        <td class="px-4 py-3 font-500 text-navy">{{ $c->name ?: '—' }}</td>
+        <td class="px-4 py-3 font-500 text-navy">
+          {{ $c->name ?: '—' }}
+          @if($c->has_override ?? false)
+            <span class="text-[10px] text-amber-500 font-normal ml-1" title="Profile has staff-corrected details">✎ edited</span>
+          @endif
+        </td>
         <td class="px-4 py-3">
           @if($c->is_contact ?? false)
             <span class="badge badge-amber">{{ $c->contact_type }}</span>

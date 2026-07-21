@@ -347,6 +347,27 @@ class AdminOrderController extends Controller
             return back()->withInput()->with('error', 'Order could not be placed: ' . $e->getMessage());
         }
 
+        // NEW: Order Confirmation — same event already wired for
+        // storeManual()/storeCarSale() (manual invoices) and online
+        // orders' own checkout, but never for this staff "Place Order"
+        // flow specifically. Skipped silently if no email/phone on
+        // file, matching the same pattern used everywhere else.
+        $currencySym = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'][$orderCurrencyCode] ?? '$';
+        $totalFmt = $currencySym . number_format($totalLocal, $orderCurrencyCode === 'NGN' ? 0 : 2);
+        if ($request->customer_email || $request->customer_phone) {
+            $message = "Hi {$request->customer_name}, thank you for your order! Order {$orderRef} — Total: {$totalFmt}. — Auto Zenith Parts";
+            $emailHtml = "<p>Hi {$request->customer_name},</p>"
+                . "<p>Thank you for your order! Here's your confirmation:</p>"
+                . "<p><strong>Order:</strong> {$orderRef}<br><strong>Total:</strong> {$totalFmt}</p>"
+                . "<p>— Auto Zenith Parts</p>";
+            \App\Services\NotificationService::notify(
+                ['email' => $request->customer_email, 'phone' => $request->customer_phone, 'name' => $request->customer_name],
+                "Order Confirmation — {$orderRef}",
+                $message,
+                $emailHtml
+            );
+        }
+
         return redirect()->route('admin.orders.show', $orderId)
             ->with('success', "Order {$orderRef} placed successfully.");
     }
