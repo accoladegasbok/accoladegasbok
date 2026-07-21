@@ -890,24 +890,27 @@ class InvoiceController extends Controller
 
             DB::commit();
 
-            // ── Phase 4b: record a REAL payment for immediately-paid
-            // sales — every Payment Method except "Credit / Deferred"
-            // means the customer paid at point of sale. Previously
-            // NOTHING was ever inserted into invoice_payments for these,
-            // so the printed invoice's "Payment Applied" line was purely
-            // cosmetic text with zero backing data, while "BALANCE DUE"
-            // (which correctly reads real invoice_payments rows) showed
-            // the FULL amount still owed — two numbers on the same
-            // invoice contradicting each other. This closes that gap.
+            // ── Phase 4b: record a payment for immediately-paid sales —
+            // every Payment Method except "Credit / Deferred" means the
+            // customer paid at point of sale.
+            //
+            // POLICY CHANGE: this used to insert with status='confirmed'
+            // immediately, with no staff review step at all — meaning a
+            // manual invoice's point-of-sale payment silently became
+            // "Paid" the instant the invoice was created, unlike every
+            // other payment path in the app (orders, later top-up
+            // payments), which all require an explicit staff confirm.
+            // Now every payment starts 'pending' regardless of how it
+            // was recorded, and only counts toward the confirmed total
+            // once a staff member explicitly clicks Confirm — consistent
+            // everywhere, no silent auto-approval anywhere.
             if ($paymentMethod !== 'Credit / Deferred') {
                 DB::table('invoice_payments')->insert([
                     'invoice_id'             => $invoiceId,
                     'amount_local'           => $subtotalLocal,
                     'payment_method'         => $paymentMethod,
-                    'status'                 => 'confirmed',
-                    'confirmed_by_staff_id'  => Session::get('staff_id'),
-                    'confirmed_at'           => $createdAt,
-                    'notes'                  => 'Auto-recorded: paid at point of sale (manual invoice)',
+                    'status'                 => 'pending',
+                    'notes'                  => 'Recorded at point of sale (manual invoice) — awaiting staff confirmation',
                     'created_at'             => $createdAt,
                     'updated_at'             => $createdAt,
                 ]);

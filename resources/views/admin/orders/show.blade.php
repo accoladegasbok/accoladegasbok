@@ -11,6 +11,26 @@
 @endsection
 
 @section('content')
+
+{{-- FIXED: this page had NO success/error message display at all —
+     meaning every action here (Record Payment, Confirm, Reject, Send
+     Reminder, Update Status) could succeed OR fail server-side with
+     zero visible feedback either way. A validation failure on Record
+     Payment specifically would look exactly like "nothing happened,"
+     since the redirect-back-with-errors had nowhere to actually show
+     up. This is very likely the root cause of that report. --}}
+@if(session('success'))
+<div class="bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3 mb-4 text-sm font-body">{{ session('success') }}</div>
+@endif
+@if(session('error'))
+<div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm font-body">{{ session('error') }}</div>
+@endif
+@if($errors->any())
+<div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm font-body">
+  @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
+</div>
+@endif
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
   {{-- ════════════════════════════════════════════════════════════════

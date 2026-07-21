@@ -158,6 +158,14 @@ class InventoryController extends Controller
     {
         $request->validate([
             'part_name'           => 'required|string|max:150',
+            // NEW: category was never editable at all after a part was
+            // saved — if something got harvested/created into the wrong
+            // category group, the only fix was delete-and-recreate.
+            // Kept broad (not a fixed enum) since the app uses many real
+            // category names beyond the Consumable-specific list used
+            // at creation time (Engine, Transmission, Body, Suspension,
+            // Electrical, etc.) — matching what's actually stored today.
+            'part_category'       => 'nullable|string|max:50',
             'price_usd'           => 'required|numeric|min:0',
             'condition_grade'     => 'required|in:A,B,C,New',
             'status'              => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped',
@@ -260,6 +268,13 @@ class InventoryController extends Controller
 
         DB::table('parts_inventory')->where('id', $id)->update([
             'part_name'              => $request->part_name,
+            // NEW: category can now actually be corrected on edit — was
+            // completely absent from this method before, meaning a part
+            // harvested into the wrong category group had no fix short
+            // of delete-and-recreate. Only updates if the field was
+            // actually submitted, so this stays a safe no-op until the
+            // edit form itself is updated with a category selector.
+            ...($request->has('part_category') && $request->part_category ? ['part_category' => $request->part_category] : []),
             'price_usd'              => $priceUsdSnapshot,
             'price_local'            => $priceLocal,
             'currency_code'          => $currency['code'],

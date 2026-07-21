@@ -423,8 +423,17 @@ class OrderAdminController extends Controller
     // =========================================================
     public function addPayment(Request $request, int $id)
     {
+        // FIXED: the actual form field is named "amount_local" (see
+        // order-show.blade.php's Record a Payment form) — this was
+        // validating/reading "amount_ngn" instead, a field that never
+        // existed in the submitted request at all. That meant this
+        // validation rule failed on EVERY submission, 100% of the
+        // time, regardless of what was actually typed in — and
+        // combined with this page having no error display at all
+        // (fixed separately), it looked exactly like the button just
+        // did nothing.
         $request->validate([
-            'amount_ngn'     => 'required|numeric|min:0.01',
+            'amount_local'   => 'required|numeric|min:0.01',
             'payment_method' => 'required|string',
         ]);
 
@@ -438,7 +447,7 @@ class OrderAdminController extends Controller
 
         DB::table('order_payments')->insert([
             'order_id'       => $id,
-            'amount_ngn'     => $request->amount_ngn,
+            'amount_ngn'     => $request->amount_local,
             'payment_method' => $request->payment_method,
             'proof_path'     => $proofPath,
             // No "added by" column exists on this table (same gap as

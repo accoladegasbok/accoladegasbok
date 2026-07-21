@@ -97,6 +97,24 @@
           </datalist>
         </div>
 
+        {{-- NEW: category was never editable after a part was saved —
+             if something got harvested/created into the wrong group
+             (e.g. an Engine part filed as Transmission), the only fix
+             was delete-and-recreate. Changing this reloads the page on
+             save, so the category-specific sections further down (like
+             the Engine/Transmission fields) correctly reflect the new
+             category afterward. --}}
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Category <span class="font-normal text-amber-600">(change carefully — affects fields shown below, after saving)</span>
+          </label>
+          <select name="part_category" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            @foreach(['Engine','Transmission','Body','Suspension','Electrical','Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels','Consumable'] as $cat)
+            <option value="{{ $cat }}" {{ old('part_category', $part->part_category) === $cat ? 'selected' : '' }}>{{ $cat }}</option>
+            @endforeach
+          </select>
+        </div>
+
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
             Price ({{ $part->currency_code ?? 'USD' }}) *
