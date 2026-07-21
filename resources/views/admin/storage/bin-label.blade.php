@@ -50,9 +50,10 @@ body { font-family:'Inter',Arial,sans-serif; background:#eee; }
     background:#fff;
 }
 .room-label-card { border-color:#c9a84c; }
-.bin-label .code, .room-label-card .code { font-size:41px; font-weight:900; color:#0A1F5C; letter-spacing:1px; line-height:1; }
+.bin-label .code { font-size:41px; font-weight:900; color:#0A1F5C; letter-spacing:1px; line-height:1; }
+.room-label-card .code { font-size:50px; font-weight:900; color:#0A1F5C; letter-spacing:1px; line-height:1; }
 .bin-label .room { font-size:16px; font-weight:700; color:#666; text-transform:uppercase; letter-spacing:2px; margin-top:4mm; margin-bottom:8mm; }
-.room-label-card .kind { font-size:16px; font-weight:700; color:#c9a84c; text-transform:uppercase; letter-spacing:3px; margin-bottom:3mm; }
+.room-label-card .kind { font-size:22px; font-weight:700; color:#c9a84c; text-transform:uppercase; letter-spacing:3px; margin-bottom:3mm; }
 .bin-label svg, .room-label-card svg { max-width:170mm; height:auto; }
 .bin-label .code-repeat, .room-label-card .code-repeat { font-size:19px; font-weight:700; color:#333; margin-top:3mm; font-family:monospace; }
 .room-label-card .name { font-size:17px; font-weight:700; color:#333; margin-top:3mm; }
@@ -207,7 +208,7 @@ document.querySelectorAll('.bin-barcode-svg').forEach(svg => {
 document.querySelectorAll('.room-barcode-svg').forEach(svg => {
     try {
         const codeText = svg.parentElement.querySelector('.code-repeat').textContent.trim();
-        renderBarcode(svg.id, codeText, { width: 3.4, height: 96 });
+        renderBarcode(svg.id, codeText, { width: 3.9, height: 110 });
     } catch (e) {
         console.error('Room barcode render failed for', svg.id, e);
     }
