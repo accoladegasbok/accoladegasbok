@@ -117,13 +117,30 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Storage rooms & bin locations (Phase A2)
         Route::prefix('storage')->name('storage.')->group(function () {
+            // FIXED: Laravel matches routes in registration order within
+            // a group — several routes here were registered AFTER the
+            // /{id} wildcard below, meaning the wildcard was silently
+            // swallowing requests meant for them (confirmed: a request
+            // to /admin/storage/bin-labels was landing in
+            // StorageController::show() with $id="bin-labels" instead
+            // of the intended batch-print route, which additionally
+            // didn't even exist here at all — it must have lived in
+            // web.php at a path that was never actually reached for
+            // /admin/-prefixed requests). Every literal route now comes
+            // before any wildcard route in this group.
             Route::get('/',                          [\App\Http\Controllers\Admin\StorageController::class, 'index'])->name('index');
             Route::get('/rooms-for-location',         [\App\Http\Controllers\Admin\StorageController::class, 'roomsForLocation'])->name('rooms-for-location');
             Route::get('/shelves-for-room',          [\App\Http\Controllers\Admin\StorageController::class, 'shelvesForRoom'])->name('shelves-for-room');
             Route::get('/all-bins-for-location',     [\App\Http\Controllers\Admin\StorageController::class, 'allBinsForLocation'])->name('all-bins-for-location');
+            Route::get('/scan', [\App\Http\Controllers\Admin\StorageController::class, 'scanLookup'])->name('scan');
+            // NEW: the actual missing routes — batch/single/room label
+            // printing, now properly reachable under /admin/storage/...
+            Route::get('/bin-labels',                [\App\Http\Controllers\Admin\BinLabelController::class, 'batch'])->name('bin-labels');
+            Route::get('/bin-label/{shelfId}',        [\App\Http\Controllers\Admin\BinLabelController::class, 'single'])->name('bin-label');
+            Route::get('/room-labels/{roomId}',       [\App\Http\Controllers\Admin\BinLabelController::class, 'room'])->name('room-labels');
+            Route::post('/shelves/bulk-delete',      [\App\Http\Controllers\Admin\StorageController::class, 'bulkDestroyShelves'])->name('shelves.bulk-delete');
             Route::post('/',                         [\App\Http\Controllers\Admin\StorageController::class, 'store'])->name('store');
             Route::put('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'update'])->name('update');
-            Route::get('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'show'])->name('show');
             Route::delete('/{id}',                   [\App\Http\Controllers\Admin\StorageController::class, 'destroyRoom'])->name('destroy');
             Route::post('/{id}/shelves',              [\App\Http\Controllers\Admin\StorageController::class, 'addShelf'])->name('shelves.add');
             Route::post('/{id}/shelves/bulk',          [\App\Http\Controllers\Admin\StorageController::class, 'bulkGenerateShelves'])->name('shelves.bulk');
@@ -138,10 +155,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::delete('/shelves/{shelfId}',        [\App\Http\Controllers\Admin\StorageController::class, 'destroyShelf'])->name('shelves.destroy');
             Route::get('/shelves/{shelfId}/barcode',   [\App\Http\Controllers\Admin\StorageController::class, 'shelfBarcode'])->name('shelves.barcode');
             Route::get('/shelves/{shelfId}/contents',  [\App\Http\Controllers\Admin\StorageController::class, 'shelfContents'])->name('shelves.contents');
-            // NEW: room-level barcode + unified scan-lookup + room contents view
-            Route::get('/scan', [\App\Http\Controllers\Admin\StorageController::class, 'scanLookup'])->name('scan');
             Route::get('/{roomId}/barcode', [\App\Http\Controllers\Admin\StorageController::class, 'roomBarcode'])->name('room-barcode');
             Route::get('/{roomId}/contents', [\App\Http\Controllers\Admin\StorageController::class, 'roomContents'])->name('room-contents');
+            // /{id} last — the catch-all wildcard must come after
+            // every literal one-segment route above, or it swallows
+            // them all first.
+            Route::get('/{id}',                      [\App\Http\Controllers\Admin\StorageController::class, 'show'])->name('show');
         });
 
         // Returns (Phase B2)

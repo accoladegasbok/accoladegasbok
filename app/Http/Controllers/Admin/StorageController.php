@@ -273,6 +273,45 @@ class StorageController extends Controller
     }
 
     // =========================================================
+    // POST /admin/storage/shelves/bulk-delete — delete multiple
+    // selected bins at once, matching the multi-select print
+    // capability already built. Refuses to delete any bin that still
+    // has parts assigned to it (same safety rule as deleting a single
+    // bin) — reports exactly which ones were skipped and why, rather
+    // than silently failing or deleting everything else regardless.
+    // =========================================================
+    public function bulkDestroyShelves(Request $request)
+    {
+        $request->validate([
+            'shelf_ids'   => 'required|array|min:1',
+            'shelf_ids.*' => 'required|integer|exists:storage_shelves,id',
+        ]);
+
+        $shelves = DB::table('storage_shelves')->whereIn('id', $request->shelf_ids)->get();
+        $roomId  = $shelves->first()->storage_room_id ?? null;
+
+        $deleted = [];
+        $skipped = [];
+        foreach ($shelves as $shelf) {
+            $partsCount = DB::table('parts_inventory')->where('storage_shelf_id', $shelf->id)->count();
+            if ($partsCount > 0) {
+                $skipped[] = "{$shelf->full_bin_code} ({$partsCount} part(s) still in it)";
+                continue;
+            }
+            DB::table('storage_shelves')->where('id', $shelf->id)->delete();
+            $deleted[] = $shelf->full_bin_code;
+        }
+
+        $msg = count($deleted) > 0 ? count($deleted) . ' bin(s) deleted: ' . implode(', ', $deleted) . '.' : 'No bins were deleted.';
+        if (!empty($skipped)) {
+            $msg .= ' Skipped (still has parts — relocate items first): ' . implode(', ', $skipped) . '.';
+        }
+
+        return redirect()->route('admin.storage.show', $roomId ?? 1)
+            ->with(empty($skipped) ? 'success' : 'error', $msg);
+    }
+
+    // =========================================================
     // POST /admin/storage/{id}/shelves/bulk — bulk-generate a grid
     // e.g. shelves A-F, columns 1-10, spaces 1-4 each = 240 bins at once
     // =========================================================

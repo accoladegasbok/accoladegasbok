@@ -163,6 +163,19 @@
         class="text-xs font-body font-700 bg-gray-200 text-gray-400 px-3 py-1.5 rounded-lg cursor-not-allowed transition-colors">
         🏷 Print Selected (0)
       </button>
+      {{-- NEW: multi-select delete — matches the print capability
+           above. Bins with parts still assigned are safely skipped
+           (reported back, not silently deleted) — same rule as
+           deleting a single bin already had. --}}
+      <form method="POST" action="{{ route('admin.storage.shelves.bulk-delete') }}" id="bulkDeleteForm"
+            onsubmit="return confirm('Delete all selected bins? Any bin still holding parts will be skipped automatically.')">
+        @csrf
+        <div id="bulkDeleteHiddenInputs"></div>
+        <button type="submit" id="deleteSelectedBtn" disabled
+          class="text-xs font-body font-700 bg-gray-200 text-gray-400 px-3 py-1.5 rounded-lg cursor-not-allowed transition-colors">
+          🗑 Delete Selected (0)
+        </button>
+      </form>
     </div>
   </div>
   <div class="overflow-x-auto">
@@ -311,15 +324,37 @@ function toggleSelectAll(masterCheckbox) {
 
 function updatePrintSelectedButton() {
     const checked = document.querySelectorAll('.bin-select-checkbox:checked');
-    const btn = document.getElementById('printSelectedBtn');
-    btn.textContent = `🏷 Print Selected (${checked.length})`;
+
+    const printBtn = document.getElementById('printSelectedBtn');
+    printBtn.textContent = `🏷 Print Selected (${checked.length})`;
     if (checked.length > 0) {
-        btn.disabled = false;
-        btn.className = 'text-xs font-body font-700 bg-gold text-navy px-3 py-1.5 rounded-lg hover:bg-yellow-500 transition-colors';
+        printBtn.disabled = false;
+        printBtn.className = 'text-xs font-body font-700 bg-gold text-navy px-3 py-1.5 rounded-lg hover:bg-yellow-500 transition-colors';
     } else {
-        btn.disabled = true;
-        btn.className = 'text-xs font-body font-700 bg-gray-200 text-gray-400 px-3 py-1.5 rounded-lg cursor-not-allowed transition-colors';
+        printBtn.disabled = true;
+        printBtn.className = 'text-xs font-body font-700 bg-gray-200 text-gray-400 px-3 py-1.5 rounded-lg cursor-not-allowed transition-colors';
     }
+
+    // NEW: keep the Delete Selected button + its hidden form inputs in
+    // sync with the same checkboxes Print Selected already uses.
+    const deleteBtn = document.getElementById('deleteSelectedBtn');
+    deleteBtn.textContent = `🗑 Delete Selected (${checked.length})`;
+    if (checked.length > 0) {
+        deleteBtn.disabled = false;
+        deleteBtn.className = 'text-xs font-body font-700 bg-red-500 text-white px-3 py-1.5 rounded-lg hover:bg-red-600 transition-colors';
+    } else {
+        deleteBtn.disabled = true;
+        deleteBtn.className = 'text-xs font-body font-700 bg-gray-200 text-gray-400 px-3 py-1.5 rounded-lg cursor-not-allowed transition-colors';
+    }
+    const hiddenContainer = document.getElementById('bulkDeleteHiddenInputs');
+    hiddenContainer.innerHTML = '';
+    checked.forEach(cb => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'shelf_ids[]';
+        input.value = cb.value;
+        hiddenContainer.appendChild(input);
+    });
 }
 
 function printSelectedBins() {
