@@ -63,30 +63,32 @@ body { font-family:'Inter',Arial,sans-serif; background:#eee; }
 .bin-label .code-repeat { font-size:15px; font-weight:700; color:#333; margin-top:10mm; font-family:monospace; }
 
 /* ═══════════════════════════════════════════════════════
-   ROOM LABEL — 12×4 landscape (unchanged — room/door
-   signage is a different physical use case from a small
-   bin tag, kept at its original larger format)
+   ROOM LABEL — FIXED: previously 12×4in specialty stock using
+   the unreliable "Libre Barcode 128" font trick (no checksum,
+   and visibly overflowing its box at 200px font-size in real
+   use). Now uses the exact same 90×200mm card / 3-per-A4-
+   landscape-sheet format as bin labels, with the same reliable
+   checksummed barcode renderer — genuinely scannable, and
+   prints on standard A4 paper, no specialty stock needed.
 ═══════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&family=Inter:wght@700;900&display=swap');
-.label-room {
-    width:12in; height:4in;
-    background:white; border:4px solid #c9a84c;
-    display:flex; align-items:stretch;
-    overflow:hidden; page-break-inside:avoid; page-break-after:always;
-}
-.room-code-block {
-    width:4.2in; background:#c9a84c;
+.room-label-card {
+    width:90mm; height:200mm;
+    box-sizing:border-box;
+    border:2px solid #c9a84c;
+    border-radius:4mm;
+    padding:8mm 4mm;
     display:flex; flex-direction:column;
     align-items:center; justify-content:center;
-    padding:16px; flex-shrink:0;
+    text-align:center;
+    background:#fff;
 }
-.room-code-block .room-label { font-size:22px; font-weight:900; color:#0d1b2a; letter-spacing:3px; text-transform:uppercase; text-align:center; margin-bottom:12px; }
-.room-code-block .room-code  { font-size:120px; font-weight:900; color:#0d1b2a; letter-spacing:-4px; line-height:0.9; text-align:center; }
-.room-code-block .room-loc   { font-size:16px; font-weight:700; color:#0d1b2a; opacity:0.7; margin-top:12px; text-align:center; letter-spacing:2px; }
-.room-barcode-block { flex:1; background:#fafafa; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 16px; border-left:4px solid #c9a84c; }
-.room-barcode-block .bc { font-family:'Libre Barcode 128',monospace; font-size:200px; line-height:1; color:#000; text-align:center; width:100%; white-space:nowrap; overflow:hidden; }
-.room-barcode-block .bc-text { font-size:26px; font-weight:900; letter-spacing:6px; color:#333; margin-top:8px; font-family:monospace; text-align:center; }
-.room-barcode-block .brand   { font-size:14px; font-weight:700; color:#c9a84c; margin-top:16px; letter-spacing:2px; }
+.room-label-card .kind { font-size:13px; font-weight:700; color:#c9a84c; text-transform:uppercase; letter-spacing:3px; margin-bottom:6mm; }
+.room-label-card .code { font-size:30px; font-weight:900; color:#0d1b2a; letter-spacing:1px; margin-bottom:6mm; line-height:1.1; }
+.room-label-card .name { font-size:15px; font-weight:700; color:#333; margin-top:6mm; }
+.room-label-card .loc  { font-size:12px; color:#888; margin-top:2mm; text-transform:uppercase; letter-spacing:1px; }
+.room-label-card svg { max-width:78mm; height:auto; }
+.room-label-card .code-repeat { font-size:15px; font-weight:700; color:#333; margin-top:6mm; font-family:monospace; }
+.room-label-card .brand { font-size:11px; font-weight:700; color:#c9a84c; margin-top:6mm; letter-spacing:2px; }
 
 .section-title { font-size:13px; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:2px; padding:8px 0 4px; }
 
@@ -96,14 +98,15 @@ body { font-family:'Inter',Arial,sans-serif; background:#eee; }
     .labels-wrap { margin:0; padding:0; gap:0; }
 }
 
-/* Dynamic @page size — set by JS based on active filter, since a
-   single print job can't cleanly mix A4 (bins) and 12x4in (rooms)
-   paper stock. Defaults to A4 landscape (the common case). */
+/* FIXED: rooms now use the same 90×200mm A4 landscape format as
+   bins (previously 12×4in specialty stock with an unreliable font-
+   based fake barcode) — a single fixed @page rule works for both,
+   no more dynamic per-filter page-size switching needed. */
 @page { size: A4 landscape; margin: 0; }
 
 /* Toggle visibility */
 body.rooms-only .bin-sheet    { display:none; }
-body.bins-only  .label-room   { display:none; }
+body.bins-only  .room-sheet   { display:none; }
 body.rooms-only .bins-title   { display:none; }
 body.bins-only  .rooms-title  { display:none; }
 </style>
@@ -118,27 +121,34 @@ body.bins-only  .rooms-title  { display:none; }
     <span style="color:#555;">|</span>
     <button class="ctrl-btn print-btn" onclick="window.print()">🖨 Print</button>
     <a href="javascript:history.back()" style="color:#aaa;font-size:11px;text-decoration:none;">← Back</a>
-    <span class="tip">Bins: A4 landscape, 90×200mm ×3 per sheet. Rooms: 12×4in label stock. Filter to one type before printing if mixing both — different paper.</span>
+    <span class="tip">Bins & Rooms: A4 landscape, 90×200mm ×3 per sheet — same paper for both, no need to filter or switch stock.</span>
 </div>
 
 <div class="labels-wrap">
 
-{{-- ── ROOM LABELS (unchanged, 12×4in) ─────────────────────────── --}}
+{{-- ── ROOM LABELS — retiled to the same 90×200mm/3-per-A4-landscape
+     format as bins, with the same reliable checksummed barcode ──── --}}
 @if(!empty($rooms) && count($rooms) > 0)
 <div class="section-title rooms-title">📦 Storage Room Labels</div>
-@foreach($rooms as $room)
-<div class="label-room">
-    <div class="room-code-block">
-        <div class="room-label">Storage Room</div>
-        <div class="room-code">{{ $room->code ?? Str::upper(Str::limit($room->name, 4, '')) }}</div>
-        <div class="room-loc">{{ $room->location ?? '' }}</div>
+@php $roomChunks = collect($rooms)->chunk(3); @endphp
+@foreach($roomChunks as $chunk)
+<div class="bin-sheet room-sheet">
+    @foreach($chunk as $room)
+    <div class="bin-panel-slot">
+        <div class="room-label-card">
+            <div class="kind">Storage Room</div>
+            <div class="code">{{ $room->code ?? Str::upper(Str::limit($room->name, 8, '')) }}</div>
+            <svg class="room-barcode-svg" id="rc-{{ $room->id }}"></svg>
+            <div class="code-repeat">{{ $room->code ?? $room->id }}</div>
+            <div class="name">{{ $room->name }}</div>
+            <div class="loc">{{ $room->location ?? '' }}</div>
+            <div class="brand">AUTO ZENITH PARTS</div>
+        </div>
     </div>
-    <div class="room-barcode-block">
-        <div class="bc">ROOM-{{ $room->code ?? $room->id }}</div>
-        <div class="bc-text">ROOM-{{ $room->code ?? $room->id }}</div>
-        <div style="font-size:18px;font-weight:700;color:#333;margin-top:12px;text-align:center;">{{ $room->name }}</div>
-        <div class="brand">AUTO ZENITH PARTS</div>
-    </div>
+    @endforeach
+    @for ($pad = $chunk->count(); $pad < 3; $pad++)
+    <div class="bin-panel-slot empty"></div>
+    @endfor
 </div>
 @endforeach
 @endif
@@ -220,26 +230,33 @@ function setFilter(f) {
 })(window);
 
 document.querySelectorAll('.bin-barcode-svg').forEach(svg => {
-    const code = svg.id.replace('bc-', '');
-    // The SVG id only carries the shelf id, not the bin code text —
-    // read it back from the adjacent .code-repeat element so the
-    // barcode always encodes exactly what's printed on the label.
-    const codeText = svg.parentElement.querySelector('.code-repeat').textContent.trim();
-    renderBarcode(svg.id, codeText, { width: 2.4, height: 70 });
+    // FIXED: wrapped in try/catch — a single bad render (e.g. an
+    // unsupported character in one bin code) could previously throw
+    // and silently halt the ENTIRE script, leaving every remaining
+    // bin (and room) label blank with no barcode at all. Now one
+    // failure only skips that one label.
+    try {
+        const codeText = svg.parentElement.querySelector('.code-repeat').textContent.trim();
+        renderBarcode(svg.id, codeText, { width: 2.4, height: 70 });
+    } catch (e) {
+        console.error('Bin barcode render failed for', svg.id, e);
+    }
 });
 
-// Switch @page size dynamically based on filter, since bins (A4) and
-// rooms (12x4in) need different physical paper.
-const pageStyle = document.createElement('style');
-document.head.appendChild(pageStyle);
-function updatePageSize(f) {
-    pageStyle.textContent = f === 'rooms'
-        ? '@page { size: 12in 4in landscape; margin: 0; }'
-        : '@page { size: A4 landscape; margin: 0; }';
-}
-const origSetFilter = setFilter;
-setFilter = function(f) { origSetFilter(f); updatePageSize(f); };
-updatePageSize('all');
+// NEW: render room barcodes with the same reliable generator —
+// previously used the unreliable "Libre Barcode 128" font trick.
+document.querySelectorAll('.room-barcode-svg').forEach(svg => {
+    try {
+        const codeText = svg.parentElement.querySelector('.code-repeat').textContent.trim();
+        renderBarcode(svg.id, codeText, { width: 2.8, height: 80 });
+    } catch (e) {
+        console.error('Room barcode render failed for', svg.id, e);
+    }
+});
+
+// FIXED: rooms now use the exact same A4 landscape format as bins,
+// so the page-size switching this used to need is gone — one @page
+// rule (already set earlier in the CSS) works for everything.
 </script>
 </body>
 </html>
