@@ -92,20 +92,21 @@ class OrderAdminController extends Controller
         // here.
         // FIXED: crashed with "Undefined property: stdClass::$location" —
         // order_items doesn't actually have a column by that exact
-        // name (my earlier fix guessed wrong without seeing the real
-        // schema). Using data_get() here instead of direct property
-        // access, which safely returns null for a genuinely missing
-        // property instead of erroring — this keeps the fallback
-        // working for whichever real column name is present, and
-        // degrades gracefully to the Waxahachie default if none of
-        // them exist, rather than crashing the whole PDF download.
+        // FIXED (for real this time): the crash persisted because I'd
+        // used ?: (short ternary) for the very first check —
+        // "$order->location ?: ..." — and unlike ?? (null coalescing),
+        // ?: does NOT suppress an undefined-property warning; it still
+        // has to evaluate $order->location to check truthiness, and
+        // THAT evaluation is what threw. The data_get() calls further
+        // down were already safe — only the first link in the chain
+        // wasn't. Using data_get() consistently for every step now.
         $firstItem = $items->first();
-        $resolvedLocation = $order->location
+        $resolvedLocation = data_get($order, 'location')
             ?: data_get($firstItem, 'location')
             ?: data_get($firstItem, 'part_location')
             ?: 'Waxahachie TX';
 
-        $currencyCode = $order->currency_code
+        $currencyCode = data_get($order, 'currency_code')
             ?? \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($resolvedLocation)['code'];
 
         // FIXED: DomPDF's default font can't render the ₦ Unicode
