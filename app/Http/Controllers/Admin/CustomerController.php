@@ -174,6 +174,24 @@ class CustomerController extends Controller
             'total_orders'  => 0, 'total_spent' => 0, 'last_purchase' => null,
         ]);
 
+        // NEW: apply any staff-corrected profile overrides — takes
+        // precedence over the auto-derived name/phone/address from
+        // order/invoice history, without altering those historical
+        // records themselves.
+        $overrides = DB::table('customer_profile_overrides')
+            ->whereIn('phone', $customers->pluck('phone'))
+            ->get()->keyBy('phone');
+        $customers = $customers->map(function ($c) use ($overrides) {
+            $o = $overrides->get($c->phone);
+            if ($o) {
+                $c->name  = $o->override_name  ?: $c->name;
+                $c->phone = $o->override_phone ?: $c->phone; // display only — grouping key stays the original
+                $c->email = $o->override_email ?: ($c->email ?? null);
+                $c->has_override = true;
+            }
+            return $c;
+        });
+
         $customers = $customers->merge($contacts)->values();
 
         // Simple manual pagination since this is an in-memory collection
@@ -262,11 +280,16 @@ class CustomerController extends Controller
             ->orderByDesc('n.created_at')
             ->get();
 
+        // NEW: same profile override applied here as on the index page.
+        $override = DB::table('customer_profile_overrides')->where('phone', $normalizedPhone)->first();
+
         return view('admin.customers.show', [
             'phone'      => $normalizedPhone,
-            'name'       => $latest->customer_name ?? 'Unknown',
-            'email'      => $orders->pluck('customer_email')->filter()->first()
-                              ?? $invoices->pluck('customer_email')->filter()->first(),
+            'name'       => $override->override_name ?? ($latest->customer_name ?? 'Unknown'),
+            'email'      => $override->override_email ?? ($orders->pluck('customer_email')->filter()->first()
+                              ?? $invoices->pluck('customer_email')->filter()->first()),
+            'displayPhone' => $override->override_phone ?? $normalizedPhone,
+            'override'   => $override,
             'orders'     => $orders,
             'invoices'   => $invoices,
             'topItems'   => $topItems,
@@ -340,6 +363,38 @@ class CustomerController extends Controller
 
         $statusMsg = $result['email'] ? 'Message emailed.' : 'Could not send email (no email on file).';
         return back()->with('success', $statusMsg)->with('whatsapp_reminder_link', $result['whatsapp_link']);
+    }
+
+    // =========================================================
+    // POST /admin/customers/{phone}/update-profile — corrects the
+    // DISPLAYED name/phone/email/address for a customer without
+    // touching any historical order/invoice record. Those stay
+    // exactly as they were at time of sale.
+    // =========================================================
+    public function updateProfile(Request $request, string $phone)
+    {
+        $request->validate([
+            'name'    => 'nullable|string|max:150',
+            'phone'   => 'nullable|string|max:30',
+            'email'   => 'nullable|email|max:150',
+            'address' => 'nullable|string|max:255',
+        ]);
+
+        $normalizedPhone = $this->normalizePhone($phone);
+
+        DB::table('customer_profile_overrides')->updateOrInsert(
+            ['phone' => $normalizedPhone],
+            [
+                'override_name'        => $request->name ?: null,
+                'override_phone'       => $request->phone ? $this->normalizePhone($request->phone) : null,
+                'override_email'       => $request->email ?: null,
+                'override_address'     => $request->address ?: null,
+                'updated_by_staff_id'  => \Illuminate\Support\Facades\Session::get('staff_id'),
+                'updated_at'           => now(),
+            ]
+        );
+
+        return back()->with('success', 'Customer profile updated.');
     }
 
     // =========================================================

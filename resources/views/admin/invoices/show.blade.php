@@ -42,7 +42,18 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     background: #fff; border: 1px solid #e2e2e2; border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.06); position: relative; z-index: 1;
 }
-@page { size: A4; margin: 0; }
+@page {
+    size: A4;
+    /* FIXED (round 2): margins reduced now that only a COMPACT
+       one-line header/footer repeats per page (see .inv-header-mini/
+       .inv-footer-mini below), not the full rich letterhead — reclaims
+       real printable area that was previously reserved for content
+       that only actually needs to show once, at the top/bottom of
+       the whole document. Worth a real print-preview check and small
+       adjustment if either mini element clips or leaves too much/
+       little gap. */
+    margin: 16mm 12mm 14mm 12mm;
+}
 @media print { .payments-panel { display: none !important; } }
 .invoice {
     background: white; width: 210mm; min-height: 297mm; /* FIXED: was 148mm — half of real A4 height (297mm), causing every printed copy to look small/cramped on a full A4 sheet */
@@ -202,7 +213,47 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     body { background: white; font-size: 16px; }
     .print-controls { display: none !important; }
     .invoice-pages { margin-top: 0; padding: 0; }
-    .invoice { box-shadow: none; margin: 0; page-break-after: always; }
+    .invoice { box-shadow: none; margin: 0; page-break-after: always; padding-top: 0; padding-bottom: 0; }
+
+    /* NEW: makes the header and footer repeat on EVERY physical
+       printed page, not just once per copy. position:fixed pulls them
+       out of normal document flow; the negative top/bottom offsets
+       place them within the @page margin space reserved above,
+       matching each element's own approximate height. This is the
+       standard, reliable cross-browser technique for repeating
+       print headers/footers — Chrome and Edge (Chromium) both
+       support it well. */
+    /* FIXED (round 2): the previously-repeating .inv-header/.inv-footer
+       were the FULL rich content (logo, tagline, full address, QR
+       code, complete address grid) — meaning every continuation page
+       of a multi-page invoice repeated all of that, not a lightweight
+       header/footer. Per explicit request: only a compact one-line
+       header/footer should repeat on every page; the rich content
+       should appear once, normally, at the top/bottom of the whole
+       document. */
+    .inv-header-mini {
+        position: fixed;
+        top: -14mm;
+        left: 12mm; right: 12mm;
+        display: flex; justify-content: space-between;
+        font-size: 9px; font-weight: 700; color: #333;
+        border-bottom: 1px solid #999; padding-bottom: 2mm;
+    }
+    .inv-footer-mini {
+        position: fixed;
+        bottom: -12mm;
+        left: 12mm; right: 12mm;
+        display: flex; justify-content: space-between;
+        font-size: 8px; color: #666;
+        border-top: 1px solid #ccc; padding-top: 2mm;
+    }
+    /* The rich header/footer now flow normally — no longer fixed, so
+       they only appear once (top of page 1, bottom of the last page)
+       rather than repeating. */
+    .inv-header { border-bottom: none; margin-top: 6mm; }
+    .invoice-content > *:not(.inv-header-mini):first-of-type {
+        margin-top: 4mm;
+    }
     .hidden { display: none !important; }
     /* Ensure font sizes are preserved on print */
     .part-name { font-size: 14px !important; }
@@ -414,6 +465,18 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
     <div class="watermark">{{ $copyInfo['label'] }}</div>
     <div class="copy-banner">{{ $copyInfo['label'] }}</div>
     <div class="invoice-content">
+
+        {{-- NEW: compact mini-header — this is what actually repeats on
+             every physical page via position:fixed below. Deliberately
+             minimal (one line), not the full letterhead, per explicit
+             request. The rich header right after it (logo, tagline,
+             full address, QR code) stays in normal document flow, so
+             it appears once at the top of page 1 only, not repeated. --}}
+        <div class="inv-header-mini">
+            <span>AUTO ZENITH PARTS</span>
+            <span>{{ $isVehicleSale ? 'Receipt' : 'Invoice' }} {{ $invoiceNo }}</span>
+            <span>{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }} · {{ $location }}</span>
+        </div>
 
         <div class="inv-header">
             <div class="brand-block">
@@ -669,7 +732,17 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
             </div>
         </div>
 
-        <div class="inv-footer">
+        {{-- NEW: compact mini-footer — this is what actually repeats on
+             every physical page (position:fixed below). The full
+             address grid stays in normal flow right after it, so it
+             appears once at the bottom of the last page only. --}}
+        <div class="inv-footer-mini">
+            <span>Thank you for your business!</span>
+            <span>autozenithparts.com</span>
+            <span>{{ $businessInfo['phone'] }}</span>
+        </div>
+
+        <div class="inv-footer-full">
             @if(!empty($footerAddresses))
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; text-align:left; max-width: 480px; margin: 0 auto 8px; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 6px 0;">
                 @foreach($footerAddresses as $addr)

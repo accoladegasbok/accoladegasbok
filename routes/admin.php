@@ -99,6 +99,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{phone}/notes',      [CustomerController::class, 'addNote'])->name('notes.add');
             Route::delete('/notes/{id}',       [CustomerController::class, 'destroyNote'])->name('notes.destroy');
             Route::post('/{phone}/send-message', [CustomerController::class, 'sendMessage'])->name('send-message');
+            Route::post('/{phone}/update-profile', [CustomerController::class, 'updateProfile'])->name('update-profile');
         });
         // Inventory audit sessions
         Route::prefix('audit')->name('audit.')->group(function () {
