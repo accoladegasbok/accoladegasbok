@@ -44,15 +44,12 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
 }
 @page {
     size: A4;
-    /* FIXED (round 2): margins reduced now that only a COMPACT
-       one-line header/footer repeats per page (see .inv-header-mini/
-       .inv-footer-mini below), not the full rich letterhead — reclaims
-       real printable area that was previously reserved for content
-       that only actually needs to show once, at the top/bottom of
-       the whole document. Worth a real print-preview check and small
-       adjustment if either mini element clips or leaves too much/
-       little gap. */
-    margin: 16mm 12mm 14mm 12mm;
+    /* FIXED (round 3): reverted to standard A4 margins — header/footer
+       no longer repeat as separate content at all (replaced by a
+       repeating watermark + page number instead, per explicit
+       request), so there's no need to reserve extra margin space for
+       repeating text anymore. */
+    margin: 15mm 12mm;
 }
 @media print { .payments-panel { display: none !important; } }
 .invoice {
@@ -223,36 +220,39 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
        standard, reliable cross-browser technique for repeating
        print headers/footers — Chrome and Edge (Chromium) both
        support it well. */
-    /* FIXED (round 2): the previously-repeating .inv-header/.inv-footer
-       were the FULL rich content (logo, tagline, full address, QR
-       code, complete address grid) — meaning every continuation page
-       of a multi-page invoice repeated all of that, not a lightweight
-       header/footer. Per explicit request: only a compact one-line
-       header/footer should repeat on every page; the rich content
-       should appear once, normally, at the top/bottom of the whole
-       document. */
-    .inv-header-mini {
-        position: fixed;
-        top: -14mm;
-        left: 12mm; right: 12mm;
-        display: flex; justify-content: space-between;
-        font-size: 9px; font-weight: 700; color: #333;
-        border-bottom: 1px solid #999; padding-bottom: 2mm;
+    /* FIXED (round 3): the compact mini-header/footer from the
+       previous round were STILL showing up as visible duplicate
+       content on page 1 alongside the full rich header/footer —
+       correct behavior for the mechanism, but not what was actually
+       wanted. Per explicit request: no repeating header/footer text
+       at all anymore. Instead, the existing watermark now repeats on
+       every physical page (changed to position:fixed instead of
+       absolute, which only ever centered once within a copy's total
+       height), plus a running page number.
+       NOTE ON PAGE NUMBERING: counter(page) below reliably shows the
+       CURRENT page number in Chrome/Edge. counter(pages) (the TOTAL
+       page count, for "Page 2 of 3") requires a two-pass print layout
+       that most browser print engines — including Chrome — don't
+       fully support yet. It's included below as a best-effort attempt
+       and may simply not render the "of Y" part depending on the
+       browser/version actually used to print. */
+    .watermark { position: fixed !important; }
+
+    @page {
+        @bottom-right {
+            content: "Page " counter(page) " of " counter(pages);
+            font-size: 9px; color: #999;
+        }
     }
-    .inv-footer-mini {
-        position: fixed;
-        bottom: -12mm;
-        left: 12mm; right: 12mm;
-        display: flex; justify-content: space-between;
-        font-size: 8px; color: #666;
-        border-top: 1px solid #ccc; padding-top: 2mm;
+    /* Fallback page-number element for browsers that don't support the
+       @page margin-box syntax above at all — shows current page only
+       (reliable), positioned in normal print flow at the corner. */
+    .page-number-fallback {
+        position: fixed; bottom: 4mm; right: 12mm;
+        font-size: 9px; color: #999;
     }
-    /* The rich header/footer now flow normally — no longer fixed, so
-       they only appear once (top of page 1, bottom of the last page)
-       rather than repeating. */
-    .inv-header { border-bottom: none; margin-top: 6mm; }
-    .invoice-content > *:not(.inv-header-mini):first-of-type {
-        margin-top: 4mm;
+    .page-number-fallback::after {
+        content: "Page " counter(page);
     }
     .hidden { display: none !important; }
     /* Ensure font sizes are preserved on print */
@@ -463,20 +463,9 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
 @foreach($copies as $copyKey => $copyInfo)
 <div class="invoice copy-{{ $copyKey }}" id="copy-{{ $copyKey }}">
     <div class="watermark">{{ $copyInfo['label'] }}</div>
+    <div class="page-number-fallback"></div>
     <div class="copy-banner">{{ $copyInfo['label'] }}</div>
     <div class="invoice-content">
-
-        {{-- NEW: compact mini-header — this is what actually repeats on
-             every physical page via position:fixed below. Deliberately
-             minimal (one line), not the full letterhead, per explicit
-             request. The rich header right after it (logo, tagline,
-             full address, QR code) stays in normal document flow, so
-             it appears once at the top of page 1 only, not repeated. --}}
-        <div class="inv-header-mini">
-            <span>AUTO ZENITH PARTS</span>
-            <span>{{ $isVehicleSale ? 'Receipt' : 'Invoice' }} {{ $invoiceNo }}</span>
-            <span>{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }} · {{ $location }}</span>
-        </div>
 
         <div class="inv-header">
             <div class="brand-block">
@@ -732,17 +721,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
             </div>
         </div>
 
-        {{-- NEW: compact mini-footer — this is what actually repeats on
-             every physical page (position:fixed below). The full
-             address grid stays in normal flow right after it, so it
-             appears once at the bottom of the last page only. --}}
-        <div class="inv-footer-mini">
-            <span>Thank you for your business!</span>
-            <span>autozenithparts.com</span>
-            <span>{{ $businessInfo['phone'] }}</span>
-        </div>
-
-        <div class="inv-footer-full">
+        <div class="inv-footer">
             @if(!empty($footerAddresses))
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; text-align:left; max-width: 480px; margin: 0 auto 8px; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 6px 0;">
                 @foreach($footerAddresses as $addr)
