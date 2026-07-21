@@ -50,14 +50,14 @@ body { font-family:'Inter',Arial,sans-serif; background:#eee; }
     background:#fff;
 }
 .room-label-card { border-color:#c9a84c; }
-.bin-label .code, .room-label-card .code { font-size:34px; font-weight:900; color:#0A1F5C; letter-spacing:1px; line-height:1; }
-.bin-label .room { font-size:13px; font-weight:700; color:#666; text-transform:uppercase; letter-spacing:2px; margin-top:4mm; margin-bottom:8mm; }
-.room-label-card .kind { font-size:13px; font-weight:700; color:#c9a84c; text-transform:uppercase; letter-spacing:3px; margin-bottom:4mm; }
+.bin-label .code, .room-label-card .code { font-size:41px; font-weight:900; color:#0A1F5C; letter-spacing:1px; line-height:1; }
+.bin-label .room { font-size:16px; font-weight:700; color:#666; text-transform:uppercase; letter-spacing:2px; margin-top:4mm; margin-bottom:8mm; }
+.room-label-card .kind { font-size:16px; font-weight:700; color:#c9a84c; text-transform:uppercase; letter-spacing:3px; margin-bottom:3mm; }
 .bin-label svg, .room-label-card svg { max-width:170mm; height:auto; }
-.bin-label .code-repeat, .room-label-card .code-repeat { font-size:16px; font-weight:700; color:#333; margin-top:4mm; font-family:monospace; }
-.room-label-card .name { font-size:14px; font-weight:700; color:#333; margin-top:4mm; }
-.room-label-card .loc  { font-size:11px; color:#888; margin-top:1mm; text-transform:uppercase; letter-spacing:1px; }
-.room-label-card .brand { font-size:10px; font-weight:700; color:#c9a84c; margin-top:3mm; letter-spacing:2px; }
+.bin-label .code-repeat, .room-label-card .code-repeat { font-size:19px; font-weight:700; color:#333; margin-top:3mm; font-family:monospace; }
+.room-label-card .name { font-size:17px; font-weight:700; color:#333; margin-top:3mm; }
+.room-label-card .loc  { font-size:13px; color:#888; margin-top:1mm; text-transform:uppercase; letter-spacing:1px; }
+.room-label-card .brand { font-size:12px; font-weight:700; color:#c9a84c; margin-top:2mm; letter-spacing:2px; }
 
 .section-title { font-size:13px; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:2px; padding:8px 0 4px; }
 
@@ -198,7 +198,7 @@ function setFilter(f) {
 document.querySelectorAll('.bin-barcode-svg').forEach(svg => {
     try {
         const codeText = svg.parentElement.querySelector('.code-repeat').textContent.trim();
-        renderBarcode(svg.id, codeText, { width: 2.4, height: 70 });
+        renderBarcode(svg.id, codeText, { width: 2.9, height: 84 });
     } catch (e) {
         console.error('Bin barcode render failed for', svg.id, e);
     }
@@ -207,7 +207,7 @@ document.querySelectorAll('.bin-barcode-svg').forEach(svg => {
 document.querySelectorAll('.room-barcode-svg').forEach(svg => {
     try {
         const codeText = svg.parentElement.querySelector('.code-repeat').textContent.trim();
-        renderBarcode(svg.id, codeText, { width: 2.8, height: 80 });
+        renderBarcode(svg.id, codeText, { width: 3.4, height: 96 });
     } catch (e) {
         console.error('Room barcode render failed for', svg.id, e);
     }
