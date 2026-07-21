@@ -57,21 +57,36 @@ class BinLabelController extends Controller
     // ── Batch bins (?ids=1,2,3) ───────────────────────────────────
     public function batch(Request $request)
     {
-        $ids = array_filter(array_map('intval', explode(',', $request->get('ids', ''))));
-        if (empty($ids)) abort(400, 'No bin IDs provided.');
+        $ids     = array_filter(array_map('intval', explode(',', $request->get('ids', ''))));
+        // NEW: room_ids alongside bin ids — printing "Selected Rooms"
+        // from the storage index page previously only gathered every
+        // bin inside those rooms, with no way to also get the actual
+        // room-level labels themselves (so "Rooms Only" filter showed
+        // nothing at all in that print job).
+        $roomIds = array_filter(array_map('intval', explode(',', $request->get('room_ids', ''))));
 
-        $shelves = DB::table('storage_shelves as ss')
-            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
-            ->whereIn('ss.id', $ids)
-            ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
-            ->orderByRaw('FIELD(ss.id, ' . implode(',', $ids) . ')')
-            ->get()
-            ->map(fn($s) => $this->enrichShelf($s));
+        if (empty($ids) && empty($roomIds)) abort(400, 'No bin IDs or room IDs provided.');
 
-        return view('admin.storage.bin-label', [
-            'shelves' => $shelves,
-            'rooms'   => collect(),
-        ]);
+        $shelves = collect();
+        if (!empty($ids)) {
+            $shelves = DB::table('storage_shelves as ss')
+                ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
+                ->whereIn('ss.id', $ids)
+                ->select('ss.*', 'sr.name as room_name', 'sr.location', 'sr.code as room_code')
+                ->orderByRaw('FIELD(ss.id, ' . implode(',', $ids) . ')')
+                ->get()
+                ->map(fn($s) => $this->enrichShelf($s));
+        }
+
+        $rooms = collect();
+        if (!empty($roomIds)) {
+            $rooms = DB::table('storage_rooms')
+                ->whereIn('id', $roomIds)
+                ->orderByRaw('FIELD(id, ' . implode(',', $roomIds) . ')')
+                ->get();
+        }
+
+        return view('admin.storage.bin-label', compact('shelves', 'rooms'));
     }
 
     // ── All rooms in a location (?location=Ile-Ife Nigeria) ────────

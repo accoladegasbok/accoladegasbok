@@ -140,13 +140,18 @@ async function printSelectedRooms() {
         return;
     }
 
-    if (allBinIds.length === 0) {
-        alert('None of the selected rooms have any bins to print.');
+    if (allBinIds.length === 0 && roomIds.length === 0) {
+        alert('Nothing to print.');
         updatePrintSelectedRoomsButton();
         return;
     }
 
-    window.open(`{{ route('admin.storage.bin-labels') }}?ids=${allBinIds.join(',')}`, '_blank');
+    // FIXED: previously only printed bins, meaning "Rooms Only" filter
+    // on the print page showed nothing at all for a batch built this
+    // way. Now includes the actual room-level labels too, alongside
+    // every bin in them. Rooms with zero bins still get their own
+    // room label printed rather than being silently skipped.
+    window.open(`{{ route('admin.storage.bin-labels') }}?ids=${allBinIds.join(',')}&room_ids=${roomIds.join(',')}`, '_blank');
     updatePrintSelectedRoomsButton();
 }
 </script>
