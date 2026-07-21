@@ -478,13 +478,23 @@ class StorageController extends Controller
             return redirect()->route('admin.storage.room-contents', $room->id);
         }
 
-        // Fall back to a bin code (e.g. "FE-LE1-A-01-02")
+        // Try as a bin code (e.g. "FE-LE1-A-01-02")
         $shelf = DB::table('storage_shelves')->where('full_bin_code', $code)->first();
         if ($shelf) {
             return redirect()->route('admin.storage.shelves.contents', $shelf->id);
         }
 
-        return view('admin.storage.scan-lookup', ['error' => "Code \"{$code}\" doesn't match any room or bin."]);
+        // NEW: try as an individual part's own code — works whether or
+        // not that part is assigned to a bin at all, so a part sitting
+        // in an open floor staging area (no bin yet) is still
+        // scannable through this same unified box, same as bin/room
+        // codes always have been.
+        $part = DB::table('parts_inventory')->where('part_code', $code)->whereNull('deleted_at')->first();
+        if ($part) {
+            return redirect()->route('admin.inventory.edit', $part->id);
+        }
+
+        return view('admin.storage.scan-lookup', ['error' => "Code \"{$code}\" doesn't match any room, bin, or part."]);
     }
 
     // =========================================================
