@@ -105,6 +105,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::prefix('audit')->name('audit.')->group(function () {
             Route::get('/',                 [AuditController::class, 'index'])->name('index');
             Route::get('/create',           [AuditController::class, 'create'])->name('create');
+            // FIXED: this route was missing entirely — the controller
+            // method (roomsForLocation) already existed and is called
+            // from admin/audit/create.blade.php, but with no matching
+            // route it threw RouteNotFoundException on every page load.
+            // Placed BEFORE the /{id} wildcard below, same fix pattern
+            // as the storage group above — a literal path here would
+            // otherwise get swallowed by /{id} matching id="rooms-for-location".
+            Route::get('/rooms-for-location', [AuditController::class, 'roomsForLocation'])->name('rooms-for-location');
             Route::post('/',                [AuditController::class, 'store'])->name('store');
             Route::get('/{id}',             [AuditController::class, 'show'])->name('show');
             Route::post('/{id}/count',      [AuditController::class, 'recordCount'])->name('count');

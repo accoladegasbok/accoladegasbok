@@ -272,38 +272,78 @@ class OrderAdminController extends Controller
             'items'             => 'required|array|min:1',
             'items.*.item_type' => 'required|in:part,service',
             'items.*.id'        => 'required|integer',
+            // FIXED: qty was never validated or read here at all — the
+            // edit form silently treated every line as qty=1. Now reads
+            // it (default 1 for any older form submission that doesn't
+            // send it yet), matching AdminOrderController::store().
+            'items.*.qty'       => 'nullable|integer|min:1',
         ]);
 
         $oldItems   = DB::table('order_items')->where('order_id', $id)->get();
         $oldPartIds = $oldItems->where('item_type', 'part')->pluck('part_id')->filter()->values();
         $newPartIds = collect($request->items)->where('item_type', 'part')->pluck('id')->values();
 
-        // Release removed parts
+        // FIXED: previously kept only a list of old/new part IDs and did
+        // a blind status flip (Reserved<->Available) on whole rows. Now
+        // tracks actual QUANTITY per part_id on both sides, so partial
+        // changes (e.g. an order line for a 20-unit consumable row going
+        // from qty=2 to qty=5) adjust stock_qty by the real delta instead
+        // of falsely freeing or re-reserving the whole batch.
+        $oldPartQty = $oldItems->where('item_type', 'part')->filter(fn($i) => $i->part_id)
+            ->groupBy('part_id')->map(fn($rows) => (int) $rows->sum(fn($r) => $r->qty ?? 1));
+        $newPartQty = collect($request->items)->where('item_type', 'part')->filter(fn($i) => $i['id'])
+            ->groupBy('id')->map(fn($rows) => (int) collect($rows)->sum(fn($r) => $r['qty'] ?? 1));
+
+        // Release removed parts — add back the FULL old quantity, and
+        // only flip status back to Available if this part had actually
+        // been fully depleted (status='Reserved'); if other stock was
+        // still Available the whole time, no status change is needed.
         $removedPartIds = $oldPartIds->diff($newPartIds);
-        if ($removedPartIds->isNotEmpty()) {
-            DB::table('parts_inventory')
-                ->whereIn('id', $removedPartIds)
+        foreach ($removedPartIds as $partId) {
+            $qtyToRestore = $oldPartQty->get($partId, 1);
+            DB::table('parts_inventory')->where('id', $partId)->increment('stock_qty', $qtyToRestore);
+            DB::table('parts_inventory')->where('id', $partId)
                 ->where('status', 'Reserved')
                 ->update(['status' => 'Available', 'updated_at' => now()]);
         }
 
-        // Check newly added parts
+        // Check newly added parts have enough stock for the requested qty
         $addedPartIds = $newPartIds->diff($oldPartIds);
         $stockErrors  = [];
         foreach ($addedPartIds as $partId) {
             $part = DB::table('parts_inventory')->where('id', $partId)->first();
+            $qtyNeeded = $newPartQty->get($partId, 1);
             if (!$part) { $stockErrors[] = "Part #{$partId} no longer exists."; continue; }
-            if ($part->status !== 'Available') $stockErrors[] = "{$part->part_code} ({$part->part_name}) is no longer Available.";
+            if ($part->status !== 'Available') { $stockErrors[] = "{$part->part_code} ({$part->part_name}) is no longer Available."; continue; }
+            if ($qtyNeeded > $part->stock_qty) { $stockErrors[] = "{$part->part_code}: requested {$qtyNeeded}, only {$part->stock_qty} in stock."; continue; }
         }
+
+        // NEW: parts kept on the order but with a CHANGED quantity need
+        // their stock delta applied too — previously ignored entirely,
+        // so increasing a line's qty on edit never actually reserved the
+        // extra units, and decreasing it never released the difference.
+        $keptPartIds = $oldPartIds->intersect($newPartIds);
+        foreach ($keptPartIds as $partId) {
+            $delta = $newPartQty->get($partId, 1) - $oldPartQty->get($partId, 1);
+            if ($delta === 0) continue;
+            if ($delta > 0) {
+                $part = DB::table('parts_inventory')->where('id', $partId)->first();
+                if (!$part || $delta > $part->stock_qty) {
+                    $stockErrors[] = "{$part->part_code ?? "Part #{$partId}"}: increasing quantity by {$delta}, only " . ($part->stock_qty ?? 0) . " more in stock.";
+                }
+            }
+        }
+
         if (!empty($stockErrors)) {
             return back()->withInput()->with('error', 'Cannot save changes — ' . implode(' | ', $stockErrors));
         }
 
         $lineItems = collect($request->items)->map(function ($item) use ($order) {
+            $qty = (int) ($item['qty'] ?? 1);
             if ($item['item_type'] === 'part') {
                 $part = DB::table('parts_inventory')->where('id', $item['id'])->first();
                 return $part ? (object)[
-                    'type' => 'part', 'part_id' => $part->id, 'service_id' => null,
+                    'type' => 'part', 'part_id' => $part->id, 'service_id' => null, 'qty' => $qty,
                     'part_name' => $part->part_name, 'part_code' => $part->part_code,
                     'brand' => $part->brand, 'model' => $part->model,
                     'year_from' => $part->year_from, 'year_to' => $part->year_to,
@@ -317,7 +357,7 @@ class OrderAdminController extends Controller
             $resolvedLocation = $order->location ?? $order->customer_country ?? 'Waxahachie TX';
             $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($service->id, $resolvedLocation);
             return (object)[
-                'type' => 'service', 'part_id' => null, 'service_id' => $service->id,
+                'type' => 'service', 'part_id' => null, 'service_id' => $service->id, 'qty' => $qty,
                 'part_name' => $service->name, 'part_code' => $service->service_code,
                 'brand' => $service->category, 'model' => null,
                 'year_from' => null, 'year_to' => null,
@@ -326,7 +366,10 @@ class OrderAdminController extends Controller
             ];
         })->filter()->values();
 
-        $newTotalLocal = $lineItems->sum('unit_price_local');
+        // FIXED: this used to sum unit_price_local ALONE (implicit
+        // qty=1 for every line, no matter what was actually ordered).
+        // Now multiplies by the real qty per line.
+        $newTotalLocal = $lineItems->sum(fn($li) => $li->unit_price_local * $li->qty);
         $orderCurrency = $lineItems->first()->currency_code ?? ($order->currency_code ?? 'USD');
 
         $changes = [];
@@ -354,6 +397,9 @@ class OrderAdminController extends Controller
                     'item_type'        => $li->type,
                     'part_id'          => $li->part_id,
                     'service_id'       => $li->service_id,
+                    // FIXED: qty was never saved on this path either —
+                    // same root-cause fix as AdminOrderController::store().
+                    'qty'              => $li->qty,
                     'part_name'        => $li->part_name,
                     'part_code'        => $li->part_code,
                     'brand'            => $li->brand,
@@ -363,18 +409,56 @@ class OrderAdminController extends Controller
                     'condition_grade'  => $li->condition_grade,
                     'location'         => $li->location,
                     'unit_price_local' => $li->unit_price_local,
-                    'subtotal_local'   => $li->unit_price_local,
+                    // FIXED: subtotal previously ignored qty entirely
+                    // (subtotal_local === unit_price_local, always).
+                    'subtotal_local'   => round($li->unit_price_local * $li->qty, 2),
                     'unit_price_ngn'   => $li->currency_code === 'NGN' ? round($li->unit_price_local) : null,
                     'unit_price_usd'   => $li->currency_code === 'USD' ? round($li->unit_price_local, 2) : null,
-                    'subtotal_ngn'     => $li->currency_code === 'NGN' ? round($li->unit_price_local) : null,
+                    'subtotal_ngn'     => $li->currency_code === 'NGN' ? round($li->unit_price_local * $li->qty) : null,
                     'created_at'       => now(),
                     'updated_at'       => now(),
                 ]);
 
-                if ($li->part_id && in_array($li->part_id, $addedPartIds->all())) {
+                if (!$li->part_id) continue;
+
+                // Newly added part — decrement by its full ordered qty,
+                // row-locked to protect against a concurrent sale of the
+                // same part between the earlier stock check and this write.
+                if (in_array($li->part_id, $addedPartIds->all())) {
+                    $locked = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
+                    if (!$locked || $locked->stock_qty < $li->qty) {
+                        throw new \Exception("Stock for {$li->part_code} changed before this edit was saved — only " . ($locked->stock_qty ?? 0) . " left.");
+                    }
+                    $remaining = $locked->stock_qty - $li->qty;
                     DB::table('parts_inventory')->where('id', $li->part_id)->update([
-                        'status' => 'Reserved', 'updated_at' => now(),
+                        'stock_qty'  => $remaining,
+                        'status'     => $remaining <= 0 ? 'Reserved' : 'Available',
+                        'updated_at' => now(),
                     ]);
+                    continue;
+                }
+
+                // Kept part whose quantity increased — apply just the
+                // delta, same row-locked pattern.
+                if ($keptPartIds->contains($li->part_id)) {
+                    $delta = $newPartQty->get($li->part_id, 1) - $oldPartQty->get($li->part_id, 1);
+                    if ($delta > 0) {
+                        $locked = DB::table('parts_inventory')->where('id', $li->part_id)->lockForUpdate()->first();
+                        if (!$locked || $locked->stock_qty < $delta) {
+                            throw new \Exception("Stock for {$li->part_code} changed before this edit was saved — only " . ($locked->stock_qty ?? 0) . " more available.");
+                        }
+                        $remaining = $locked->stock_qty - $delta;
+                        DB::table('parts_inventory')->where('id', $li->part_id)->update([
+                            'stock_qty'  => $remaining,
+                            'status'     => $remaining <= 0 ? 'Reserved' : 'Available',
+                            'updated_at' => now(),
+                        ]);
+                    } elseif ($delta < 0) {
+                        DB::table('parts_inventory')->where('id', $li->part_id)->increment('stock_qty', abs($delta));
+                        DB::table('parts_inventory')->where('id', $li->part_id)
+                            ->where('status', 'Reserved')
+                            ->update(['status' => 'Available', 'updated_at' => now()]);
+                    }
                 }
             }
 
@@ -728,12 +812,21 @@ class OrderAdminController extends Controller
 
         DB::table('orders')->where('id', $id)->update($updateData);
 
-        // Cancelled — release reserved parts
+        // Cancelled — release reserved parts.
+        // FIXED (item E, cancellation stage): previously only flipped
+        // status back to Available, with no idea how much stock to
+        // actually restore (qty didn't exist on order_items yet). Now
+        // adds back the real qty for this line, and only flips status
+        // if the row had been fully depleted (status='Reserved') —
+        // if other stock was still Available the whole time, nothing
+        // needs to change beyond the quantity restore.
         if ($request->order_status === 'cancelled') {
             $items = DB::table('order_items')->where('order_id', $id)->get();
             foreach ($items as $item) {
-                DB::table('parts_inventory')
-                    ->where('id', $item->part_id)
+                if (!$item->part_id) continue;
+                $qty = (int) ($item->qty ?? 1);
+                DB::table('parts_inventory')->where('id', $item->part_id)->increment('stock_qty', $qty);
+                DB::table('parts_inventory')->where('id', $item->part_id)
                     ->where('status', 'Reserved')
                     ->update(['status' => 'Available', 'updated_at' => now()]);
             }
@@ -741,16 +834,41 @@ class OrderAdminController extends Controller
 
         // Completed — mark parts as Sold + fire PartSold if not already
         // fired by confirmPayment (e.g. COD orders that skip that step)
+        //
+        // FIXED (item E, completion stage): previously flipped BOTH
+        // 'Reserved' and 'Available' rows straight to 'Sold' regardless
+        // of quantity — so if this order's line was a partial slice of
+        // a multi-unit row (e.g. 2 of 20, with the other 18 legitimately
+        // still Available from other stock), completing THIS order would
+        // incorrectly mark the entire remaining 18 as Sold too.
+        //
+        // Under the qty-aware reserve step (AdminOrderController::store()
+        // / OrderAdminController::update()), stock_qty was already
+        // decremented at the moment this order reserved its units — a
+        // row only reaches 'Reserved' once nothing is left. So completion
+        // needs no further stock math: it only needs to flip a row that's
+        // ALREADY fully depleted ('Reserved') over to the terminal 'Sold'
+        // label. A row still sitting 'Available' means other stock
+        // legitimately remains and must be left untouched.
+        //
+        // CAVEAT: orders reserved before this fix was deployed had their
+        // whole row flipped to 'Reserved' without any stock_qty deduction
+        // — completing one of those legacy orders will correctly flip
+        // status to Sold here, but stock_qty on that row won't reflect
+        // the sale. Reconcile any orders that were sitting in Reserved
+        // status at deploy time by hand if this matters for your counts.
         if ($request->order_status === 'completed') {
             $items        = DB::table('order_items')->where('order_id', $id)->get();
             $currencyCode = $order->currency_code ?? 'NGN';
 
             foreach ($items as $item) {
-                // Mark sold
+                // Mark sold — only for rows this reservation actually
+                // emptied. A part still 'Available' has other stock
+                // remaining and is untouched.
                 if ($item->part_id) {
                     DB::table('parts_inventory')
                         ->where('id', $item->part_id)
-                        ->whereIn('status', ['Reserved', 'Available'])
+                        ->where('status', 'Reserved')
                         ->update(['status' => 'Sold', 'updated_at' => now()]);
                 }
 
@@ -842,12 +960,16 @@ class OrderAdminController extends Controller
             'updated_at' => now(),
         ]);
 
-        // Release any parts still marked Reserved for this order
+        // Release any parts still marked Reserved for this order.
+        // FIXED: same qty-restore fix as the cancelled branch in
+        // updateStatus() above — adds back the real quantity, only
+        // flips status if this row had been fully depleted.
         $items = DB::table('order_items')->where('order_id', $id)->get();
         foreach ($items as $item) {
             if ($item->part_id) {
-                DB::table('parts_inventory')
-                    ->where('id', $item->part_id)
+                $qty = (int) ($item->qty ?? 1);
+                DB::table('parts_inventory')->where('id', $item->part_id)->increment('stock_qty', $qty);
+                DB::table('parts_inventory')->where('id', $item->part_id)
                     ->where('status', 'Reserved')
                     ->update(['status' => 'Available', 'updated_at' => now()]);
             }

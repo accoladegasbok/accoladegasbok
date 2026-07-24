@@ -145,7 +145,12 @@
                  could FILTER by Hold/Core/Scrapped above but never
                  actually SET a part to those statuses — this was the
                  actual gap in improvement #1. --}}
-            <select onchange="updateStatus({{ $p->id }}, this.value)"
+            {{-- data-stock-qty / data-original-status feed the qty-sold
+                 prompt in updateStatus() below — needed so selling 2 of
+                 20 units only depletes 2, instead of marking the whole
+                 batch Sold (item E fix). --}}
+            <select onchange="updateStatus({{ $p->id }}, this.value, {{ (int) ($p->stock_qty ?? 1) }}, this)"
+              data-original-status="{{ $p->status }}"
               class="border border-gray-200 rounded-lg px-2 py-1 text-xs font-body bg-white focus:outline-none">
               @foreach(['Available','Reserved','Sold','Missing','Hold','Core','Scrapped'] as $s)
                 <option value="{{ $s }}" {{ $p->status===$s?'selected':'' }}>{{ $s }}</option>
@@ -259,12 +264,62 @@ function deletePartWithPin(partId) {
 @push('scripts')
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
-async function updateStatus(id, status) {
-  await fetch(`/admin/inventory/${id}/status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
-    body: JSON.stringify({ status }),
-  });
+
+// FIXED (item E): previously sent {status} only — the backend then
+// blindly flipped the ENTIRE row to Sold no matter how many units
+// were actually sold. Now, for multi-unit rows (stock_qty > 1) being
+// marked Sold, this prompts for how many units were sold and sends
+// qty_sold along with the request. The backend only marks the row
+// Sold once stock_qty reaches 0 — a partial sale keeps it Available
+// with the remaining quantity intact.
+async function updateStatus(id, status, currentQty, selectEl) {
+  let qtySold = null;
+
+  if (status === 'Sold' && currentQty > 1) {
+    const input = prompt(`How many units are being sold? (${currentQty} currently in stock)`, currentQty);
+
+    if (input === null) {
+      // Cancelled — revert the dropdown so it doesn't show "Sold"
+      // when nothing actually changed.
+      selectEl.value = selectEl.dataset.originalStatus;
+      return;
+    }
+
+    qtySold = parseInt(input, 10);
+    if (!qtySold || qtySold < 1 || qtySold > currentQty) {
+      alert(`Enter a number between 1 and ${currentQty}.`);
+      selectEl.value = selectEl.dataset.originalStatus;
+      return;
+    }
+  }
+
+  try {
+    const res = await fetch(`/admin/inventory/${id}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify({ status, qty_sold: qtySold }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      alert(data.error || 'Could not update status.');
+      selectEl.value = selectEl.dataset.originalStatus;
+      return;
+    }
+
+    // Refresh the table in place so the Qty column and Status badge
+    // both reflect the real remaining stock, rather than trusting
+    // the optimistic dropdown value.
+    if (typeof doLiveInventorySearch === 'function') {
+      doLiveInventorySearch();
+    } else {
+      window.location.reload();
+    }
+  } catch (e) {
+    console.error('Status update failed', e);
+    alert('Could not update status — check your connection and try again.');
+    selectEl.value = selectEl.dataset.originalStatus;
+  }
 }
 </script>
 @endpush

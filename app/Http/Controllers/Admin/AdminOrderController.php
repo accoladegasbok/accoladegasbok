@@ -277,6 +277,14 @@ class AdminOrderController extends Controller
                         'item_type'       => 'part',
                         'part_id'         => $part->id,
                         'service_id'      => null,
+                        // FIXED: qty was validated and used in-memory to
+                        // compute subtotal_local, but never actually saved
+                        // — meaning nothing downstream (order editing,
+                        // cancellation, completion) could ever recover how
+                        // many units this line represented. This is the
+                        // root cause of the "sold 2 of 20, marked all 20
+                        // sold" bug at the ORDER level (item E's sibling).
+                        'qty'             => $li['qty'],
                         'part_name'       => $part->part_name,
                         'part_code'       => $part->part_code,
                         'brand'           => $part->brand,
@@ -296,8 +304,27 @@ class AdminOrderController extends Controller
                         'updated_at'      => now(),
                     ]);
 
+                    // FIXED (item E, order-placement stage): this used to
+                    // unconditionally set the WHOLE row to 'Reserved',
+                    // regardless of how many units were actually ordered
+                    // — so ordering 2 of a 20-unit consumable row hid all
+                    // 20 from every other customer. Re-fetch with a row
+                    // lock (protects against a race with another staff
+                    // member selling from the same row between the
+                    // pre-transaction stock check and this write), then
+                    // deduct only the ordered quantity. The row only
+                    // becomes 'Reserved' once stock_qty actually hits 0 —
+                    // partial orders leave the remainder 'Available' for
+                    // everyone else, exactly like storeManual()/storeService()
+                    // in InvoiceController already do for direct sales.
+                    $lockedPart = DB::table('parts_inventory')->where('id', $part->id)->lockForUpdate()->first();
+                    if (!$lockedPart || $lockedPart->stock_qty < $li['qty']) {
+                        throw new \Exception("Stock for {$part->part_code} changed before order completed — only " . ($lockedPart->stock_qty ?? 0) . " left.");
+                    }
+                    $remainingQty = $lockedPart->stock_qty - $li['qty'];
                     DB::table('parts_inventory')->where('id', $part->id)->update([
-                        'status'     => 'Reserved',
+                        'stock_qty'  => $remainingQty,
+                        'status'     => $remainingQty <= 0 ? 'Reserved' : 'Available',
                         'updated_at' => now(),
                     ]);
                 } else {
@@ -311,6 +338,9 @@ class AdminOrderController extends Controller
                         'item_type'       => 'service',
                         'part_id'         => null,
                         'service_id'      => $service->id,
+                        // FIXED: same qty-persistence fix as the part
+                        // branch above, for consistency.
+                        'qty'             => $li['qty'],
                         'part_name'       => $service->name,
                         'part_code'       => $service->service_code,
                         'brand'           => $service->category,

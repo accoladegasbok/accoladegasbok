@@ -315,17 +315,64 @@ class InventoryController extends Controller
     }
 
     // ── Quick status update (AJAX) ────────────────────────────────
-    // NOTE: this list is missing 'Missing', 'Hold', 'Core', 'Scrapped'
-    // per improvement #1 — left as-is here pending confirmation of
-    // the exact status column definition (varchar vs enum) before
-    // widening it, same lesson learned from the Lagos location bug.
+    // FIXED (item E): this used to blindly flip the whole row to
+    // 'Sold' regardless of stock_qty — so a consumable/multi-qty row
+    // (e.g. stock_qty=20) marked "Sold" for 2 units sold showed the
+    // ENTIRE batch as Sold, incorrectly zeroing out 18 units that
+    // were still physically in stock.
+    //
+    // Now: selling deducts qty_sold from stock_qty. The row only
+    // flips to 'Sold' once stock_qty actually reaches 0. Non-quantity
+    // statuses (Reserved, Missing, Hold, Core, Scrapped) behave exactly
+    // as before — qty_sold is only relevant when status=Sold.
     public function updateStatus(Request $request, int $id)
     {
-        $request->validate(['status' => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped']);
-        DB::table('parts_inventory')->where('id', $id)->update([
-            'status' => $request->status, 'updated_at' => now(),
+        $request->validate([
+            'status'   => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped',
+            // Optional — omitted or null means "sell/set the whole
+            // remaining quantity", preserving old behavior for single
+            // -unit parts (engines, transmissions, etc.) where this
+            // question never applies.
+            'qty_sold' => 'nullable|integer|min:1',
         ]);
-        return response()->json(['success' => true]);
+
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        abort_if(!$part, 404);
+
+        // Non-Sold status changes are unaffected — no quantity math needed.
+        if ($request->status !== 'Sold') {
+            DB::table('parts_inventory')->where('id', $id)->update([
+                'status' => $request->status, 'updated_at' => now(),
+            ]);
+            return response()->json(['success' => true]);
+        }
+
+        $currentQty = (int) ($part->stock_qty ?? 1);
+        $qtySold    = (int) ($request->qty_sold ?? $currentQty); // no qty given = selling all remaining
+
+        if ($qtySold > $currentQty) {
+            return response()->json([
+                'error' => "Cannot sell {$qtySold} — only {$currentQty} in stock.",
+            ], 422);
+        }
+
+        $remaining = $currentQty - $qtySold;
+
+        DB::table('parts_inventory')->where('id', $id)->update([
+            'stock_qty'  => $remaining,
+            // Only mark the row Sold once nothing is left. Partial
+            // sales keep the part Available so it still shows up in
+            // searches/orders for the remaining quantity.
+            'status'     => $remaining === 0 ? 'Sold' : 'Available',
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'success'   => true,
+            'sold_qty'  => $qtySold,
+            'remaining' => $remaining,
+            'status'    => $remaining === 0 ? 'Sold' : 'Available',
+        ]);
     }
 
     // ── Delete ────────────────────────────────────────────────────
