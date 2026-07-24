@@ -1348,6 +1348,25 @@ class InvoiceController extends Controller
         $location    = $saleLocation;
         $invoiceType = 'vehicle';
 
+        // ── FIXED: storeCarSale() never fired any revenue-tracking event
+        // at all — every whole-vehicle sale was completely invisible to
+        // the Financial Report (Total Revenue, daily trend, category
+        // breakdown all excluded it silently). Dispatches PartSold with
+        // partsInventoryId=null (a vehicle resale has no parts_inventory
+        // row) and explicit category/name overrides, since there's no
+        // part record to read those from.
+        foreach ($lineItems as $li) {
+            PartSold::dispatch(
+                null,
+                $invoiceId,
+                $li->line_local,
+                $currencyCode,
+                'invoice',
+                overridePartCategory: 'Vehicle Sale',
+                overridePartName: "{$li->vehicle_year} {$li->brand} {$li->model}"
+            );
+        }
+
         // ── Notification Idea: "Order confirmation" — same pattern as
         // storeManual(), for whole-vehicle sales. ──
         if ($customerInfo->email || $customerInfo->phone) {
