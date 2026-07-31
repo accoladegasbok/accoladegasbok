@@ -142,12 +142,7 @@ class InventoryController extends Controller
             ->whereIn('p.id', $request->ids)
             ->get();
 
-        // Reuses the same barcode.blade.php template as the single-part
-        // view — that view already needs to loop over $parts once the
-        // print layout is confirmed. See note to Akolade: pending his
-        // upload of the current barcode.blade.php before this can be
-        // wired up to render correctly for multiple tags per page.
-        return view('admin.inventory.barcode', ['parts' => $parts, 'bulk' => true]);
+        return view('admin.inventory.barcode', compact('parts'));
     }
 
     // ── Edit form ─────────────────────────────────────────────────
@@ -156,9 +151,18 @@ class InventoryController extends Controller
     // =========================================================
     public function barcode(int $id)
     {
-        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        // FIXED/NEW: now joins storage_shelves for full_bin_code (item D
+        // — bin location needs to print on the tag), and passes a
+        // single-item $parts collection so this and barcodeBulk() can
+        // share one template instead of maintaining two.
+        $part = DB::table('parts_inventory as p')
+            ->leftJoin('storage_shelves as ss', 'ss.id', '=', 'p.storage_shelf_id')
+            ->select('p.*', 'ss.full_bin_code')
+            ->where('p.id', $id)
+            ->first();
         abort_if(!$part, 404);
-        return view('admin.inventory.barcode', compact('part'));
+        $parts = collect([$part]);
+        return view('admin.inventory.barcode', compact('parts'));
     }
 
     public function edit(int $id)

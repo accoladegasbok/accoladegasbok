@@ -1,9 +1,24 @@
 {{-- FILE: resources/views/admin/inventory/barcode.blade.php --}}
+{{--
+  FIXED/NEW:
+  - Now loops over $parts (always a collection — single-part view
+    passes a 1-item collection, bulk view passes many) so one template
+    serves both admin.inventory.barcode and admin.inventory.barcodes.bulk
+    instead of maintaining two separate files.
+  - STOCK# now prints as ONE combined value — part code + our reference
+    together (e.g. "ENG-00129 · FEM001") — instead of two separate rows,
+    since the reference is treated as critical and needs to travel with
+    the stock number everywhere, not just live in a secondary row.
+  - NEW: BIN row added — was completely missing from the tag before.
+    Prefers the structured storage_shelves.full_bin_code (set via the
+    Storage Shelf picker); falls back to the legacy free-text
+    bin_location field if no structured shelf is linked yet.
+--}}
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Barcode — {{ $part->part_code }}</title>
+  <title>Barcode — {{ $parts->count() === 1 ? $parts->first()->part_code : $parts->count() . ' labels' }}</title>
   <script>
     // Self-contained CODE128 generator — no external CDN dependency,
     // so labels still print correctly even with no internet access
@@ -64,7 +79,7 @@
     .label {
       width: 2in; height: 3in; box-sizing: border-box;
       background: #fff; border: 1px solid #ccc; border-radius: 6px;
-      padding: 8px 8px; margin: 0 auto;
+      padding: 8px 8px; margin: 0 auto 16px auto;
       overflow: hidden;
       display: flex; flex-direction: column;
     }
@@ -75,14 +90,7 @@
     .label:not(.barcode-only) .barcode-only-mode { display: none; }
     .label.barcode-only .part-code-only { font-size: 11px; font-weight: bold; color: #0A1F5C; margin-top: 4px; }
 
-    /* ══ WITH-INFO MODE — dense pull-tag style, inspired by the
-         standard yard "pull tag" format (GUID barcode top, key:value
-         field rows, compatibility block, larger scan barcode at
-         bottom). Adapted to what this system actually tracks, plus
-         compatibility data (year range / trims / drive / pin count)
-         which a standard pull tag doesn't carry but customers see on
-         the storefront (#10/#11), so it's useful for staff to have
-         on the physical label too. ══ */
+    /* ══ WITH-INFO MODE — dense pull-tag style ══ */
     .info-mode { display: flex; flex-direction: column; height: 100%; }
     .info-mode .top-barcode { text-align: center; margin-bottom: 2px; }
     .info-mode .top-barcode svg { max-width: 100%; height: auto; }
@@ -92,6 +100,11 @@
     .field-row { display: flex; justify-content: space-between; border-bottom: 1px dotted #ddd; padding: 1px 0; }
     .field-row .k { color: #666; font-weight: 600; flex-shrink: 0; }
     .field-row .v { color: #0A1F5C; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 68%; }
+
+    /* NEW: STOCK# row carries both part code and our reference — needs
+       slightly more room than a typical field value, so it's allowed
+       to wrap onto a second line instead of being clipped/ellipsized. */
+    .field-row.stock-row .v { white-space: normal; max-width: 100%; line-height: 1.25; }
 
     .compat-block { margin-top: 3px; padding-top: 3px; border-top: 1px solid #C8960C; }
     .compat-title { font-size: 7px; font-weight: 800; color: #C8960C; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px; }
@@ -107,7 +120,7 @@
       .no-print { display: none; }
       body { margin: 0; padding: 0; background: #fff; }
       @page { size: 2in 3in; margin: 0; }
-      .label { box-shadow: none; border: none; page-break-after: always; }
+      .label { box-shadow: none; border: none; margin: 0 auto; page-break-after: always; }
     }
   </style>
 </head>
@@ -115,9 +128,10 @@
   <div class="toolbar no-print">
     <button id="btnWithInfo" class="toggle-btn active" onclick="setMode(false)">📄 With Product Info</button>
     <button id="btnBarcodeOnly" class="toggle-btn" onclick="setMode(true)">🏷 Barcode Only</button>
-    <button class="print-btn" onclick="window.print()">🖨 Print Label (2×3")</button>
+    <button class="print-btn" onclick="window.print()">🖨 Print {{ $parts->count() > 1 ? "{$parts->count()} Labels" : 'Label' }} (2×3")</button>
   </div>
 
+  @foreach($parts as $part)
   @php
     $priceLocal = $part->price_local ?? $part->price_usd;
     $sym = match($part->currency_code ?? 'USD') { 'NGN' => '₦', 'GHS' => 'GH₵', default => '$' };
@@ -126,21 +140,31 @@
     $compatFrom = $part->compat_year_from ?? $part->year_from;
     $compatTo   = $part->compat_year_to   ?? $part->year_to;
     $hasCompatRange = $compatFrom && $compatTo && ($compatFrom != $part->year_from || $compatTo != $part->year_to || $compatFrom != $compatTo);
+
+    // NEW: complete stock number — part code + our reference together,
+    // since the reference is treated as critical and must travel with
+    // the stock number wherever it's printed, not sit in a lesser row.
+    $fullStockNumber = $part->part_code . (!empty($part->source_ref) ? ' · Ref: ' . $part->source_ref : '');
+
+    // NEW: bin location — prefers the structured storage_shelves bin
+    // code (set via the Storage Shelf picker); falls back to the
+    // legacy free-text bin_location field if no shelf is linked yet.
+    $binDisplay = $part->full_bin_code ?? $part->bin_location ?? null;
   @endphp
 
-  <div class="label" id="labelBox">
+  <div class="label" id="labelBox-{{ $part->id }}">
 
     {{-- ══ BARCODE-ONLY MODE ══ --}}
     <div class="barcode-only-mode" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:6px;">
-        <svg id="barcode-solo"></svg>
-        <div class="part-code-only">{{ $part->part_code }}</div>
+        <svg id="barcode-solo-{{ $part->id }}"></svg>
+        <div class="part-code-only">{{ $fullStockNumber }}</div>
     </div>
 
     {{-- ══ WITH-INFO MODE — pull-tag style ══ --}}
     <div class="info-mode">
 
         <div class="guid-label">GUID</div>
-        <div class="top-barcode"><svg id="barcode-top"></svg></div>
+        <div class="top-barcode"><svg id="barcode-top-{{ $part->id }}"></svg></div>
 
         <div class="field-grid">
             <div class="field-row"><span class="k">GRADE:</span><span class="v">{{ $part->condition_grade }}</span></div>
@@ -152,15 +176,19 @@
             @if($part->side && $part->side !== 'N/A')
             <div class="field-row"><span class="k">SIDE:</span><span class="v">{{ $part->side }}</span></div>
             @endif
-            <div class="field-row"><span class="k">STOCK#:</span><span class="v">{{ $part->part_code }}</span></div>
-            @if(!empty($part->source_ref))
-            <div class="field-row"><span class="k">SRC REF:</span><span class="v">{{ $part->source_ref }}</span></div>
+            {{-- FIXED: STOCK# now shows the complete number — part code
+                 PLUS our reference together — instead of two separate
+                 rows (STOCK# / SRC REF). --}}
+            <div class="field-row stock-row"><span class="k">STOCK#:</span><span class="v">{{ $fullStockNumber }}</span></div>
+            {{-- NEW: bin location — was missing from the tag entirely. --}}
+            @if($binDisplay)
+            <div class="field-row"><span class="k">BIN:</span><span class="v">{{ $binDisplay }}</span></div>
             @endif
             @if($part->donor_vin)
             <div class="field-row"><span class="k">VIN#:</span><span class="v" style="font-size:7.5px;">{{ $part->donor_vin }}</span></div>
             @endif
             @if($part->engine_code_oem)
-            <div class="field-row"><span class="k">ENGINE:</span><span class="v">{{ $part->engine_code_oem }}</span></div>
+            <div class="field-row"><span class="k">ENGINE:</span><span class="v">{{ $part->engine_code_oem }}@if(!empty($part->engine_displacement)) ({{ $part->engine_displacement }})@endif</span></div>
             @endif
             @if($part->transmission_code_oem)
             <div class="field-row"><span class="k">GEARBOX:</span><span class="v">{{ $part->transmission_code_oem }}@if($part->pin_count) ({{ $part->pin_count }}-pin)@endif</span></div>
@@ -170,10 +198,7 @@
             @endif
         </div>
 
-        {{-- Compatibility block — this is the improvement over the
-             standard pull-tag format, which has no compatibility
-             concept at all. Only shown when there's actually a wider
-             range or trim/fitment info beyond the donor year alone. --}}
+        {{-- Compatibility block --}}
         @if($hasCompatRange || $part->compatible_trims || $part->not_compatible_note)
         <div class="compat-block">
             <div class="compat-title">✓ Also Fits</div>
@@ -192,17 +217,26 @@
         <div class="price-strip">{{ $priceFmt }}</div>
 
         <div class="wo-label">SCAN</div>
-        <div class="bottom-barcode"><svg id="barcode-bottom"></svg></div>
+        <div class="bottom-barcode"><svg id="barcode-bottom-{{ $part->id }}"></svg></div>
     </div>
 
   </div>
+  @endforeach
 
   <script>
-    const PART_CODE = "{{ $part->part_code }}";
+    // NEW: one entry per part instead of a single PART_CODE constant —
+    // needed so the render/toggle logic can loop over every label on
+    // the page instead of assuming exactly one.
+    const LABELS = [
+        @foreach($parts as $part)
+        { id: {{ $part->id }}, code: "{{ $part->part_code }}" },
+        @endforeach
+    ];
 
     function setMode(barcodeOnly) {
-        const label = document.getElementById('labelBox');
-        label.classList.toggle('barcode-only', barcodeOnly);
+        LABELS.forEach(({ id }) => {
+            document.getElementById(`labelBox-${id}`).classList.toggle('barcode-only', barcodeOnly);
+        });
         document.getElementById('btnWithInfo').classList.toggle('active', !barcodeOnly);
         document.getElementById('btnBarcodeOnly').classList.toggle('active', barcodeOnly);
 
@@ -214,23 +248,23 @@
     }
 
     function renderAllBarcodes(barcodeOnly) {
-        if (barcodeOnly) {
-            renderBarcode("barcode-solo", PART_CODE, { width: 2.2, height: 60, displayValue: true, fontSize: 13 });
-        } else {
-            // Top = small GUID-style reference code, Bottom = larger
-            // primary scan code — same value printed twice at two
-            // sizes, mirroring the standard pull-tag layout where the
-            // GUID (top) and WO# (bottom) are the same number, just
-            // sized differently for close reference vs quick scanning.
-            renderBarcode("barcode-top",    PART_CODE, { width: 1.1, height: 22, displayValue: false });
-            renderBarcode("barcode-bottom", PART_CODE, { width: 1.6, height: 34, displayValue: true, fontSize: 10 });
-        }
+        LABELS.forEach(({ id, code }) => {
+            if (barcodeOnly) {
+                renderBarcode(`barcode-solo-${id}`, code, { width: 2.2, height: 60, displayValue: true, fontSize: 13 });
+            } else {
+                // Top = small GUID-style reference code, Bottom = larger
+                // primary scan code — same value printed twice at two
+                // sizes, mirroring the standard pull-tag layout.
+                renderBarcode(`barcode-top-${id}`,    code, { width: 1.1, height: 22, displayValue: false });
+                renderBarcode(`barcode-bottom-${id}`, code, { width: 1.6, height: 34, displayValue: true, fontSize: 10 });
+            }
+        });
     }
 
     const initialParams = new URLSearchParams(window.location.search);
     const startBarcodeOnly = initialParams.get('info') === '0';
     if (startBarcodeOnly) {
-        document.getElementById('labelBox').classList.add('barcode-only');
+        LABELS.forEach(({ id }) => document.getElementById(`labelBox-${id}`).classList.add('barcode-only'));
         document.getElementById('btnWithInfo').classList.remove('active');
         document.getElementById('btnBarcodeOnly').classList.add('active');
     }
