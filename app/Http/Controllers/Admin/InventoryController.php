@@ -61,22 +61,42 @@ class InventoryController extends Controller
     // ── List ──────────────────────────────────────────────────────
     public function index(Request $request)
     {
-        $query = DB::table('parts_inventory')->orderByDesc('created_at');
+        // FIXED/NEW: joins through storage_shelves -> storage_rooms so
+        // the inventory list can filter AND display by room (previously
+        // only had location, with no room-level breakdown at all).
+        // LEFT JOINs so parts with no shelf/room assigned still show up.
+        $query = DB::table('parts_inventory as p')
+            ->leftJoin('storage_shelves as ss', 'ss.id', '=', 'p.storage_shelf_id')
+            ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
+            ->select('p.*', 'sr.name as room_name', 'sr.id as room_id', 'ss.full_bin_code')
+            ->orderByDesc('p.created_at');
 
-        if ($f = $request->get('brand'))    $query->where('brand', $f);
-        if ($f = $request->get('category')) $query->where('part_category', $f);
-        if ($f = $request->get('location')) $query->where('location', $f);
-        if ($f = $request->get('status'))   $query->where('status', $f);
+        if ($f = $request->get('brand'))    $query->where('p.brand', $f);
+        if ($f = $request->get('category')) $query->where('p.part_category', $f);
+        if ($f = $request->get('location')) $query->where('p.location', $f);
+        if ($f = $request->get('status'))   $query->where('p.status', $f);
+        // NEW: filter inventory down to a specific room, not just location.
+        if ($f = $request->get('room'))     $query->where('sr.id', $f);
+
         if ($f = $request->get('q')) {
             $query->where(function($q) use ($f) {
-                $q->where('part_name',           'like', "%$f%")
-                  ->orWhere('part_code',          'like', "%$f%")
-                  ->orWhere('model',              'like', "%$f%")
-                  ->orWhere('oem_part_number',    'like', "%$f%")
-                  ->orWhere('engine_code_oem',    'like', "%$f%")  // item 6
-                  ->orWhere('transmission_code_oem','like',"%$f%") // item 6
-                  ->orWhere('gear_alias',         'like', "%$f%")  // item 7
-                  ->orWhere('pin_count',          'like', "%$f%"); // item 10
+                $q->where('p.part_name',            'like', "%$f%")
+                  ->orWhere('p.part_code',           'like', "%$f%")
+                  ->orWhere('p.model',                'like', "%$f%")
+                  ->orWhere('p.oem_part_number',      'like', "%$f%")
+                  ->orWhere('p.engine_code_oem',      'like', "%$f%")  // item 6
+                  ->orWhere('p.transmission_code_oem','like', "%$f%")  // item 6
+                  ->orWhere('p.gear_alias',           'like', "%$f%")  // item 7
+                  ->orWhere('p.pin_count',            'like', "%$f%")  // item 10
+                  // NEW — searchable per this request: our reference,
+                  // part category, room name, bin location, and engine
+                  // displacement.
+                  ->orWhere('p.source_ref',           'like', "%$f%")
+                  ->orWhere('p.part_category',        'like', "%$f%")
+                  ->orWhere('sr.name',                'like', "%$f%")
+                  ->orWhere('ss.full_bin_code',       'like', "%$f%")
+                  ->orWhere('p.bin_location',         'like', "%$f%")
+                  ->orWhere('p.engine_displacement',  'like', "%$f%");
             });
         }
 
@@ -85,13 +105,49 @@ class InventoryController extends Controller
             ->select('status', DB::raw('count(*) as n'))
             ->groupBy('status')->pluck('n','status');
 
+        // NEW: room list for the filter dropdown, scoped to whichever
+        // location is currently selected (or all rooms if none picked).
+        $roomsQuery = DB::table('storage_rooms')->orderBy('location')->orderBy('name');
+        if ($loc = $request->get('location')) {
+            $roomsQuery->where('location', $loc);
+        }
+        $rooms = $roomsQuery->get(['id', 'name', 'location']);
+
         return view('admin.inventory.index', [
             'parts'      => $parts,
             'counts'     => $counts,
             'brands'     => self::BRANDS,
             'categories' => self::CATEGORIES,
             'locations'  => Locations::all(),
+            'rooms'      => $rooms,
         ]);
+    }
+
+    // =========================================================
+    // POST /admin/inventory/barcodes/bulk — print multiple barcode
+    // tags at once from a set of selected inventory rows.
+    // NEW: previously barcode() only supported one part_id at a time,
+    // so printing tags for a batch meant opening each row individually.
+    // =========================================================
+    public function barcodeBulk(Request $request)
+    {
+        $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'integer|exists:parts_inventory,id',
+        ]);
+
+        $parts = DB::table('parts_inventory as p')
+            ->leftJoin('storage_shelves as ss', 'ss.id', '=', 'p.storage_shelf_id')
+            ->select('p.*', 'ss.full_bin_code')
+            ->whereIn('p.id', $request->ids)
+            ->get();
+
+        // Reuses the same barcode.blade.php template as the single-part
+        // view — that view already needs to loop over $parts once the
+        // print layout is confirmed. See note to Akolade: pending his
+        // upload of the current barcode.blade.php before this can be
+        // wired up to render correctly for multiple tags per page.
+        return view('admin.inventory.barcode', ['parts' => $parts, 'bulk' => true]);
     }
 
     // ── Edit form ─────────────────────────────────────────────────
@@ -180,9 +236,18 @@ class InventoryController extends Controller
             'storage_shelf_id'    => 'nullable|exists:storage_shelves,id',
             'bin_location'        => 'nullable|string|max:20',
             'engine_code_oem'     => 'nullable|string|max:30',
+            // NEW: persists engine displacement (e.g. "2.5L", "3.5L V6")
+            // so it's visible and searchable on inventory, not just used
+            // transiently during harvest-entry lookups.
+            'engine_displacement' => 'nullable|string|max:20',
             'transmission_code_oem'=> 'nullable|string|max:30',
             'pin_count'           => 'nullable|integer|min:1|max:99',
-            'gear_alias'          => 'nullable|string|max:50',
+            // FIXED: this capped at 50 chars even after the DB column
+            // was widened to TEXT to fix the truncation error — editing
+            // a part with a long gear alias (e.g. "20-pin gear (Camry
+            // 2010-11 — early 2AR-FE, distinct from 2012+ 22-pin)")
+            // would fail validation before ever reaching the database.
+            'gear_alias'          => 'nullable|string|max:1000',
             'origin_market'       => 'nullable|in:JDM,USDM,EDM,Nigerian Used,N/A',
             'fitment_notes'       => 'nullable|string',
             'compat_year_from'    => 'nullable|integer|min:1986|max:2027',
@@ -290,6 +355,9 @@ class InventoryController extends Controller
             'storage_shelf_id'       => $request->storage_shelf_id ?: null,
             'engine_code_oem'        => $request->engine_code_oem
                                           ? strtoupper(trim($request->engine_code_oem)) : null,
+            // NEW: persisted engine displacement (item E of this request).
+            'engine_displacement'    => $request->engine_displacement
+                                          ? trim($request->engine_displacement) : null,
             'transmission_code_oem'  => $request->transmission_code_oem
                                           ? strtoupper(trim($request->transmission_code_oem)) : null,
             'pin_count'              => $request->pin_count,
@@ -836,6 +904,9 @@ class InventoryController extends Controller
             'source_ref'             => $request->source_ref ? substr(trim($request->source_ref), 0, 6) : null,
             'engine_code_oem'        => $request->engine_code_oem
                                           ? strtoupper(trim($request->engine_code_oem)) : null,
+            // NEW: persisted engine displacement (item E of this request).
+            'engine_displacement'    => $request->engine_displacement
+                                          ? trim($request->engine_displacement) : null,
             'transmission_code_oem'  => $request->transmission_code_oem
                                           ? strtoupper(trim($request->transmission_code_oem)) : null,
             'pin_count'              => $request->pin_count,

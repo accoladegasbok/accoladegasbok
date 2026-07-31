@@ -99,7 +99,10 @@ class AuditController extends Controller
 
         $roomName = null;
         if ($request->room_id) {
-            $shelfIds = DB::table('storage_shelves')->where('room_id', $request->room_id)->pluck('id');
+            // FIXED: storage_shelves' actual column is `storage_room_id`,
+            // not `room_id` — this was throwing a SQL "Unknown column"
+            // error on every room-scoped audit request.
+            $shelfIds = DB::table('storage_shelves')->where('storage_room_id', $request->room_id)->pluck('id');
             $query->whereIn('storage_shelf_id', $shelfIds);
             $roomName = DB::table('storage_rooms')->where('id', $request->room_id)->value('name');
         }

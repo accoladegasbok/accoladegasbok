@@ -42,7 +42,7 @@
 
 {{-- Filters — all real-time, no Enter key or Search button needed --}}
 <div class="flex flex-wrap gap-2 mb-5">
-  <input type="text" id="invSearchQ" value="{{ request('q') }}" placeholder="Part name, code, model, OEM..."
+  <input type="text" id="invSearchQ" value="{{ request('q') }}" placeholder="Part name, code, ref, room, bin, category, displacement..."
     oninput="liveInventorySearch()"
     class="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
   <select id="invSearchBrand" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
@@ -53,14 +53,40 @@
     <option value="">All categories</option>
     @foreach($categories as $c)<option value="{{ $c }}" {{ request('category')===$c?'selected':'' }}>{{ $c }}</option>@endforeach
   </select>
-  <select id="invSearchLocation" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+  <select id="invSearchLocation" onchange="onInventoryLocationChange()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
     <option value="">All locations</option>
     @foreach($locations as $l)<option value="{{ $l }}" {{ request('location')===$l?'selected':'' }}>{{ $l }}</option>@endforeach
+  </select>
+  {{-- NEW: Room filter — scoped to whichever location is currently
+       selected. Options refresh via AJAX on Location change (reuses the
+       already-existing admin.audit.rooms-for-location endpoint) since
+       the live-search swap below only replaces the table, not this bar. --}}
+  <select id="invSearchRoom" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">All rooms</option>
+    @foreach($rooms as $r)<option value="{{ $r->id }}" {{ (string) request('room')===(string) $r->id ?'selected':'' }}>{{ $r->name }}</option>@endforeach
   </select>
   <span id="invSearchSpinner" class="hidden self-center text-xs text-gray-400 font-body">Searching...</span>
   @if(request()->hasAny(['q','brand','category','location','status']))
     <a href="{{ route('admin.inventory.index') }}" class="border border-gray-200 text-gray-500 font-body text-xs px-4 py-2.5 rounded-xl hover:bg-gray-50">Clear</a>
   @endif
+</div>
+
+{{-- NEW: Bulk action bar — hidden until at least one row is checked.
+     Currently powers multi-barcode printing (item A of this request);
+     designed so future bulk actions (status change, delete, etc.) can
+     reuse the same selected-ids form. --}}
+<div id="bulkActionBar" class="hidden items-center gap-3 bg-navy text-white rounded-xl px-4 py-3 mb-4">
+  <span id="bulkSelectedCount" class="text-xs font-body font-500">0 selected</span>
+  <form id="bulkBarcodeForm" method="POST" action="{{ route('admin.inventory.barcodes.bulk') }}" target="_blank" class="inline">
+    @csrf
+    <div id="bulkBarcodeIdsContainer"></div>
+    <button type="submit" class="bg-gold text-navy font-display font-700 text-xs px-4 py-1.5 rounded-lg hover:bg-yellow-400 transition-colors">
+      🏷 Print Barcodes
+    </button>
+  </form>
+  <button type="button" onclick="clearBulkSelection()" class="text-xs font-body text-slate-300 hover:text-white ml-auto">
+    Clear selection
+  </button>
 </div>
 
 {{-- Table --}}
@@ -70,6 +96,9 @@
     <table class="w-full text-sm font-body">
       <thead>
         <tr>
+          <th class="px-4 py-3">
+            <input type="checkbox" id="selectAllRows" onchange="toggleSelectAllRows(this)" class="rounded border-gray-300">
+          </th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Part</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Category</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Vehicle</th>
@@ -77,6 +106,7 @@
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Price</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Qty</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Location</th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Room</th>
           <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Status</th>
           <th class="px-4 py-3"></th>
         </tr>
@@ -85,13 +115,23 @@
         @forelse($parts as $p)
         <tr class="border-b border-gray-50 hover:bg-gray-50 transition-colors">
           <td class="px-4 py-3">
+            <input type="checkbox" class="row-checkbox rounded border-gray-300" value="{{ $p->id }}" onchange="updateBulkSelection()">
+          </td>
+          <td class="px-4 py-3">
             <div class="font-500 text-navy">{{ $p->part_name }}
               @if($p->side && $p->side !== 'N/A')
                 <span class="text-xs text-gray-400">· {{ $p->side }}</span>
               @endif
             </div>
+            {{-- Stock number now clearly shows Our Reference (source_ref)
+                 as its own labelled badge — this is a 6-char code (e.g.
+                 FEM001) that staff treat as critical, so it's no longer
+                 just a faint trailing slash-separated value. --}}
             <div class="text-xs text-gray-400 font-mono mt-0.5">
-              {{ $p->part_code }}@if(!empty($p->source_ref))<span class="text-gray-300"> / </span><span class="text-gold">{{ $p->source_ref }}</span>@endif
+              {{ $p->part_code }}
+              @if(!empty($p->source_ref))
+                <span class="inline-flex items-center bg-gold/10 text-gold font-700 px-1.5 py-0.5 rounded ml-1">Ref: {{ $p->source_ref }}</span>
+              @endif
             </div>
           </td>
           <td class="px-4 py-3">
@@ -117,6 +157,12 @@
             @else
               <div class="font-500 text-navy text-xs">{{ $p->brand }} {{ $p->model }}</div>
               <div class="text-xs text-gray-400">{{ $p->year_from }}@if($p->year_to != $p->year_from)–{{ $p->year_to }}@endif</div>
+              {{-- NEW: engine displacement, shown whenever recorded —
+                   most relevant for Engine-category rows, but harmless
+                   to show anywhere it's set. --}}
+              @if(!empty($p->engine_displacement))
+                <div class="text-xs text-gray-400">{{ $p->engine_displacement }}</div>
+              @endif
             @endif
           </td>
           <td class="px-4 py-3">
@@ -139,6 +185,12 @@
             <span class="font-display font-700 text-navy text-sm">{{ $p->stock_qty ?? 1 }}</span>
           </td>
           <td class="px-4 py-3 text-xs text-gray-600">{{ $p->location }}</td>
+          <td class="px-4 py-3 text-xs text-gray-600">
+            {{ $p->room_name ?? '—' }}
+            @if(!empty($p->full_bin_code))
+              <div class="text-[10px] text-gray-400 font-mono">{{ $p->full_bin_code }}</div>
+            @endif
+          </td>
           <td class="px-4 py-3">
             {{-- Status dropdown — now includes ALL 7 real statuses.
                  Previously only had Available/Reserved/Sold, so staff
@@ -185,7 +237,7 @@
           </td>
         </tr>
         @empty
-        <tr><td colspan="9" class="px-4 py-12 text-center text-gray-400 text-sm font-body">No parts found.</td></tr>
+        <tr><td colspan="11" class="px-4 py-12 text-center text-gray-400 text-sm font-body">No parts found.</td></tr>
         @endforelse
       </tbody>
     </table>
@@ -205,6 +257,41 @@ function liveInventorySearch() {
     invSearchTimer = setTimeout(doLiveInventorySearch, 350);
 }
 
+// NEW: when Location changes, refresh the Room dropdown's options via
+// the existing rooms-for-location endpoint (built for the Audit page,
+// reused here) before running the normal search — otherwise Room would
+// keep showing rooms from whatever location was selected on page load.
+async function onInventoryLocationChange() {
+    const location = document.getElementById('invSearchLocation').value;
+    const roomSelect = document.getElementById('invSearchRoom');
+    const previousValue = roomSelect.value;
+
+    try {
+        const res = await fetch(`/admin/audit/rooms-for-location?location=${encodeURIComponent(location)}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const data = await res.json();
+
+        roomSelect.innerHTML = '<option value="">All rooms</option>';
+        (data.rooms || []).forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = r.name;
+            roomSelect.appendChild(opt);
+        });
+
+        // Keep the previous room selected if it still exists for the
+        // new location; otherwise it naturally falls back to "All rooms".
+        if ([...roomSelect.options].some(o => o.value === previousValue)) {
+            roomSelect.value = previousValue;
+        }
+    } catch (e) {
+        console.error('Could not refresh room options', e);
+    }
+
+    liveInventorySearch();
+}
+
 async function doLiveInventorySearch() {
     const spinner = document.getElementById('invSearchSpinner');
     try {
@@ -213,11 +300,13 @@ async function doLiveInventorySearch() {
         const brand = document.getElementById('invSearchBrand').value;
         const category = document.getElementById('invSearchCategory').value;
         const location = document.getElementById('invSearchLocation').value;
+        const room = document.getElementById('invSearchRoom').value;
 
         url.searchParams.set('q', q);
         url.searchParams.set('brand', brand);
         url.searchParams.set('category', category);
         url.searchParams.set('location', location);
+        url.searchParams.set('room', room);
         url.searchParams.delete('page');
 
         const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -231,11 +320,56 @@ async function doLiveInventorySearch() {
         }
 
         window.history.replaceState({}, '', url.toString());
+
+        // Row checkboxes just got replaced along with the table — any
+        // prior selection no longer maps to real DOM elements, so reset
+        // the bulk action bar to avoid a stale/confusing state.
+        clearBulkSelection();
     } catch (e) {
         console.error('Live inventory search failed', e);
     } finally {
         spinner.classList.add('hidden');
     }
+}
+
+// NEW: multi-select + bulk barcode printing (item A of this request).
+function toggleSelectAllRows(headerCheckbox) {
+    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = headerCheckbox.checked);
+    updateBulkSelection();
+}
+
+function updateBulkSelection() {
+    const checked = document.querySelectorAll('.row-checkbox:checked');
+    const bar = document.getElementById('bulkActionBar');
+    const countLabel = document.getElementById('bulkSelectedCount');
+    const idsContainer = document.getElementById('bulkBarcodeIdsContainer');
+
+    if (checked.length > 0) {
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+    } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+
+    countLabel.textContent = `${checked.length} selected`;
+
+    // Rebuild hidden ids[] inputs for the bulk barcode form
+    idsContainer.innerHTML = '';
+    checked.forEach(cb => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids[]';
+        input.value = cb.value;
+        idsContainer.appendChild(input);
+    });
+}
+
+function clearBulkSelection() {
+    document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+    const selectAll = document.getElementById('selectAllRows');
+    if (selectAll) selectAll.checked = false;
+    updateBulkSelection();
 }
 
 // ── Staff/Supervisor delete a part only via Supervisor-or-above PIN

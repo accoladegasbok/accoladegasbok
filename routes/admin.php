@@ -51,6 +51,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/consumable/create', [InventoryController::class, 'consumableCreate'])->name('consumable.create');
             Route::post('/consumable',       [InventoryController::class, 'consumableStore'])->name('consumable.store');
             Route::post('/',            [InventoryController::class, 'store'])->name('store');
+            // NEW: bulk barcode printing for multiple selected rows.
+            // Placed BEFORE /{id}/barcode — same literal-before-wildcard
+            // convention already used elsewhere in this file, since
+            // "/inventory/barcodes/bulk" would otherwise risk matching
+            // /{id}/barcode with id="barcodes" if ever reordered.
+            Route::post('/barcodes/bulk', [InventoryController::class, 'barcodeBulk'])->name('barcodes.bulk');
             Route::get('/{id}/barcode', [InventoryController::class, 'barcode'])->name('barcode');
             Route::get('/{id}/edit',    [InventoryController::class, 'edit'])->name('edit');
             Route::put('/{id}',         [InventoryController::class, 'update'])->name('update');
