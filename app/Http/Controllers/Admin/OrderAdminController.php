@@ -329,7 +329,12 @@ class OrderAdminController extends Controller
             if ($delta > 0) {
                 $part = DB::table('parts_inventory')->where('id', $partId)->first();
                 if (!$part || $delta > $part->stock_qty) {
-                    $stockErrors[] = "{$part->part_code ?? "Part #{$partId}"}: increasing quantity by {$delta}, only " . ($part->stock_qty ?? 0) . " more in stock.";
+                    // FIXED: PHP's {$...} string interpolation only allows
+                    // simple property/array access — a ?? expression inside
+                    // it is a hard syntax error, not just a lint warning.
+                    // Resolve the label to a plain variable first instead.
+                    $partLabel = $part->part_code ?? "Part #{$partId}";
+                    $stockErrors[] = "{$partLabel}: increasing quantity by {$delta}, only " . ($part->stock_qty ?? 0) . " more in stock.";
                 }
             }
         }
