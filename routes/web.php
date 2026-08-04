@@ -49,6 +49,29 @@ Route::get('/parts/compatibility', [\App\Http\Controllers\PartsSearchController:
 // homepage's own "Search Parts" nav/CTA links point to /parts.
 Route::view('/home', 'public.home')->name('home');
 
+// ── Customer accounts (real accounts — separate from AccountIX,
+// which handles a different login at accounts.autozenithparts.com) ──
+Route::get('/account/register',        [\App\Http\Controllers\CustomerAuthController::class, 'showRegister'])->name('customer.register');
+Route::post('/account/register',       [\App\Http\Controllers\CustomerAuthController::class, 'register'])->name('customer.register.store');
+Route::get('/account/login',           [\App\Http\Controllers\CustomerAuthController::class, 'showLogin'])->name('customer.login');
+Route::post('/account/login',          [\App\Http\Controllers\CustomerAuthController::class, 'login'])->name('customer.login.attempt');
+Route::get('/account/verify',          [\App\Http\Controllers\CustomerAuthController::class, 'showVerify'])->name('customer.verify');
+Route::post('/account/verify',         [\App\Http\Controllers\CustomerAuthController::class, 'verifyOtp'])->name('customer.verify.attempt');
+Route::post('/account/verify/resend',  [\App\Http\Controllers\CustomerAuthController::class, 'resendOtp'])->name('customer.verify.resend');
+Route::post('/account/logout',         [\App\Http\Controllers\CustomerAuthController::class, 'logout'])->name('customer.logout');
+
+// Called BY Telegram's servers, not by a browser — no customer_id
+// session available here, that's expected (see controller docblock).
+Route::post('/telegram/webhook', [\App\Http\Controllers\CustomerAuthController::class, 'telegramWebhook'])->name('customer.telegram.webhook');
+
+Route::middleware(\App\Http\Middleware\CustomerAuth::class)->group(function () {
+    Route::get('/account',                 [\App\Http\Controllers\CustomerAuthController::class, 'account'])->name('customer.account');
+    Route::post('/account/change-email',   [\App\Http\Controllers\CustomerAuthController::class, 'requestEmailChange'])->name('customer.email.change');
+    Route::post('/account/change-phone',   [\App\Http\Controllers\CustomerAuthController::class, 'requestPhoneChange'])->name('customer.phone.change');
+    Route::get('/account/telegram/link',   [\App\Http\Controllers\CustomerAuthController::class, 'telegramLinkStart'])->name('customer.telegram.link');
+});
+
+
 // ── AutoMatch AI premium teaser page — linked from the homepage's
 // Tools section. Not yet a functioning product (per MBA capstone /
 // business plan, this is planned as a paid subscription mirroring the

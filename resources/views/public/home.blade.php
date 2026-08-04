@@ -229,6 +229,7 @@
       <a href="#categories">Categories</a>
       <a href="#locations">Locations</a>
       <a href="#warranty">Warranty</a>
+      <a href="/account/login" style="font-size:13px;">👤 My Account</a>
     </nav>
     <a href="/parts" class="nav-cta">Browse Inventory</a>
   </div>

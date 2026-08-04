@@ -107,6 +107,19 @@
                 <a href="#footer-contact" class="nav-link text-gray-300 hover:text-white text-sm font-body pb-1 transition-colors">Contact</a>
             </div>
 
+            {{-- NEW: customer account entry point, separate from the
+                 admin login (which lives under /admin, not shown on
+                 this public header). --}}
+            @if(session('customer_id'))
+            <a href="{{ route('customer.account') }}" class="hidden sm:flex items-center gap-1.5 text-gray-300 hover:text-white text-sm font-body font-500 px-3 py-2">
+                👤 My Account
+            </a>
+            @else
+            <a href="{{ route('customer.login') }}" class="hidden sm:flex items-center gap-1.5 text-gray-300 hover:text-white text-sm font-body font-500 px-3 py-2">
+                👤 Log In
+            </a>
+            @endif
+
             {{-- WhatsApp CTA — asks location first so enquiries reach the right regional number --}}
             <button onclick="openWaPicker()"
                class="hidden sm:flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-body font-500 px-4 py-2 rounded-lg transition-colors">
@@ -129,6 +142,11 @@
                 <a href="#how-it-works" class="text-gray-300 hover:text-white text-sm font-body py-1">How It Works</a>
                 <a href="#footer-locations" class="text-gray-300 hover:text-white text-sm font-body py-1">Locations</a>
                 <a href="#footer-contact" class="text-gray-300 hover:text-white text-sm font-body py-1">Contact</a>
+                @if(session('customer_id'))
+                <a href="{{ route('customer.account') }}" class="text-gray-300 hover:text-white text-sm font-body py-1">👤 My Account</a>
+                @else
+                <a href="{{ route('customer.login') }}" class="text-gray-300 hover:text-white text-sm font-body py-1">👤 Log In</a>
+                @endif
                 <button onclick="openWaPicker()" class="text-left text-green-400 hover:text-green-300 text-sm font-body py-1 font-500">WhatsApp Us</button>
             </div>
         </div>
