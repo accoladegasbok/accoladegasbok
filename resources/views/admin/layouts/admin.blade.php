@@ -85,7 +85,7 @@
       </a>
       <a href="{{ route('admin.inventory.consumable.create') }}" class="sidebar-link {{ request()->routeIs('admin.inventory.consumable*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3.75H6.912a2.25 2.25 0 00-2.25 2.25v13.5a2.25 2.25 0 002.25 2.25h10.176a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H15M9 3.75c0 .621.504 1.125 1.125 1.125h3.75c.621 0 1.125-.504 1.125-1.125M9 3.75c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125m-5 9 1.5 1.5 3-3.5"/></svg>
-        Consumables
+        Consumables & Others
       </a>
       <a href="{{ route('admin.compatibility.index') }}" class="sidebar-link {{ request()->routeIs('parts.compatibility') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
