@@ -44,6 +44,14 @@ Route::get('/unsubscribe/{phone}/{token}/{channel}', [\App\Http\Controllers\Unsu
 // ── Public compatibility checker page ─────────────────────────────
 Route::get('/parts/compatibility', [\App\Http\Controllers\PartsSearchController::class, 'compatibility'])->name('parts.compatibility');
 
+// ── Public SEO homepage — company overview for search visitors ────
+// NOTE: root '/' still redirects straight to '/parts' in production
+// (see above) — this is a SEPARATE landing page at /home, not a
+// replacement for that redirect. Point autozenithparts.com/home here
+// directly, or change the root redirect above if this should become
+// the new default landing page instead.
+Route::view('/home', 'public.home')->name('home');
+
 Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
 
     // ── Vehicle ROI Dashboard — Phase 4 ───────────────────────────
