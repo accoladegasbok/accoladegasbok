@@ -9,16 +9,25 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
 
 /**
- * Manages consumable / generic parts — items bought in bulk and sold
- * individually that are NOT tied to a donor vehicle (e.g. oil filters,
- * brake pad sets, spark plug sets, engine oil, gaskets, belts etc.)
+ * Manages non-automotive inventory: Consumables (oils, filters, brake
+ * pad sets, gaskets etc.), Electronics, Computers, and Other — items
+ * bought in bulk/individually that are NOT tied to a donor vehicle.
  *
- * Consumables live in parts_inventory with donor_vin = null and
- * part_category = 'Consumable' (or 'Generic') to distinguish them
- * from harvested parts.
+ * FIXED: this previously only ever created 'Consumable' category
+ * items — store() hardcoded 'part_category' => 'Consumable'
+ * unconditionally, so Electronics/Computers/Other had no confirmed
+ * creation path anywhere in the app. Now accepts a category selection
+ * (defaulting to Consumable for backward compatibility with any
+ * existing bookmarked/linked create form), validated against the same
+ * four categories the public /other-items page groups together.
+ *
+ * These live in parts_inventory with donor_vin = null, distinguishing
+ * them from harvested parts.
  */
 class ConsumableController extends Controller
 {
+    const CATEGORIES = ['Consumable', 'Electronics', 'Computers', 'Other'];
+
     // =========================================================
     // GET /admin/consumables
     // =========================================================
@@ -27,19 +36,20 @@ class ConsumableController extends Controller
         $q        = trim($request->get('q', ''));
         $location = $request->get('location', Session::get('staff_location', 'all'));
         $status   = $request->get('status', 'all');
+        // NEW: filter the admin list by category too, now that this
+        // screen covers four categories instead of just one.
+        $category = $request->get('category', 'all');
 
-        $query = DB::table('parts_inventory')
-            ->whereNull('deleted_at')
-            ->whereIn('part_category', ['Consumable', 'Generic', 'Generic / Consumable'])
-            ->orWhereNull('donor_vin');
-
-        // Re-scope after orWhereNull
         $query = DB::table('parts_inventory')
             ->whereNull('deleted_at')
             ->where(function ($q2) {
-                $q2->whereIn('part_category', ['Consumable', 'Generic', 'Generic / Consumable'])
+                $q2->whereIn('part_category', self::CATEGORIES)
                    ->orWhereNull('donor_vin');
             });
+
+        if ($category !== 'all' && in_array($category, self::CATEGORIES, true)) {
+            $query->where('part_category', $category);
+        }
 
         if ($q !== '') {
             $query->where(function ($sq) use ($q) {
@@ -62,18 +72,18 @@ class ConsumableController extends Controller
 
         // Stats
         $totalItems  = DB::table('parts_inventory')->whereNull('deleted_at')
-            ->whereIn('part_category', ['Consumable', 'Generic', 'Generic / Consumable'])->count();
+            ->whereIn('part_category', self::CATEGORIES)->count();
         $totalValue  = DB::table('parts_inventory')->whereNull('deleted_at')
-            ->whereIn('part_category', ['Consumable', 'Generic', 'Generic / Consumable'])
+            ->whereIn('part_category', self::CATEGORIES)
             ->where('status', 'Available')->sum('price_local');
         $lowStock    = DB::table('parts_inventory')->whereNull('deleted_at')
-            ->whereIn('part_category', ['Consumable', 'Generic', 'Generic / Consumable'])
+            ->whereIn('part_category', self::CATEGORIES)
             ->where('status', 'Available')->where('stock_qty', '<=', 3)->count();
 
         return view('admin.consumables.index', compact(
-            'consumables', 'q', 'location', 'status', 'locations',
+            'consumables', 'q', 'location', 'status', 'category', 'locations',
             'totalItems', 'totalValue', 'lowStock'
-        ));
+        ))->with('categories', self::CATEGORIES);
     }
 
     // =========================================================
@@ -92,7 +102,10 @@ class ConsumableController extends Controller
             Session::get('staff_location', 'Waxahachie TX')
         );
 
-        return view('admin.consumables.create', compact('partNames', 'locations', 'currency'));
+        // NEW: category selector — was entirely absent before, since
+        // this form only ever created Consumable items.
+        return view('admin.consumables.create', compact('partNames', 'locations', 'currency'))
+            ->with('categories', self::CATEGORIES);
     }
 
     // =========================================================
@@ -102,27 +115,28 @@ class ConsumableController extends Controller
     {
         $request->validate([
             'part_name'   => 'required|string|max:191',
+            // NEW: was hardcoded to 'Consumable' — now a real,
+            // validated selection across all four grouped categories.
+            'part_category' => 'nullable|string|in:' . implode(',', self::CATEGORIES),
             'location'    => 'required|string',
             'price_local' => 'required|numeric|min:0',
             'stock_qty'   => 'required|integer|min:1',
-            // FIXED: photo upload never existed on this form at all —
-            // 'photos' was hardcoded to an empty array on every save.
             'photos'      => 'nullable|array|max:6',
             'photos.*'    => 'nullable|image|max:5120', // 5MB per photo
         ]);
 
+        $category = $request->part_category ?: 'Consumable';
         $currency = InvoiceController::currencyForLocation($request->location);
 
-        // Generate part code
+        // Generate part code — kept as a single CON- sequence across
+        // all four categories (they're grouped together on the public
+        // side too, so one shared numbering scheme is simplest).
         $lastCode = DB::table('parts_inventory')
             ->where('part_code', 'like', 'CON-%')
             ->orderByDesc('id')->value('part_code');
         $nextNum  = $lastCode ? (int) substr($lastCode, 4) + 1 : 1;
         $partCode = 'CON-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
 
-        // Store uploaded photos (if any) — same disk/path convention
-        // as the rest of the app (public disk, so they serve through
-        // the /media symlink like every other part photo).
         $photoPaths = [];
         if ($request->hasFile('photos')) {
             foreach ($request->file('photos') as $photo) {
@@ -135,7 +149,7 @@ class ConsumableController extends Controller
         DB::table('parts_inventory')->insert([
             'part_code'        => $partCode,
             'part_name'        => $request->part_name,
-            'part_category'    => 'Consumable',
+            'part_category'    => $category,
             'brand'            => $request->brand ?? null,
             'model'            => null,
             'year_from'        => null,
@@ -160,7 +174,7 @@ class ConsumableController extends Controller
         ]);
 
         return redirect()->route('admin.inventory.consumable.index')
-            ->with('success', "Consumable \"{$request->part_name}\" added to inventory.");
+            ->with('success', "\"{$request->part_name}\" ({$category}) added to inventory.");
     }
 
     // =========================================================
@@ -179,7 +193,8 @@ class ConsumableController extends Controller
 
         $currency = InvoiceController::currencyForLocation($item->location ?? 'Waxahachie TX');
 
-        return view('admin.consumables.edit', compact('item', 'locations', 'currency'));
+        return view('admin.consumables.edit', compact('item', 'locations', 'currency'))
+            ->with('categories', self::CATEGORIES);
     }
 
     // =========================================================
@@ -189,19 +204,20 @@ class ConsumableController extends Controller
     {
         $request->validate([
             'part_name'   => 'required|string|max:191',
+            // NEW: category can now actually be corrected on edit too
+            // (e.g. something entered as Consumable that's really an
+            // Electronics item).
+            'part_category' => 'nullable|string|in:' . implode(',', self::CATEGORIES),
             'price_local' => 'required|numeric|min:0',
             'stock_qty'   => 'required|integer|min:0',
-            // FIXED: same gap as store() — edit form could never
-            // actually save a photo, regardless of what was uploaded.
             'photos'         => 'nullable|array|max:6',
             'photos.*'       => 'nullable|image|max:5120',
-            'remove_photos'  => 'nullable|array', // indices of existing photos staff want removed
+            'remove_photos'  => 'nullable|array',
         ]);
 
         $item = DB::table('parts_inventory')->where('id', $id)->first();
         $existingPhotos = json_decode($item->photos ?? '[]', true) ?: [];
 
-        // Remove any photos staff flagged for deletion
         if (!empty($request->remove_photos)) {
             foreach ($request->remove_photos as $idx) {
                 if (isset($existingPhotos[$idx])) {
@@ -212,7 +228,6 @@ class ConsumableController extends Controller
             $existingPhotos = array_values($existingPhotos);
         }
 
-        // Append newly uploaded photos to whatever's left
         if ($request->hasFile('photos')) {
             foreach ($request->file('photos') as $photo) {
                 if ($photo && $photo->isValid()) {
@@ -223,6 +238,9 @@ class ConsumableController extends Controller
 
         DB::table('parts_inventory')->where('id', $id)->update([
             'part_name'       => $request->part_name,
+            // Only updates if actually submitted — safe no-op until
+            // the edit form itself adds the category selector.
+            ...($request->filled('part_category') ? ['part_category' => $request->part_category] : []),
             'brand'           => $request->brand ?? null,
             'price_local'     => (float) $request->price_local,
             'price_usd'       => (float) $request->price_local,
@@ -235,7 +253,7 @@ class ConsumableController extends Controller
         ]);
 
         return redirect()->route('admin.inventory.consumable.index')
-            ->with('success', 'Consumable updated successfully.');
+            ->with('success', 'Item updated successfully.');
     }
 
     // =========================================================
@@ -249,6 +267,6 @@ class ConsumableController extends Controller
         ]);
 
         return redirect()->route('admin.inventory.consumable.index')
-            ->with('success', 'Consumable removed.');
+            ->with('success', 'Item removed.');
     }
 }
