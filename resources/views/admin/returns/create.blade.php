@@ -35,65 +35,62 @@
       </div>
     </div>
 
-    {{-- Linked invoice — only relevant for customer returns --}}
+    {{-- Linked sale — searches BOTH invoices and orders now, and shows
+         the FULL sale (customer + every line item) once matched, with
+         a checkbox per item instead of a single-select dropdown, so 1
+         or 2 items out of a larger sale can be returned in one go. --}}
     <div class="stat-card mb-5" id="invoiceSection">
-      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Linked Invoice (optional)</h2>
-      <p class="text-xs text-gray-400 font-body mb-4">Search by invoice number, customer name, or phone — or skip if you don't have the invoice handy.</p>
-      <input type="text" id="invoiceSearchInput" placeholder="Search invoices..."
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Linked Sale (optional)</h2>
+      <p class="text-xs text-gray-400 font-body mb-4">Search by invoice/order number, customer name, or phone — covers Manual Invoices, Service Invoices, and Place Orders. Skip if you don't have it handy.</p>
+      <input type="text" id="invoiceSearchInput" placeholder="Search invoices and orders..."
         class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
-      <div id="invoiceResults" class="mt-2 space-y-1 hidden"></div>
-      {{-- NEW: pre-selected when arriving via a "Log Return" link from
-           an invoice's receipt page (?invoice_id=X) — staff no longer
-           have to search for the same invoice they just came from. --}}
-      <div id="selectedInvoice" class="mt-2 {{ $prefillInvoice ? '' : 'hidden' }} bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex items-center justify-between">
-        <span class="text-sm font-body text-blue-800" id="selectedInvoiceLabel">{{ $prefillInvoice ? $prefillInvoice->invoice_no . ' — ' . $prefillInvoice->customer_name : '' }}</span>
-        <button type="button" onclick="clearInvoice()" class="text-xs text-blue-600 underline">Change</button>
-      </div>
-      <input type="hidden" name="invoice_id" id="invoiceIdInput" value="{{ $prefillInvoice->id ?? '' }}">
+      <div id="invoiceResults" class="mt-2 space-y-1"></div>
 
-      {{-- Items on that invoice, once selected --}}
-      <div id="invoiceItemsSection" class="mt-3 {{ $prefillInvoice ? '' : 'hidden' }}">
-        <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Which item is being returned?</label>
-        <select id="invoiceItemSelect" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
-          <option value="">Select item</option>
-          {{-- NEW: rendered server-side from the prefilled invoice —
-               same data-* attributes the AJAX path builds in JS, so the
-               existing change handler works identically either way. --}}
+      <input type="hidden" name="sale_type" id="saleTypeInput" value="{{ $saleType ?? '' }}">
+      <input type="hidden" name="sale_id" id="saleIdInput" value="{{ $prefillSale->id ?? '' }}">
+
+      {{-- Full sale preview — customer info + every line item, shown
+           once a sale is matched, so staff visually confirm it's the
+           right one before picking what's being returned. --}}
+      <div id="salePreview" class="mt-3 {{ $prefillSale ? '' : 'hidden' }} bg-blue-50 border border-blue-100 rounded-xl overflow-hidden">
+        <div class="px-3 py-2 bg-blue-100 flex items-center justify-between">
+          <div class="text-sm font-body text-blue-900">
+            <strong id="salePreviewRef">{{ $prefillSale->ref ?? '' }}</strong>
+            <span id="salePreviewTypeBadge" class="text-[10px] uppercase tracking-wide bg-blue-700 text-white px-1.5 py-0.5 rounded ml-1">{{ $saleType ?? '' }}</span>
+            — <span id="salePreviewCustomer">{{ $prefillSale->customer_name ?? '' }}</span>
+            <span id="salePreviewPhone" class="text-blue-600 text-xs">{{ !empty($prefillSale->customer_phone) ? '(' . $prefillSale->customer_phone . ')' : '' }}</span>
+          </div>
+          <button type="button" onclick="clearInvoice()" class="text-xs text-blue-700 underline flex-shrink-0">Change</button>
+        </div>
+        <div id="salePreviewItems" class="divide-y divide-blue-100">
           @foreach($prefillItems as $it)
-          <option value="{{ $it->id }}" data-part-id="{{ $it->part_id ?? '' }}" data-label="{{ $it->part_name }} ({{ $it->part_code }})" data-line-total="{{ $it->line_total_local ?? 0 }}">{{ $it->part_name }} — Qty {{ $it->qty }}</option>
+          <label class="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-blue-100/50 transition-colors">
+            <input type="checkbox" class="sale-item-checkbox rounded border-blue-300"
+              value="{{ $it->id }}" data-part-id="{{ $it->part_id ?? '' }}"
+              data-label="{{ $it->part_name }} ({{ $it->part_code }})"
+              data-line-total="{{ $it->line_total_local ?? 0 }}"
+              onchange="onSaleItemToggle(this)">
+            <span class="text-sm font-body text-gray-700 flex-1">{{ $it->part_name }} <span class="text-gray-400 text-xs">({{ $it->part_code }}) — Qty {{ $it->qty }}</span></span>
+            <span class="text-xs font-mono text-gray-500">{{ number_format($it->line_total_local ?? 0, 2) }}</span>
+          </label>
           @endforeach
-        </select>
-        <input type="hidden" name="invoice_item_id" id="invoiceItemIdInput">
+        </div>
       </div>
     </div>
 
-    {{-- FIXED: refund/cost amount was never captured anywhere on this
-         form — auto-fills from the selected invoice item's real price
-         (parts) or can be typed manually (e.g. for labour, or when no
-         invoice is linked). --}}
-    <div class="stat-card mb-5" id="refundSection">
-      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Refund / Cost Amount</h2>
-      <p class="text-xs text-gray-400 font-body mb-3">Auto-fills from the invoice item selected above — adjust if only partially refunding, or enter manually for labour/no-invoice cases.</p>
-      <div class="relative max-w-xs">
-        <span id="refundCurrencySymbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{{ ['NGN' => '₦', 'USD' => '$', 'GHS' => 'GH₵'][$prefillCurrency] ?? '₦' }}</span>
-        <input type="number" name="refund_amount_local" id="refundAmountInput" step="0.01" min="0"
-          class="w-full border border-gray-200 rounded-xl pl-7 pr-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-          placeholder="0">
-      </div>
-    </div>
-
-    {{-- Part being returned --}}
+    {{-- Selected items to return — built up from either the sale
+         preview checkboxes above, or the manual part search below.
+         Each row here becomes one return record on submit. --}}
     <div class="stat-card mb-5">
-      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Part Being Returned *</h2>
-      <p class="text-xs text-gray-400 font-body mb-4">Search by part code, part name, or donor VIN. (Auto-filled if you picked an invoice item above.)</p>
-      <input type="text" id="partSearchInput" placeholder="Search parts..." required
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Item(s) Being Returned *</h2>
+      <p class="text-xs text-gray-400 font-body mb-3">Check items above from a linked sale, or search for a part manually below (e.g. for internal rejects or no-invoice cases).</p>
+
+      <div id="selectedItemsList" class="space-y-2 mb-3"></div>
+      <div id="noItemsWarning" class="text-xs text-gray-400 font-body mb-3">No items selected yet.</div>
+
+      <input type="text" id="partSearchInput" placeholder="Search parts manually..."
         class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
       <div id="partResults" class="mt-2 space-y-1 hidden"></div>
-      <div id="selectedPart" class="mt-2 hidden bg-green-50 border border-green-100 rounded-lg px-3 py-2 flex items-center justify-between">
-        <span class="text-sm font-body text-green-800" id="selectedPartLabel"></span>
-        <button type="button" onclick="clearPart()" class="text-xs text-green-600 underline">Change</button>
-      </div>
-      <input type="hidden" name="part_id" id="partIdInput" required>
     </div>
 
     <div class="stat-card mb-5">
@@ -104,7 +101,7 @@
 
     <div class="flex gap-3">
       <button type="submit" class="flex-1 bg-gold text-navy font-display font-700 text-sm py-3.5 rounded-xl tracking-wide hover:bg-yellow-500 transition-colors">
-        Log Return — Place Part on Hold
+        Log Return — Place Part(s) on Hold
       </button>
       <a href="{{ route('admin.returns.index') }}" class="border border-gray-200 text-gray-500 font-body font-500 text-sm px-5 py-3.5 rounded-xl hover:bg-gray-50 transition-colors">Cancel</a>
     </div>
@@ -113,7 +110,75 @@
 
 @push('scripts')
 <script>
-// ── Return type toggle — hide invoice section for internal rejects ───────
+// ── Selected items state — rebuilt into hidden inputs before submit ──────
+// Keyed by a synthetic key so a manually-searched part and a
+// sale-linked item never collide.
+let selectedItems = {};
+
+@if($prefillItems->isNotEmpty())
+// Nothing pre-checked by default even when a sale is prefilled — staff
+// still explicitly picks which item(s) are actually being returned.
+@endif
+
+function renderSelectedItems() {
+    const list = document.getElementById('selectedItemsList');
+    const warning = document.getElementById('noItemsWarning');
+    const keys = Object.keys(selectedItems);
+
+    if (keys.length === 0) {
+        list.innerHTML = '';
+        warning.classList.remove('hidden');
+        return;
+    }
+    warning.classList.add('hidden');
+
+    list.innerHTML = keys.map(key => {
+        const it = selectedItems[key];
+        return `
+        <div class="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+            <span class="text-sm font-body text-green-800 flex-1">${it.label}</span>
+            <span class="text-xs text-gray-400">Refund:</span>
+            <div class="relative">
+                <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">₦</span>
+                <input type="number" step="0.01" min="0" value="${it.refund}"
+                    oninput="updateItemRefund('${key}', this.value)"
+                    class="w-24 border border-gray-200 rounded-lg pl-5 pr-2 py-1 text-xs font-body focus:outline-none focus:border-yellow-400">
+            </div>
+            <button type="button" onclick="removeSelectedItem('${key}')" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+        </div>`;
+    }).join('');
+}
+
+function updateItemRefund(key, value) {
+    if (selectedItems[key]) selectedItems[key].refund = parseFloat(value) || 0;
+}
+
+function removeSelectedItem(key) {
+    delete selectedItems[key];
+    // Uncheck the matching sale-item checkbox, if it came from there
+    document.querySelectorAll('.sale-item-checkbox').forEach(cb => {
+        if (`sale-${cb.value}` === key) cb.checked = false;
+    });
+    renderSelectedItems();
+}
+
+// ── Toggling a checkbox in the sale preview ───────────────────────────────
+function onSaleItemToggle(checkbox) {
+    const key = `sale-${checkbox.value}`;
+    if (checkbox.checked) {
+        selectedItems[key] = {
+            saleItemId: checkbox.value,
+            partId: checkbox.dataset.partId,
+            label: checkbox.dataset.label,
+            refund: parseFloat(checkbox.dataset.lineTotal) || 0,
+        };
+    } else {
+        delete selectedItems[key];
+    }
+    renderSelectedItems();
+}
+
+// ── Return type toggle — hide sale section for internal rejects ─────────
 document.querySelectorAll('input[name="return_type"]').forEach(input => {
     input.addEventListener('change', function() {
         document.getElementById('invoiceSection').style.display = this.value === 'internal' ? 'none' : '';
@@ -121,18 +186,17 @@ document.querySelectorAll('input[name="return_type"]').forEach(input => {
     });
 });
 
-// ── Invoice search ──────────────────────────────────────────────────────────
+// ── Sale search (invoices + orders, unified) ─────────────────────────────
 let invoiceSearchTimer = null;
 document.getElementById('invoiceSearchInput').addEventListener('input', function() {
     clearTimeout(invoiceSearchTimer);
     const q = this.value.trim();
-    if (!q) { document.getElementById('invoiceResults').classList.add('hidden'); return; }
+    if (!q) { document.getElementById('invoiceResults').innerHTML = ''; return; }
     invoiceSearchTimer = setTimeout(() => searchInvoices(q), 300);
 });
 
 async function searchInvoices(q) {
     const box = document.getElementById('invoiceResults');
-    box.classList.remove('hidden');
     box.innerHTML = '<div class="text-xs text-gray-400 font-body">Searching...</div>';
     try {
         const res = await fetch(`{{ route('admin.returns.search-invoices') }}?q=${encodeURIComponent(q)}`);
@@ -141,10 +205,12 @@ async function searchInvoices(q) {
             box.innerHTML = '<div class="text-xs text-gray-400 font-body">No matches.</div>';
             return;
         }
-        box.innerHTML = data.invoices.map(inv => `
-            <button type="button" onclick='selectInvoice(${inv.id}, "${inv.invoice_no} — ${inv.customer_name}")'
+        box.innerHTML = data.invoices.map(sale => `
+            <button type="button" onclick="selectSale('${sale.sale_type}', ${sale.id})"
                 class="block w-full text-left text-sm font-body border border-gray-200 rounded-lg px-3 py-2 hover:border-gold transition-colors">
-                <strong>${inv.invoice_no}</strong> — ${inv.customer_name} (${inv.customer_phone || 'no phone'})
+                <strong>${sale.ref}</strong>
+                <span class="text-[10px] uppercase tracking-wide bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded ml-1">${sale.sale_type}</span>
+                — ${sale.customer_name} (${sale.customer_phone || 'no phone'})
             </button>
         `).join('');
     } catch (e) {
@@ -152,59 +218,59 @@ async function searchInvoices(q) {
     }
 }
 
-async function selectInvoice(id, label) {
-    document.getElementById('invoiceIdInput').value = id;
-    document.getElementById('selectedInvoiceLabel').textContent = label;
-    document.getElementById('selectedInvoice').classList.remove('hidden');
-    document.getElementById('invoiceResults').classList.add('hidden');
+// ── Selecting a sale — loads the FULL sale (customer + every item) ───────
+async function selectSale(saleType, saleId) {
+    document.getElementById('saleTypeInput').value = saleType;
+    document.getElementById('saleIdInput').value = saleId;
+    document.getElementById('invoiceResults').innerHTML = '';
     document.getElementById('invoiceSearchInput').value = '';
 
-    // Load items for this invoice
-    const itemsSection = document.getElementById('invoiceItemsSection');
-    const itemSelect = document.getElementById('invoiceItemSelect');
-    itemSelect.innerHTML = '<option value="">Loading...</option>';
-    itemsSection.classList.remove('hidden');
+    const preview = document.getElementById('salePreview');
+    const itemsBox = document.getElementById('salePreviewItems');
+    itemsBox.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400 font-body">Loading sale...</div>';
+    preview.classList.remove('hidden');
+
     try {
-        const res = await fetch(`{{ route('admin.returns.invoice-items') }}?invoice_id=${id}`);
+        const res = await fetch(`{{ route('admin.returns.invoice-items') }}?sale_type=${saleType}&sale_id=${saleId}`);
         const data = await res.json();
-        // FIXED: currency symbol now matches the actual invoice's
-        // currency instead of always showing ₦, and each option
-        // carries its real line total for the refund autofill below.
-        const symbols = { NGN: '₦', USD: '$', GHS: 'GH₵' };
-        document.getElementById('refundCurrencySymbol').textContent = symbols[data.currency_code] || '₦';
-        itemSelect.innerHTML = '<option value="">Select item</option>' +
-            (data.items || []).map(it => `<option value="${it.id}" data-part-id="${it.part_id || ''}" data-label="${it.part_name} (${it.part_code})" data-line-total="${it.line_total_local || 0}">${it.part_name} — Qty ${it.qty}</option>`).join('');
+
+        document.getElementById('salePreviewTypeBadge').textContent = saleType;
+
+        if (!data.items || data.items.length === 0) {
+            itemsBox.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400 font-body">No items found on this sale.</div>';
+            return;
+        }
+
+        itemsBox.innerHTML = data.items.map(it => `
+            <label class="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-blue-100/50 transition-colors">
+                <input type="checkbox" class="sale-item-checkbox rounded border-blue-300"
+                    value="${it.id}" data-part-id="${it.part_id || ''}"
+                    data-label="${it.part_name} (${it.part_code})"
+                    data-line-total="${it.line_total_local || 0}"
+                    onchange="onSaleItemToggle(this)">
+                <span class="text-sm font-body text-gray-700 flex-1">${it.part_name} <span class="text-gray-400 text-xs">(${it.part_code}) — Qty ${it.qty}</span></span>
+                <span class="text-xs font-mono text-gray-500">${Number(it.line_total_local || 0).toFixed(2)}</span>
+            </label>
+        `).join('');
     } catch (e) {
-        itemSelect.innerHTML = '<option value="">Could not load items</option>';
+        itemsBox.innerHTML = '<div class="px-3 py-2 text-xs text-red-500 font-body">Could not load sale items.</div>';
     }
 }
-
-document.getElementById('invoiceItemSelect').addEventListener('change', function() {
-    const opt = this.options[this.selectedIndex];
-    document.getElementById('invoiceItemIdInput').value = this.value;
-    const partId = opt ? opt.dataset.partId : '';
-    if (partId) {
-        document.getElementById('partIdInput').value = partId;
-        document.getElementById('selectedPartLabel').textContent = opt.dataset.label;
-        document.getElementById('selectedPart').classList.remove('hidden');
-        document.getElementById('partSearchInput').value = '';
-        document.getElementById('partResults').classList.add('hidden');
-    }
-    // Autofill refund amount from the invoice item's real line total —
-    // staff can still adjust it if only partially refunding.
-    if (opt && opt.dataset.lineTotal) {
-        document.getElementById('refundAmountInput').value = parseFloat(opt.dataset.lineTotal).toFixed(2);
-    }
-});
 
 function clearInvoice() {
-    document.getElementById('invoiceIdInput').value = '';
-    document.getElementById('invoiceItemIdInput').value = '';
-    document.getElementById('selectedInvoice').classList.add('hidden');
-    document.getElementById('invoiceItemsSection').classList.add('hidden');
+    document.getElementById('saleTypeInput').value = '';
+    document.getElementById('saleIdInput').value = '';
+    document.getElementById('salePreview').classList.add('hidden');
+    document.getElementById('salePreviewItems').innerHTML = '';
+    // Drop any selections that came from the sale preview (keep
+    // manually-searched parts intact)
+    Object.keys(selectedItems).forEach(key => {
+        if (key.startsWith('sale-')) delete selectedItems[key];
+    });
+    renderSelectedItems();
 }
 
-// ── Part search ───────────────────────────────────────────────────────────
+// ── Manual part search — for internal rejects / no-invoice returns ──────
 let partSearchTimer = null;
 document.getElementById('partSearchInput').addEventListener('input', function() {
     clearTimeout(partSearchTimer);
@@ -225,7 +291,7 @@ async function searchParts(q) {
             return;
         }
         box.innerHTML = data.parts.map(p => `
-            <button type="button" onclick='selectPart(${p.id}, "${p.part_name} (${p.part_code}) — ${p.brand} ${p.model}, ${p.location}")'
+            <button type="button" onclick='selectManualPart(${p.id}, "${p.part_name} (${p.part_code}) — ${p.brand} ${p.model}, ${p.location}")'
                 class="block w-full text-left text-sm font-body border border-gray-200 rounded-lg px-3 py-2 hover:border-gold transition-colors">
                 <strong>${p.part_code}</strong> — ${p.part_name} (${p.brand} ${p.model}) · ${p.status}
             </button>
@@ -235,18 +301,36 @@ async function searchParts(q) {
     }
 }
 
-function selectPart(id, label) {
-    document.getElementById('partIdInput').value = id;
-    document.getElementById('selectedPartLabel').textContent = label;
-    document.getElementById('selectedPart').classList.remove('hidden');
+function selectManualPart(id, label) {
+    const key = `manual-${id}`;
+    selectedItems[key] = { saleItemId: null, partId: id, label, refund: 0 };
+    renderSelectedItems();
     document.getElementById('partResults').classList.add('hidden');
     document.getElementById('partSearchInput').value = '';
 }
 
-function clearPart() {
-    document.getElementById('partIdInput').value = '';
-    document.getElementById('selectedPart').classList.add('hidden');
-}
+// ── Build hidden items[] inputs right before submit ───────────────────────
+document.getElementById('returnForm').addEventListener('submit', function(e) {
+    const keys = Object.keys(selectedItems);
+    if (keys.length === 0) {
+        e.preventDefault();
+        alert('Select at least one item to return.');
+        return;
+    }
+    keys.forEach((key, i) => {
+        const it = selectedItems[key];
+        this.insertAdjacentHTML('beforeend', `
+            <input type="hidden" name="items[${i}][part_id]" value="${it.partId}">
+            <input type="hidden" name="items[${i}][sale_item_id]" value="${it.saleItemId ?? ''}">
+            <input type="hidden" name="items[${i}][refund_amount_local]" value="${it.refund}">
+        `);
+    });
+});
+
+// ── If arriving pre-filled via a "Log Return" link, nothing is
+//    auto-checked — staff still explicitly picks the item(s) from the
+//    preview above, same as a fresh search. ──
+renderSelectedItems();
 </script>
 @endpush
 @endsection

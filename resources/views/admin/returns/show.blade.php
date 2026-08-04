@@ -41,6 +41,9 @@
     <h2 class="font-display font-700 text-green-800 text-sm tracking-wide uppercase mb-2">Resolved</h2>
     <p class="text-sm font-body text-green-700">
       Resolution: <strong>{{ str_replace('_',' ', ucfirst($return->resolution)) }}</strong><br>
+      @if($return->refund_method)
+      Refund Method: <strong>{{ str_replace('_',' ', ucfirst($return->refund_method)) }}</strong><br>
+      @endif
       By: {{ $resolvedBy ?? '—' }} on {{ \Carbon\Carbon::parse($return->resolved_at)->format('d M Y, H:i') }}
     </p>
     @if($return->resolution_notes)
@@ -93,6 +96,31 @@
         </div>
         <input type="hidden" name="storage_shelf_id" id="storageShelfIdInput">
       </div>
+
+      {{-- NEW: refund method — previously had nowhere to be recorded
+           at all. Only shown/required for customer returns with a real
+           refund amount; an internal reject or $0 return has nothing
+           to settle. Store Credit leaves it available for a future
+           purchase via the "Apply Return Credit" search on invoices. --}}
+      @if($return->return_type === 'customer' && $return->refund_amount_local > 0)
+      <div class="mb-4">
+        <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Refund Method *</label>
+        <div class="grid grid-cols-3 gap-2">
+          <label class="cursor-pointer">
+            <input type="radio" name="refund_method" value="cash" class="sr-only peer" required>
+            <div class="border-2 border-gray-200 rounded-lg py-2 text-center text-xs font-body font-500 peer-checked:border-gold peer-checked:bg-gold peer-checked:bg-opacity-10 transition-all">💵 Cash</div>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="refund_method" value="transfer" class="sr-only peer" required>
+            <div class="border-2 border-gray-200 rounded-lg py-2 text-center text-xs font-body font-500 peer-checked:border-gold peer-checked:bg-gold peer-checked:bg-opacity-10 transition-all">🏦 Transfer</div>
+          </label>
+          <label class="cursor-pointer">
+            <input type="radio" name="refund_method" value="store_credit" class="sr-only peer" required>
+            <div class="border-2 border-gray-200 rounded-lg py-2 text-center text-xs font-body font-500 peer-checked:border-gold peer-checked:bg-gold peer-checked:bg-opacity-10 transition-all">🎫 Store Credit</div>
+          </label>
+        </div>
+      </div>
+      @endif
 
       <div class="mb-4">
         <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Notes (optional)</label>
