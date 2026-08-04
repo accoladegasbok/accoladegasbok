@@ -184,6 +184,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/search-parts',      [\App\Http\Controllers\Admin\ReturnsController::class, 'searchParts'])->name('search-parts');
             Route::get('/search-invoices',   [\App\Http\Controllers\Admin\ReturnsController::class, 'searchInvoices'])->name('search-invoices');
             Route::get('/invoice-items',     [\App\Http\Controllers\Admin\ReturnsController::class, 'invoiceItems'])->name('invoice-items');
+            // FIXED: this route was missing entirely — the controller
+            // method (searchCustomerCredits) already existed and is
+            // called from admin/invoices/manual.blade.php's "Apply
+            // Return Credit" search, but with no matching route it
+            // threw RouteNotFoundException. Placed BEFORE /{id} below,
+            // same fix pattern as admin.audit.rooms-for-location.
+            Route::get('/customer-credits',  [\App\Http\Controllers\Admin\ReturnsController::class, 'searchCustomerCredits'])->name('customer-credits');
             Route::post('/',                 [\App\Http\Controllers\Admin\ReturnsController::class, 'store'])->name('store');
             Route::get('/{id}',              [\App\Http\Controllers\Admin\ReturnsController::class, 'show'])->name('show');
             Route::post('/{id}/resolve',     [\App\Http\Controllers\Admin\ReturnsController::class, 'resolve'])->name('resolve');
