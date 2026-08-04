@@ -52,6 +52,14 @@ Route::get('/parts/compatibility', [\App\Http\Controllers\PartsSearchController:
 // the new default landing page instead.
 Route::view('/home', 'public.home')->name('home');
 
+// ── AutoMatch AI premium teaser page — linked from the homepage's
+// Tools section. Not yet a functioning product (per MBA capstone /
+// business plan, this is planned as a paid subscription mirroring the
+// admin system's compatibility engine) — this is a "coming soon" page
+// with an inert email-capture form (see note in the view) until a real
+// notify-list backend is built.
+Route::view('/automatch-ai', 'public.automatch-ai')->name('automatch.ai');
+
 Route::prefix('admin')->middleware(['admin.auth'])->group(function () {
 
     // ── Vehicle ROI Dashboard — Phase 4 ───────────────────────────

@@ -7,8 +7,8 @@
 
 <!-- ══════════════════ SEO ══════════════════ -->
 <title>Auto Zenith Parts — Quality Used Auto Parts | Engine, Gearbox &amp; Body | Nigeria, Ghana &amp; USA</title>
-<meta name="description" content="Auto Zenith Parts supplies graded, warranty-backed used engines, transmissions, body and electrical parts across Nigeria, Ghana and the USA. Every part condition-graded A/B/C, legal-trace documented, ready to ship or collect.">
-<meta name="keywords" content="used auto parts, used engine for sale, used transmission, Tokunbo parts, Ladipo parts, auto parts Nigeria, auto parts Ghana, auto parts Texas, salvage engine, gearbox for sale, AutoZenith">
+<meta name="description" content="Auto Zenith Parts supplies graded, warranty-backed used engines, transmissions, body and electrical parts across Nigeria, Ghana and the USA. Free VIN decoding and parts compatibility checker, plus AutoMatch AI premium matching. Every part condition-graded A/B/C, legal-trace documented.">
+<meta name="keywords" content="used auto parts, used engine for sale, used transmission, VIN decoder, parts compatibility checker, AutoMatch AI, Tokunbo parts, Ladipo parts, auto parts Nigeria, auto parts Ghana, auto parts Texas, salvage engine, gearbox for sale, AutoZenith">
 <link rel="canonical" href="https://autozenithparts.com/home">
 
 <meta property="og:type" content="website">
@@ -34,6 +34,10 @@
   "areaServed": ["Nigeria", "Ghana", "United States"],
   "location": [
     {"@type": "Place", "name": "Ile-Ife, Osun State, Nigeria"},
+    {"@type": "Place", "name": "Lagos, Nigeria"},
+    {"@type": "Place", "name": "Ibadan, Oyo State, Nigeria"},
+    {"@type": "Place", "name": "Akure, Ondo State, Nigeria"},
+    {"@type": "Place", "name": "Abuja, Nigeria"},
     {"@type": "Place", "name": "Accra, Ghana"},
     {"@type": "Place", "name": "Waxahachie, TX, USA"},
     {"@type": "Place", "name": "Kennedale, TX, USA"},
@@ -332,19 +336,45 @@
     </div>
   </section>
 
+  <!-- ══════ TOOLS ══════ -->
+  <section id="tools" style="background:#fff; border-top:1px solid var(--line); border-bottom:1px solid var(--line);">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-eyebrow">Free To Use</div>
+        <h2 class="display">Know what fits<br>before you buy.</h2>
+        <p>Two tools built directly from our own stock system — the same compatibility data our staff use internally.</p>
+      </div>
+      <div class="wwd-grid" style="grid-template-columns:repeat(2,1fr);">
+        <a href="/parts/compatibility" class="wwd-card" style="display:block; border-color:var(--navy); transition:transform .15s ease, box-shadow .15s ease;">
+          <div class="wwd-num">VIN &amp; COMPATIBILITY</div>
+          <h3>VIN Decoding &amp; Part Compatibility Check</h3>
+          <p>Enter a VIN or a make/model/year and see exactly which parts in our stock system are verified to fit — interchange data, pin counts, and engine codes included. Free, no account needed.</p>
+          <div style="margin-top:14px; font-family:'IBM Plex Mono'; font-size:12px; color:var(--navy); font-weight:600;">Check Compatibility →</div>
+        </a>
+        <a href="/automatch-ai" class="wwd-card" style="display:block; border-color:var(--gold); position:relative; transition:transform .15s ease, box-shadow .15s ease;">
+          <div style="position:absolute; top:16px; right:16px; background:var(--gold); color:var(--navy-deep); font-family:'IBM Plex Mono'; font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:3px 9px; border-radius:20px;">Premium — Coming Soon</div>
+          <div class="wwd-num">AUTOMATCH AI</div>
+          <h3>AutoMatch AI</h3>
+          <p>Our full AI-powered matching engine — the same compatibility intelligence running our internal admin system, opened up as a subscription tool for repair shops and dealers who need it at scale.</p>
+          <div style="margin-top:14px; font-family:'IBM Plex Mono'; font-size:12px; color:var(--gold); font-weight:600;">Learn More →</div>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- ══════ LOCATIONS ══════ -->
   <section class="locations" id="locations">
     <div class="wrap">
       <div class="section-head">
         <div class="section-eyebrow">Where We Operate</div>
-        <h2 class="display">Five locations.<br>One stock system.</h2>
+        <h2 class="display">Nine cities.<br>One stock system.</h2>
         <p>Every location runs on the same inventory, grading, and warranty standard — wherever you buy from, the same rules apply.</p>
       </div>
       <div class="loc-grid">
         <div class="loc-card">
           <div class="loc-flag">🇳🇬 Nigeria</div>
-          <h3>Osun State</h3>
-          <ul><li>Ile-Ife</li></ul>
+          <h3>Five Cities</h3>
+          <ul><li>Lagos</li><li>Ibadan</li><li>Akure</li><li>Abuja</li><li>Ile-Ife</li></ul>
         </div>
         <div class="loc-card">
           <div class="loc-flag">🇬🇭 Ghana</div>
