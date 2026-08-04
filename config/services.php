@@ -35,4 +35,22 @@ return [
         ],
     ],
 
+    // ── Customer OTP channels ─────────────────────────────────────
+    // telegram: get a bot_token by messaging @BotFather on Telegram
+    // (free, ~5 min). bot_username is whatever handle you set for the
+    // bot (without the @), used to build the customer-facing deep link.
+    'telegram' => [
+        'bot_token'    => env('TELEGRAM_BOT_TOKEN'),
+        'bot_username' => env('TELEGRAM_BOT_USERNAME'),
+    ],
+
+    // whatsapp: requires Meta Cloud API business verification and a
+    // registered phone number before sending will actually work —
+    // see CustomerOtpService::sendWhatsapp() for details. Left here so
+    // the .env keys are ready whenever that setup is complete.
+    'whatsapp' => [
+        'access_token'    => env('WHATSAPP_ACCESS_TOKEN'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+    ],
+
 ];
