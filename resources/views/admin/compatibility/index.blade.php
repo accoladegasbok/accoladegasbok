@@ -382,7 +382,23 @@ async function runCheck() {
         // body, lighting, and interior are deliberately NOT claimed here
         // since those need visual/physical confirmation before selling
         // as interchange (see PlatformDatabase.php header comment).
-        if(data.platform && data.platform.generation){
+        //
+        // FIXED: this used to render unconditionally whenever a platform
+        // was found, even when staff searched a category (e.g. "Body" /
+        // a door) that this panel explicitly does NOT cover — showing a
+        // generic "Chassis Platform" box with no mention of the actual
+        // part searched was confusing at best, misleading at worst.
+        // Now: only renders when the search category is genuinely
+        // platform-relevant (Suspension/Brakes) or no category was
+        // specified at all — and always names what was actually
+        // searched instead of speaking generically.
+        const PLATFORM_SAFE_CATEGORIES = ['Suspension', 'Brakes'];
+        const searchedLabel = data.searched_part_name
+            ? `${data.searched_part_name}${data.searched_category ? ' (' + data.searched_category + ')' : ''}`
+            : (data.searched_category || null);
+
+        if (data.platform && data.platform.generation
+            && (!category || PLATFORM_SAFE_CATEGORIES.includes(category))) {
             const pdiv=document.createElement('div');
             pdiv.id='platformRefPanel';
             pdiv.className='mt-4 bg-purple-50 border border-purple-200 rounded-xl p-4';
@@ -396,10 +412,35 @@ async function runCheck() {
                     ${data.platform.shared_models.map(m=>`<span class="bg-white border border-purple-200 text-purple-700 text-xs px-3 py-1.5 rounded-full">${m}</span>`).join('')}
                 </div>`;
             document.getElementById('checkEmpty').after(pdiv);
+        } else if (data.platform && data.platform.generation && category && !PLATFORM_SAFE_CATEGORIES.includes(category)) {
+            // NEW: instead of silently hiding it (which looks like the
+            // search just found nothing), explicitly explain WHY no
+            // cross-model platform claim applies to this category —
+            // matches what was asked for: specify the actual part
+            // ("Door"), not a generic platform statement.
+            const ndiv=document.createElement('div');
+            ndiv.id='platformRefPanel';
+            ndiv.className='mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4';
+            ndiv.innerHTML=`
+                <div class="text-xs font-700 text-gray-500 uppercase tracking-wide mb-1">
+                    ${searchedLabel || category} — no cross-model claim
+                </div>
+                <p class="text-xs text-gray-500">
+                    ${category} parts don't reliably interchange across models sharing this chassis platform
+                    (<span class="font-mono">${data.platform.generation}</span>) — only Suspension/Brakes are safe to claim that way.
+                    Any ${category.toLowerCase()} match needs a confirmed Interchange Group or a direct year-range match on the SAME model.
+                </p>`;
+            document.getElementById('checkEmpty').after(ndiv);
         }
 
         if(!data.count){
-            document.getElementById('checkEmpty').classList.remove('hidden');
+            const emptyDiv = document.getElementById('checkEmpty');
+            emptyDiv.innerHTML = searchedLabel
+                ? `No compatible <strong>${searchedLabel}</strong> found in stock for <strong>${data.search}</strong>.
+                   <div class="text-xs text-gray-400 mt-1">Check the interchange groups below or see the powertrain/platform panels for alternatives.</div>`
+                : `No compatible parts found in stock for that vehicle.
+                   <div class="text-xs text-gray-400 mt-1">Check the interchange groups below or see the powertrain/platform panels for alternatives.</div>`;
+            emptyDiv.classList.remove('hidden');
             return;
         }
 
@@ -414,7 +455,7 @@ async function runCheck() {
                     :`<div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-300 text-xs">No photo</div>`}
                 <div class="font-600 text-sm text-navy">${p.part_name}</div>
                 <div class="font-mono text-[10px] text-gray-400">${p.part_code}</div>
-                ${p.fits_vehicles?`<div class="text-[10px] text-blue-500 mt-1">Fits: ${p.fits_vehicles}</div>`:''}
+                ${p.fits_vehicles?`<div class="text-[10px] text-blue-500 mt-1">Fits ${p.fits_vehicle_count} model${p.fits_vehicle_count===1?'':'s'}: ${p.fits_vehicles}</div>`:''}
                 <div class="flex items-center justify-between mt-2">
                     <div>
                         <span class="font-700 text-gold text-sm">${p.price}</span>

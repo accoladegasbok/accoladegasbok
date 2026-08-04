@@ -240,6 +240,13 @@ class CompatibilityController extends Controller
                 'shared_models' => $platform['shared_models'] ?? [],
             ],
             'search'                => "{$year} {$make} {$model}" . ($partName ? " · {$partName}" : ''),
+            // NEW: explicit echo of what was actually searched — lets
+            // the frontend label results/panels by the real part
+            // searched ("Door Shell") instead of generic platform talk,
+            // and decide whether a cross-model platform panel is even
+            // relevant to what was asked for.
+            'searched_part_name' => $partName,
+            'searched_category'  => $category,
         ]);
     }
 
@@ -320,6 +327,12 @@ class CompatibilityController extends Controller
             fn($v) => "{$v->make} {$v->model} ({$v->year_from}-{$v->year_to})"
         )->implode(', ');
 
+        // NEW: explicit count — "Fits 3 models" — so staff/customers
+        // don't have to manually count the comma-separated list to
+        // know the scope. Simple logic, exactly what was asked for:
+        // the raw count of vehicle rows this group/part covers.
+        $fitsVehicleCount = $vehicles->count();
+
         // Real evidence-based confidence — only meaningful for Tier 1
         // (confirmed interchange group) results, since that's the only
         // tier with a group_id to attach evidence to. Falls back to
@@ -352,6 +365,7 @@ class CompatibilityController extends Controller
             'group_code'      => $group?->group_code,
             'group_id'        => $group?->id,
             'fits_vehicles'   => $fitsVehicles,
+            'fits_vehicle_count' => $fitsVehicleCount,
             'combined_stock'  => $stockBreakdown ? $stockBreakdown['total'] : $part->stock_qty,
             'major_component' => (bool) ($part->is_major_component ?? false),
             'legal_trace'     => (bool) ($part->legal_trace_required ?? false),

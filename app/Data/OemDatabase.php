@@ -751,7 +751,7 @@ class OemDatabase
             '2AR-FE' => ['2010-2011 Toyota Camry 2.5L (20-pin — distinct from 2012+)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4 2.5L','2014-2019 Toyota Highlander 2.7L','2009-2015 Toyota Venza 2.7L','2012-2017 Toyota Avalon 2.5L','2012-2017 Toyota Aurion 2.5L'],
             'U760E'  => ['2010-2011 Toyota Camry 2.5L (20-pin)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4','2009-2015 Toyota Venza','NOTE: U760E pin count varies by year (20 vs 22) — always confirm year before treating as interchangeable'],
             // Toyota 2GR-FE V6 family
-            '2GR-FE' => ['2007-2022 Toyota Camry V6 3.5L','2008-2019 Toyota Highlander V6','2005-2022 Toyota Avalon V6','2011-2020 Toyota Sienna V6','2006-2015 Lexus GS350','2007-2018 Lexus ES350','2007-2019 Lexus RX350'],
+            '2GR-FE' => ['2007-2022 Toyota Camry V6 3.5L','2008-2019 Toyota Highlander V6','2005-2022 Toyota Avalon V6','2008-2020 Toyota Sienna V6','2006-2015 Lexus GS350','2007-2018 Lexus ES350','2007-2019 Lexus RX350'],
             'A750E'  => ['2007-2022 Toyota Camry V6','2008-2013 Toyota Highlander V6','2005-2022 Toyota Avalon V6','2007-2018 Lexus ES350','2007-2015 Lexus RX350'],
             // Toyota 1MZ-FE family (older V6)
             '1MZ-FE' => ['1994-2004 Toyota Avalon V6','1997-2001 Toyota Camry V6','1999-2003 Lexus ES300','1999-2003 Lexus RX300','2001-2003 Toyota Highlander V6','1998-2003 Toyota Sienna V6'],
