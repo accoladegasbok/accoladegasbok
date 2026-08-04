@@ -409,7 +409,7 @@
       <p>Search live inventory across all five locations by part, vehicle, or engine code — or reach out directly and our team will source it.</p>
       <div class="hero-ctas">
         <a href="/parts" class="btn btn-primary">Search Inventory →</a>
-        <a href="/contact" class="btn btn-secondary">Contact Us</a>
+        <a href="mailto:info@autozenithparts.com" class="btn btn-secondary">Contact Us</a>
       </div>
     </div>
   </section>
@@ -434,12 +434,12 @@
           <h5>Company</h5>
           <a href="#what-we-do">How It Works</a>
           <a href="#warranty">Warranty Policy</a>
-          <a href="/contact">Contact</a>
+          <a href="mailto:info@autozenithparts.com">Contact</a>
         </div>
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved.</span>
+      <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved. · <a href="mailto:info@autozenithparts.com" style="color:#B9C2D6;">info@autozenithparts.com</a></span>
       <span class="mono" style="letter-spacing:0.08em;">AUTOZENITHPARTS.COM</span>
     </div>
   </div>

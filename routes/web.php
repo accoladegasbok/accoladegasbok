@@ -22,11 +22,11 @@ MediaRoute::get('/storage/app/public/{path}', function ($path) {
 use Illuminate\Support\Facades\Route;
 
 // ── Root ──────────────────────────────────────────────────────────
-// Production (autozenithparts.com) → public parts page
+// Production (autozenithparts.com) → SEO homepage
 // Local development → admin login
 Route::get('/', function () {
     return app()->environment('production')
-        ? redirect('/parts', 301)
+        ? redirect('/home', 301)
         : redirect()->route('admin.login');
 });
 
@@ -45,11 +45,8 @@ Route::get('/unsubscribe/{phone}/{token}/{channel}', [\App\Http\Controllers\Unsu
 Route::get('/parts/compatibility', [\App\Http\Controllers\PartsSearchController::class, 'compatibility'])->name('parts.compatibility');
 
 // ── Public SEO homepage — company overview for search visitors ────
-// NOTE: root '/' still redirects straight to '/parts' in production
-// (see above) — this is a SEPARATE landing page at /home, not a
-// replacement for that redirect. Point autozenithparts.com/home here
-// directly, or change the root redirect above if this should become
-// the new default landing page instead.
+// Root '/' redirects here in production (see top of file). The
+// homepage's own "Search Parts" nav/CTA links point to /parts.
 Route::view('/home', 'public.home')->name('home');
 
 // ── AutoMatch AI premium teaser page — linked from the homepage's

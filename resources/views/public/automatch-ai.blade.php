@@ -131,7 +131,8 @@
 
 <footer>
   <div class="wrap">
-    In the meantime, try our free <a href="/parts/compatibility" style="color:var(--navy); font-weight:600;">VIN &amp; Part Compatibility Checker</a> — no waitlist required.
+    In the meantime, try our free <a href="/parts/compatibility" style="color:var(--navy); font-weight:600;">VIN &amp; Part Compatibility Checker</a> — no waitlist required.<br>
+    Questions? <a href="mailto:info@autozenithparts.com" style="color:var(--navy); font-weight:600;">info@autozenithparts.com</a>
   </div>
 </footer>
 
