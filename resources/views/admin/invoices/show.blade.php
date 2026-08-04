@@ -691,7 +691,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
         </div>
         @else
         <div class="inv-warranty">
-            <p><strong>⚠ Warranty:</strong> {{ $businessInfo['warranty'] }}. Warranty is void if part is disassembled, modified, or damaged after installation. Proof of purchase (this invoice) required for all warranty claims.</p>
+            <p><strong>⚠ Warranty:</strong> {{ $businessInfo['warranty'] }}. Warranty is void if part is disassembled, modified, or damaged after installation. No returns on any electrical parts (brain box/PCM, alternators, starters, fuel pumps, sensors, etc.) — buyer must fully test before leaving our facility. The warranty period applies only to engines and mechanical parts that cannot be tested unless installed. No warranty on automatic transmissions. Proof of purchase (this invoice) required for all warranty claims.</p>
             @if(!empty($order->notes))<p style="margin-top:4px;"><strong>Notes:</strong> {{ $order->notes }}</p>@endif
         </div>
         @endif

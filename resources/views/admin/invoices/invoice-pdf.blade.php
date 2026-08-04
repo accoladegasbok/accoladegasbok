@@ -137,7 +137,7 @@
     <div style="clear:both;"></div>
 
     <div class="warranty-box">
-        Warranty: 10 days. Warranty is void if part is disassembled, modified, or damaged after installation. Proof of purchase (this invoice) required for all warranty claims.
+        <strong>Warranty:</strong> 10 days. Warranty is void if part is disassembled, modified, or damaged after installation. No returns on any electrical parts (brain box/PCM, alternators, starters, fuel pumps, sensors, etc.) — buyer must fully test before leaving our facility. The 10-day warranty applies only to engines and mechanical parts that cannot be tested unless installed. No warranty on automatic transmissions. Proof of purchase (this invoice) required for all warranty claims.
     </div>
 
     <div class="footer">
