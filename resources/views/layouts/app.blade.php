@@ -81,8 +81,10 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6">
         <div class="flex items-center justify-between h-16">
 
-            {{-- Logo --}}
-            <a href="{{ route('parts.search') }}" class="flex items-center gap-3">
+            {{-- Logo — links to the SEO homepage, not the parts search
+                 page itself (search is reached via the "Search Parts"
+                 nav link below instead). --}}
+            <a href="{{ route('home') }}" class="flex items-center gap-3">
                 <div class="w-9 h-9 bg-gold rounded flex items-center justify-center">
                     <span class="font-display font-800 text-navy text-lg leading-none">AZ</span>
                 </div>
