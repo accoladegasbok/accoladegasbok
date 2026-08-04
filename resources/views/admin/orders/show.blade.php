@@ -292,6 +292,20 @@
           <div id="emailReceiptFeedback" class="text-xs font-body mt-2"></div>
         </div>
 
+        {{-- NEW: Log Return — only offered once the order is actually
+             completed (matches ReturnsController's search filter,
+             which only surfaces completed orders — no point returning
+             against a sale still awaiting payment/fulfillment). --}}
+        @if($order->order_status === 'completed')
+        <div class="border border-amber-200 bg-amber-50 rounded-xl p-4 sm:col-span-2">
+          <div class="text-xs font-body font-500 text-amber-700 mb-2">Customer returned one or more items from this order?</div>
+          <a href="{{ route('admin.returns.create', ['sale_type' => 'order', 'sale_id' => $order->id]) }}"
+            class="block w-full text-center border border-amber-300 text-amber-700 hover:bg-amber-100 font-display font-700 text-xs py-2.5 rounded-xl tracking-wide transition-colors">
+            ↩ Log Return
+          </a>
+        </div>
+        @endif
+
         {{-- Edit Order — admin/manager only, completes #5 for Orders --}}
         @if(in_array(session('staff_role'), ['admin','manager']))
         <div class="border border-blue-200 bg-blue-50 rounded-xl p-4 sm:col-span-2">
