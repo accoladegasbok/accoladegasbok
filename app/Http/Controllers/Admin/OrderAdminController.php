@@ -122,7 +122,11 @@ class OrderAdminController extends Controller
 
         $lineItems = $items->map(function ($item) use ($fmt) {
             $priceLocal = $item->unit_price_local ?? $item->unit_price_ngn ?? $item->unit_price_usd ?? 0;
-            $qty = $item->qty ?? 1;
+            // CORRECTED: order_items' real column is `quantity`, not
+            // `qty` — read from the right one. The local variable/object
+            // property below stays named `qty` since invoice-pdf.blade.php
+            // and show.blade.php already expect ->qty for display.
+            $qty = $item->quantity ?? 1;
             return (object)[
                 'part_name'       => $item->part_name,
                 'part_code'       => $item->part_code,
@@ -249,7 +253,12 @@ class OrderAdminController extends Controller
                 'name'       => $i->part_name,
                 'code'       => $i->part_code,
                 'price'      => $i->unit_price_local ?? $i->unit_price_ngn ?? $i->unit_price_usd,
-                'qty'        => 1,
+                // FIXED: this hardcoded 1 regardless of the real
+                // quantity ordered — the Edit Order form would silently
+                // reset every line's quantity back to 1 on save, since
+                // it always prefilled 1 no matter what was actually on
+                // the order. Reads the real value now.
+                'qty'        => $i->quantity ?? 1,
             ];
         })->values()->toJson();
 
@@ -290,7 +299,7 @@ class OrderAdminController extends Controller
         // from qty=2 to qty=5) adjust stock_qty by the real delta instead
         // of falsely freeing or re-reserving the whole batch.
         $oldPartQty = $oldItems->where('item_type', 'part')->filter(fn($i) => $i->part_id)
-            ->groupBy('part_id')->map(fn($rows) => (int) $rows->sum(fn($r) => $r->qty ?? 1));
+            ->groupBy('part_id')->map(fn($rows) => (int) $rows->sum(fn($r) => $r->quantity ?? 1));
         $newPartQty = collect($request->items)->where('item_type', 'part')->filter(fn($i) => $i['id'])
             ->groupBy('id')->map(fn($rows) => (int) collect($rows)->sum(fn($r) => $r['qty'] ?? 1));
 
@@ -404,7 +413,8 @@ class OrderAdminController extends Controller
                     'service_id'       => $li->service_id,
                     // FIXED: qty was never saved on this path either —
                     // same root-cause fix as AdminOrderController::store().
-                    'qty'              => $li->qty,
+                    // CORRECTED: order_items' real column is `quantity`.
+                    'quantity'         => $li->qty,
                     'part_name'        => $li->part_name,
                     'part_code'        => $li->part_code,
                     'brand'            => $li->brand,
@@ -829,7 +839,8 @@ class OrderAdminController extends Controller
             $items = DB::table('order_items')->where('order_id', $id)->get();
             foreach ($items as $item) {
                 if (!$item->part_id) continue;
-                $qty = (int) ($item->qty ?? 1);
+                // CORRECTED: order_items' real column is `quantity`.
+                $qty = (int) ($item->quantity ?? 1);
                 DB::table('parts_inventory')->where('id', $item->part_id)->increment('stock_qty', $qty);
                 DB::table('parts_inventory')->where('id', $item->part_id)
                     ->where('status', 'Reserved')
@@ -972,7 +983,8 @@ class OrderAdminController extends Controller
         $items = DB::table('order_items')->where('order_id', $id)->get();
         foreach ($items as $item) {
             if ($item->part_id) {
-                $qty = (int) ($item->qty ?? 1);
+                // CORRECTED: order_items' real column is `quantity`.
+                $qty = (int) ($item->quantity ?? 1);
                 DB::table('parts_inventory')->where('id', $item->part_id)->increment('stock_qty', $qty);
                 DB::table('parts_inventory')->where('id', $item->part_id)
                     ->where('status', 'Reserved')

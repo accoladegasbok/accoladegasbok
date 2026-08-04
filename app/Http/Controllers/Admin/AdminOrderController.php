@@ -284,7 +284,10 @@ class AdminOrderController extends Controller
                         // many units this line represented. This is the
                         // root cause of the "sold 2 of 20, marked all 20
                         // sold" bug at the ORDER level (item E's sibling).
-                        'qty'             => $li['qty'],
+                        // CORRECTED: order_items already had a `quantity`
+                        // column from day one — this originally wrote to
+                        // a new redundant `qty` column instead of it.
+                        'quantity'        => $li['qty'],
                         'part_name'       => $part->part_name,
                         'part_code'       => $part->part_code,
                         'brand'           => $part->brand,
@@ -339,8 +342,9 @@ class AdminOrderController extends Controller
                         'part_id'         => null,
                         'service_id'      => $service->id,
                         // FIXED: same qty-persistence fix as the part
-                        // branch above, for consistency.
-                        'qty'             => $li['qty'],
+                        // branch above, for consistency. CORRECTED to
+                        // write to the pre-existing `quantity` column.
+                        'quantity'        => $li['qty'],
                         'part_name'       => $service->name,
                         'part_code'       => $service->service_code,
                         'brand'           => $service->category,
