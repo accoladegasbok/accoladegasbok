@@ -38,10 +38,44 @@ class ReturnsController extends Controller
 
     // =========================================================
     // GET /admin/returns/create
+    // FIXED: previously ignored all query parameters — the "Log Return"
+    // button on an invoice's receipt page linked here with ?invoice_id=X
+    // attached, but nothing read it, so staff landed on a blank form and
+    // had to search for the same invoice all over again. Now prefills
+    // the invoice + its items server-side when invoice_id is present.
     // =========================================================
-    public function create()
+    public function create(Request $request)
     {
-        return view('admin.returns.create');
+        $prefillInvoice = null;
+        $prefillItems   = collect();
+        $prefillCurrency = 'NGN';
+
+        if ($invoiceId = $request->get('invoice_id')) {
+            $prefillInvoice = DB::table('invoices')
+                ->where('id', $invoiceId)
+                ->select('id', 'invoice_no', 'customer_name', 'customer_phone')
+                ->first();
+
+            if ($prefillInvoice) {
+                // Same shaping as invoiceItems() — kept in sync so the
+                // JS's option-building logic (data-part-id, data-label,
+                // data-line-total) works identically whether items came
+                // from this server-side prefill or the AJAX search path.
+                $prefillItems = DB::table('invoice_items')
+                    ->where('invoice_id', $invoiceId)
+                    ->select('id', 'part_id', 'part_name', 'part_code', 'qty',
+                             'unit_price_local', 'discount_amount_local')
+                    ->get()
+                    ->map(function ($item) {
+                        $item->line_total_local = ($item->unit_price_local * $item->qty) - ($item->discount_amount_local ?? 0);
+                        return $item;
+                    });
+
+                $prefillCurrency = DB::table('invoices')->where('id', $invoiceId)->value('currency_code') ?? 'NGN';
+            }
+        }
+
+        return view('admin.returns.create', compact('prefillInvoice', 'prefillItems', 'prefillCurrency'));
     }
 
     // =========================================================

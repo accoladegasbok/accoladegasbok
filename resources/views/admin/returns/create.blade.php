@@ -42,17 +42,26 @@
       <input type="text" id="invoiceSearchInput" placeholder="Search invoices..."
         class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
       <div id="invoiceResults" class="mt-2 space-y-1 hidden"></div>
-      <div id="selectedInvoice" class="mt-2 hidden bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex items-center justify-between">
-        <span class="text-sm font-body text-blue-800" id="selectedInvoiceLabel"></span>
+      {{-- NEW: pre-selected when arriving via a "Log Return" link from
+           an invoice's receipt page (?invoice_id=X) — staff no longer
+           have to search for the same invoice they just came from. --}}
+      <div id="selectedInvoice" class="mt-2 {{ $prefillInvoice ? '' : 'hidden' }} bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex items-center justify-between">
+        <span class="text-sm font-body text-blue-800" id="selectedInvoiceLabel">{{ $prefillInvoice ? $prefillInvoice->invoice_no . ' — ' . $prefillInvoice->customer_name : '' }}</span>
         <button type="button" onclick="clearInvoice()" class="text-xs text-blue-600 underline">Change</button>
       </div>
-      <input type="hidden" name="invoice_id" id="invoiceIdInput">
+      <input type="hidden" name="invoice_id" id="invoiceIdInput" value="{{ $prefillInvoice->id ?? '' }}">
 
       {{-- Items on that invoice, once selected --}}
-      <div id="invoiceItemsSection" class="mt-3 hidden">
+      <div id="invoiceItemsSection" class="mt-3 {{ $prefillInvoice ? '' : 'hidden' }}">
         <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Which item is being returned?</label>
         <select id="invoiceItemSelect" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
           <option value="">Select item</option>
+          {{-- NEW: rendered server-side from the prefilled invoice —
+               same data-* attributes the AJAX path builds in JS, so the
+               existing change handler works identically either way. --}}
+          @foreach($prefillItems as $it)
+          <option value="{{ $it->id }}" data-part-id="{{ $it->part_id ?? '' }}" data-label="{{ $it->part_name }} ({{ $it->part_code }})" data-line-total="{{ $it->line_total_local ?? 0 }}">{{ $it->part_name }} — Qty {{ $it->qty }}</option>
+          @endforeach
         </select>
         <input type="hidden" name="invoice_item_id" id="invoiceItemIdInput">
       </div>
@@ -66,7 +75,7 @@
       <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Refund / Cost Amount</h2>
       <p class="text-xs text-gray-400 font-body mb-3">Auto-fills from the invoice item selected above — adjust if only partially refunding, or enter manually for labour/no-invoice cases.</p>
       <div class="relative max-w-xs">
-        <span id="refundCurrencySymbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₦</span>
+        <span id="refundCurrencySymbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{{ ['NGN' => '₦', 'USD' => '$', 'GHS' => 'GH₵'][$prefillCurrency] ?? '₦' }}</span>
         <input type="number" name="refund_amount_local" id="refundAmountInput" step="0.01" min="0"
           class="w-full border border-gray-200 rounded-xl pl-7 pr-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
           placeholder="0">
