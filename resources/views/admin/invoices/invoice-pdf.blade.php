@@ -62,9 +62,9 @@
                 <div class="company-sub">{{ $businessInfo['phone'] ?? '' }}</div>
             </td>
             <td style="width:40%;">
-                <div class="inv-title">{{ $isVehicleSale ?? false ? 'RECEIPT' : 'INVOICE' }}</div>
+                <div class="inv-title">RECEIPT</div>
                 <table class="meta-table">
-                    <tr><td class="meta-label">Invoice No:</td><td class="meta-value">{{ $invoiceNo }}</td></tr>
+                    <tr><td class="meta-label">Receipt No:</td><td class="meta-value">{{ $invoiceNo }}</td></tr>
                     <tr><td class="meta-label">Date:</td><td class="meta-value">{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }}</td></tr>
                     <tr><td class="meta-label">Location:</td><td class="meta-value">{{ $saleLocation }}</td></tr>
                     <tr><td class="meta-label">Currency:</td><td class="meta-value">{{ $currency['code'] }}</td></tr>
@@ -147,7 +147,7 @@
         @endforeach
         @endif
         <div style="margin-top:8px;">Thank you for your business! · autozenithparts.com</div>
-        <div>This is a computer-generated {{ $isVehicleSale ?? false ? 'receipt' : 'invoice' }}. No physical signature required unless specified.</div>
+        <div>This is a computer-generated receipt. No physical signature required unless specified.</div>
     </div>
 
 </body>
