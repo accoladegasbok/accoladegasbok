@@ -655,6 +655,16 @@ class HarvestController extends Controller
                 $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix) + 1) + 1 : 1;
                 $partCode = $prefix . '-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
 
+                // NEW: this template's own label/category IS the
+                // standardized taxonomy now (see the migration that
+                // folded getPartsList() into part_terminology) — so
+                // every harvest-templated part automatically links to
+                // its terminology entry, no staff action needed.
+                $terminologyId = DB::table('part_terminology')
+                    ->where('category', $tpl['category'])
+                    ->where('standard_name', $tpl['label'])
+                    ->value('id');
+
                 $newPartId = DB::table('parts_inventory')->insertGetId([
                     'part_code'             => $partCode,
                     'brand'                 => $session->make,
@@ -664,6 +674,7 @@ class HarvestController extends Controller
                     'compat_year_from'      => $compatFrom,
                     'compat_year_to'        => $compatTo,
                     'part_name'             => $tpl['label'],
+                    'part_terminology_id'   => $terminologyId,
                     'part_category'         => $tpl['category'],
                     'side'                  => $tpl['side']             ?? 'N/A',
                     'airbag_position'       => $tpl['airbag_position']  ?? null,
@@ -748,6 +759,17 @@ class HarvestController extends Controller
                 ));
                 $cpCode = $cpPrefix . '-' . str_pad(DB::table('parts_inventory')->count() + 1, 5, '0', STR_PAD_LEFT);
 
+                // NEW: custom parts are free-typed (this is the
+                // escape hatch for anything not on the standard
+                // checklist), so this is a best-effort match only —
+                // stays null if the typed name doesn't line up with
+                // an existing standardized term, which is expected
+                // and fine for genuinely one-off items.
+                $cpTerminologyId = DB::table('part_terminology')
+                    ->where('category', $cp['category'] ?? 'Other')
+                    ->where('standard_name', $cp['name'])
+                    ->value('id');
+
                 $newCpId = DB::table('parts_inventory')->insertGetId([
                     'part_code'             => $cpCode,
                     'brand'                 => $session->make,
@@ -757,6 +779,7 @@ class HarvestController extends Controller
                     'compat_year_from'      => $session->year,
                     'compat_year_to'        => $session->year,
                     'part_name'             => $cp['name'],
+                    'part_terminology_id'   => $cpTerminologyId,
                     'part_category'         => $cp['category']    ?? 'Other',
                     'side'                  => 'N/A',
                     'airbag_position'       => null,
