@@ -1,3 +1,4 @@
+@verbatim
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -417,3 +418,4 @@
 <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
+@endverbatim
