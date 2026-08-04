@@ -57,6 +57,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // "/inventory/barcodes/bulk" would otherwise risk matching
             // /{id}/barcode with id="barcodes" if ever reordered.
             Route::post('/barcodes/bulk', [InventoryController::class, 'barcodeBulk'])->name('barcodes.bulk');
+            // NEW: standardized part-name taxonomy lookup, for the
+            // entry-form dropdown. Literal path, placed before the
+            // /{id} wildcard for the same reason as barcodes/bulk above.
+            Route::get('/terminology', [InventoryController::class, 'terminologyOptions'])->name('terminology');
             Route::get('/{id}/barcode', [InventoryController::class, 'barcode'])->name('barcode');
             Route::get('/{id}/edit',    [InventoryController::class, 'edit'])->name('edit');
             Route::put('/{id}',         [InventoryController::class, 'update'])->name('update');

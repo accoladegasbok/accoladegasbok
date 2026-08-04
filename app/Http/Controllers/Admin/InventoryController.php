@@ -218,6 +218,11 @@ class InventoryController extends Controller
     {
         $request->validate([
             'part_name'           => 'required|string|max:150',
+            // NEW: standardized part taxonomy — see part_terminology
+            // table. Optional for now (legacy rows / not-yet-catalogued
+            // terms still work via free-typed part_name), but when
+            // provided, it becomes the authoritative name — see below.
+            'part_terminology_id' => 'nullable|exists:part_terminology,id',
             // NEW: category was never editable at all after a part was
             // saved — if something got harvested/created into the wrong
             // category group, the only fix was delete-and-recreate.
@@ -335,8 +340,21 @@ class InventoryController extends Controller
         $priceUsdSnapshot = $priceLocal / $currency['rate'];
         // ──────────────────────────────────────────────────────────────
 
+        // NEW: when a standardized terminology is selected, its
+        // standard_name becomes the authoritative part_name — this is
+        // the actual point of the taxonomy (prevents "Alternator" /
+        // "Alternator Assembly" / "ALT" fragmenting into three
+        // different-looking parts). Falls back to whatever was typed
+        // if no terminology was selected (legacy behavior, unchanged).
+        $resolvedPartName = $request->part_name;
+        if ($request->part_terminology_id) {
+            $term = DB::table('part_terminology')->where('id', $request->part_terminology_id)->first();
+            if ($term) $resolvedPartName = $term->standard_name;
+        }
+
         DB::table('parts_inventory')->where('id', $id)->update([
-            'part_name'              => $request->part_name,
+            'part_name'              => $resolvedPartName,
+            'part_terminology_id'    => $request->part_terminology_id,
             // NEW: category can now actually be corrected on edit — was
             // completely absent from this method before, meaning a part
             // harvested into the wrong category group had no fix short
@@ -797,6 +815,10 @@ class InventoryController extends Controller
         $rules = [
             'brand'          => 'required|string',
             'part_name'      => 'required|string|max:150',
+            // NEW: same standardized taxonomy as update() — optional
+            // for now so entry isn't blocked while the terminology list
+            // is still growing to cover everything staff encounter.
+            'part_terminology_id' => 'nullable|exists:part_terminology,id',
             'part_category'  => 'required|string',
             'price_usd'      => 'required|numeric|min:0',
             'condition_grade'=> 'required|in:A,B,C,New',
@@ -884,6 +906,16 @@ class InventoryController extends Controller
         $yearFrom = $isConsumable ? 1990 : $actualYear;
         $yearTo   = $isConsumable ? 2030 : $actualYear;
 
+        // NEW: same authoritative-name resolution as update() — a
+        // selected terminology's standard_name wins over free-typed
+        // text, keeping naming consistent industry-wide rather than
+        // per-staff-member.
+        $resolvedPartName = $request->part_name;
+        if ($request->part_terminology_id) {
+            $term = DB::table('part_terminology')->where('id', $request->part_terminology_id)->first();
+            if ($term) $resolvedPartName = $term->standard_name;
+        }
+
         $partId = DB::table('parts_inventory')->insertGetId([
             'part_code'              => $partCode,
             'brand'                  => $request->brand,
@@ -892,7 +924,8 @@ class InventoryController extends Controller
             'year_to'                => $yearTo,
             'compat_year_from'       => $isConsumable ? null : ($request->compat_year_from ?? $actualYear),
             'compat_year_to'         => $isConsumable ? null : ($request->compat_year_to   ?? $actualYear),
-            'part_name'              => $request->part_name,
+            'part_name'              => $resolvedPartName,
+            'part_terminology_id'    => $request->part_terminology_id,
             'unit_size'              => $request->unit_size,
             'compatibility_note'     => $request->compatibility_note,
             'part_category'          => $request->part_category,
@@ -957,6 +990,25 @@ class InventoryController extends Controller
     // existing photos JSON column (array of relative paths,
     // first entry treated as primary/display photo).
     // =========================================================
+    // =========================================================
+    // AJAX: GET /admin/inventory/terminology?category=Engine
+    // Returns the standardized part-name options for a category, for
+    // whatever dropdown/autocomplete UI ends up wired to the entry
+    // forms. Consumable is intentionally excluded — see migration
+    // comment for why (branded products, not standardized terms).
+    // =========================================================
+    public function terminologyOptions(Request $request)
+    {
+        $category = $request->get('category');
+
+        $query = DB::table('part_terminology')->orderBy('standard_name');
+        if ($category) {
+            $query->where('category', $category);
+        }
+
+        return response()->json(['terms' => $query->get(['id', 'category', 'standard_name'])]);
+    }
+
     private function storePartPhotos(int $partId, array $files): void
     {
         $part = DB::table('parts_inventory')->where('id', $partId)->first();
