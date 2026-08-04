@@ -1,8 +1,8 @@
 {{-- FILE: resources/views/admin/consumables/edit.blade.php --}}
 @extends('admin.layouts.admin')
-@section('title', 'Edit Consumable')
-@section('page-title', 'Edit Consumable')
-@section('page-sub', $item->part_name . ' · ' . $item->part_code)
+@section('title', 'Edit — Consumables & Others')
+@section('page-title', 'Edit — Consumables & Others')
+@section('page-sub', $item->part_name . ' · ' . $item->part_code . ' · ' . $item->part_category)
 
 @section('content')
 <div class="max-w-2xl">
@@ -27,6 +27,23 @@
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
           <input type="text" name="part_name" value="{{ old('part_name', $item->part_name) }}" required
                  class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Category *</label>
+          <select name="part_category" required
+                  class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            @foreach($categories as $cat)
+            <option value="{{ $cat }}" {{ old('part_category', $item->part_category) === $cat ? 'selected' : '' }}>{{ $cat === 'Consumable' ? 'Consumable (Oils, Fluids & Filters)' : $cat }}</option>
+            @endforeach
+            {{-- Edge case: item's current category isn't one of the
+                 four (e.g. an old/legacy value) — show it anyway so
+                 saving doesn't silently reassign it to something the
+                 staff member didn't choose. --}}
+            @if(!in_array($item->part_category, $categories))
+            <option value="{{ $item->part_category }}" selected>{{ $item->part_category }} (current)</option>
+            @endif
+          </select>
         </div>
 
         <div>

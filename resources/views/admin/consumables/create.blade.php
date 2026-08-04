@@ -1,8 +1,8 @@
 {{-- FILE: resources/views/admin/consumables/create.blade.php --}}
 @extends('admin.layouts.admin')
-@section('title', 'Add Consumable')
-@section('page-title', 'Add Consumable / Generic Part')
-@section('page-sub', 'Stock items not tied to a donor vehicle — oil filters, brake pads, spark plug sets, engine oil etc.')
+@section('title', 'Add — Consumables & Others')
+@section('page-title', 'Add — Consumables & Others')
+@section('page-sub', 'Stock items not tied to a donor vehicle — oil filters, brake pads, electronics, computers etc.')
 
 @section('content')
 <div class="max-w-2xl">
@@ -34,6 +34,16 @@
             <option value="{{ $name }}">
             @endforeach
           </datalist>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Category *</label>
+          <select name="part_category" required
+                  class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            @foreach($categories as $cat)
+            <option value="{{ $cat }}" {{ old('part_category', 'Consumable') === $cat ? 'selected' : '' }}>{{ $cat === 'Consumable' ? 'Consumable (Oils, Fluids & Filters)' : $cat }}</option>
+            @endforeach
+          </select>
         </div>
 
         <div>
