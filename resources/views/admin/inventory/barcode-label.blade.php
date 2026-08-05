@@ -74,6 +74,9 @@ body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px;
 .lbl-fits label { font-size:7.5px; color:#777; text-transform:uppercase; display:block; margin-bottom:2px; }
 .lbl-fits .fits-val { line-height:1.6; color:#222; }
 .lbl-fits .ic-source { font-size:7px; color:#aaa; margin-top:1px; }
+.oem-reference { padding: 3px 8px 5px; border-top: 1px dashed #ddd; }
+.oem-ref-label { font-size: 6.5px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 1px; }
+.oem-ref-list { font-size: 7px; color: #888; line-height: 1.3; }
 
 .lbl-notes { padding:5px 12px; border-bottom:1px solid #999; font-size:8px; color:#555; min-height:22px; }
 .lbl-notes label { font-size:7px; color:#aaa; text-transform:uppercase; margin-right:4px; }
@@ -233,6 +236,19 @@ body.size-large .label-small { display:none; }
                     ~ Suggested via OEM code
                 @endif
             </div>
+
+            {{-- NEW: OEM reference list — vehicles known to share this
+                 engine/transmission code industry-wide, NOT limited to
+                 what's actually in your stock. Kept visually distinct
+                 from the confirmed/stock section above so staff never
+                 confuse "known to share this engine" with "we have it
+                 on hand." --}}
+            @if($part->oem_reference->isNotEmpty())
+            <div class="oem-reference">
+                <div class="oem-ref-label">OEM REFERENCE — also known to share {{ $part->engine_code_oem ?: $part->transmission_code_oem }} (verify before selling as interchange)</div>
+                <div class="oem-ref-list">{{ $part->oem_reference->implode(' · ') }}</div>
+            </div>
+            @endif
         @else
             <div class="fits-val" style="color:#bbb;">No interchange data on file — see compatibility checker</div>
         @endif

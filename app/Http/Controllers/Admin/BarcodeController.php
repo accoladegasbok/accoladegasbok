@@ -123,6 +123,23 @@ class BarcodeController extends Controller
             $part->interchange_group    = $group;
             $part->interchange_vehicles = $vehicles;
 
+            // NEW: static OEM interchange REFERENCE — separate from the
+            // above (which only ever searches your actual inventory
+            // rows). This is the same OemDatabase::interchange() list
+            // already shown on the Compatibility Checker page, just
+            // never wired into the tag before. Clearly reference-only,
+            // not a stock claim — staff still confirm before selling
+            // as interchange.
+            $part->oem_reference = collect();
+            if ($part->engine_code_oem) {
+                $ref = \App\Data\OemDatabase::interchange()[$part->engine_code_oem] ?? null;
+                if ($ref) $part->oem_reference = collect($ref);
+            }
+            if ($part->oem_reference->isEmpty() && $part->transmission_code_oem) {
+                $ref = \App\Data\OemDatabase::interchange()[$part->transmission_code_oem] ?? null;
+                if ($ref) $part->oem_reference = collect($ref);
+            }
+
             // Business info for label header
             $part->business = app(\App\Http\Controllers\Admin\InvoiceController::class)
                 ->getBusinessInfo($part->location ?? 'Waxahachie TX');
