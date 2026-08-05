@@ -52,6 +52,9 @@
           <input type="password" name="password" required
             class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-body transition-all"
             placeholder="••••••••">
+          <a href="{{ route('admin.password.request') }}" class="block text-right text-xs font-body text-gray-400 hover:text-navy mt-1.5 transition-colors">
+            Forgot password?
+          </a>
         </div>
 
         <button type="submit"
