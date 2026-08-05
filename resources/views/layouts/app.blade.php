@@ -98,6 +98,10 @@
             <div class="hidden md:flex items-center gap-6">
                 <a href="{{ route('parts.search') }}" class="nav-link text-gray-300 hover:text-white text-sm font-body font-500 pb-1 transition-colors {{ request()->routeIs('parts.search') ? 'active' : '' }}">Search Parts</a>
                 <a href="{{ route('parts.compatibility') }}" class="nav-link text-gray-300 hover:text-white text-sm font-body font-500 pb-1 transition-colors {{ request()->routeIs('parts.compatibility') ? 'active' : '' }}">Compatibility Checker</a>
+                {{-- NEW: Consumables/Electronics/Computers/Other moved
+                     to their own section instead of mixing into Search
+                     Parts. --}}
+                <a href="{{ route('other-items') }}" class="nav-link text-gray-300 hover:text-white text-sm font-body font-500 pb-1 transition-colors {{ request()->routeIs('other-items') ? 'active' : '' }}">Other Items</a>
                 <a href="https://accounts.autozenithparts.com" target="_blank"
                    class="bg-gold hover:bg-yellow-500 text-navy font-display font-700 text-sm px-4 py-2 rounded-lg transition-colors tracking-wide">
                   ACCOUNTIX
@@ -138,6 +142,7 @@
             <div class="flex flex-col gap-3 pt-2 border-t border-navy-light">
                 <a href="{{ route('parts.search') }}" class="text-gray-300 hover:text-white text-sm font-body py-1">Search Parts</a>
                 <a href="{{ route('parts.compatibility') }}" class="text-gray-300 hover:text-white text-sm font-body py-1">Compatibility Checker</a>
+                <a href="{{ route('other-items') }}" class="text-gray-300 hover:text-white text-sm font-body py-1">Other Items</a>
                 <a href="https://accounts.autozenithparts.com" target="_blank" class="inline-block w-fit bg-gold text-navy font-display font-700 text-sm px-4 py-2 rounded-lg tracking-wide">ACCOUNTIX</a>
                 <a href="#how-it-works" class="text-gray-300 hover:text-white text-sm font-body py-1">How It Works</a>
                 <a href="#footer-locations" class="text-gray-300 hover:text-white text-sm font-body py-1">Locations</a>

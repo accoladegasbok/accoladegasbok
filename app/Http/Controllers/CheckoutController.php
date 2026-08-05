@@ -165,6 +165,23 @@ class CheckoutController extends Controller
             ]);
 
             foreach ($items as $item) {
+                // FIXED: this used to blindly flip the WHOLE parts_inventory
+                // row to 'Reserved' with no stock_qty decrement at all —
+                // the exact same bug already found and fixed in
+                // AdminOrderController::store() (the staff-facing Place
+                // Order flow). Here it's actually higher-risk: this is
+                // the unsupervised PUBLIC checkout, so a consumable row
+                // with stock_qty=20 would have its entire batch hidden
+                // from every other customer the instant ONE person
+                // ordered a single unit. Row-locked against a race
+                // between two customers checking out the same part at
+                // nearly the same moment (no lock existed before either).
+                $lockedPart = DB::table('parts_inventory')->where('id', $item['part_id'])->lockForUpdate()->first();
+                if (!$lockedPart || $lockedPart->stock_qty < 1) {
+                    throw new \Exception("{$item['part_name']} is no longer available — someone else may have just ordered the last one.");
+                }
+                $remainingQty = $lockedPart->stock_qty - 1; // cart model is always 1 unit per row (see CartController::add)
+
                 DB::table('order_items')->insert([
                     'order_id'        => $orderId,
                     'part_id'         => $item['part_id'],
@@ -176,6 +193,10 @@ class CheckoutController extends Controller
                     'year_to'         => $item['year_to'],
                     'condition_grade' => $item['condition_grade'],
                     'location'        => $item['location'],
+                    // NEW: explicit quantity, matching the real column
+                    // on order_items (see the qty-persistence fix
+                    // applied to AdminOrderController earlier).
+                    'quantity'        => 1,
                     'unit_price_local'=> $item['unit_price_local'],
                     'subtotal_local'  => $item['unit_price_local'], // qty always 1 per row in this cart model
                     'unit_price_ngn'  => $currencyCode === 'NGN' ? round($item['unit_price_local']) : null,
@@ -185,9 +206,16 @@ class CheckoutController extends Controller
                     'updated_at'      => now(),
                 ]);
 
-                DB::table('parts_inventory')
-                    ->where('id', $item['part_id'])
-                    ->update(['status' => 'Reserved', 'updated_at' => now()]);
+                DB::table('parts_inventory')->where('id', $item['part_id'])->update([
+                    'stock_qty'  => $remainingQty,
+                    // Only becomes Reserved once nothing is left —
+                    // partial depletion of a multi-unit row leaves the
+                    // remainder Available for everyone else, same
+                    // pattern already used everywhere else stock gets
+                    // reserved/sold in this system.
+                    'status'     => $remainingQty <= 0 ? 'Reserved' : 'Available',
+                    'updated_at' => now(),
+                ]);
             }
 
             $this->clearCart($request);

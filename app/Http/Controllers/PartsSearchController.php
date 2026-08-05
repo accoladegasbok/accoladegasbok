@@ -41,16 +41,23 @@ class PartsSearchController extends Controller
         };
     }
 
+    // NEW: split so /parts (automobile parts) and /other-items
+    // (Consumables/Electronics/Computers/Other) never mix results —
+    // previously ALL categories showed together on /parts by default,
+    // with no way to browse just one grouping.
+    const AUTO_CATEGORIES = [
+        'Engine','Transmission','Body','Suspension','Electrical',
+        'Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels',
+    ];
+    const OTHER_CATEGORIES = ['Consumable', 'Electronics', 'Computers', 'Other'];
+
     public function index(Request $request)
     {
         $makes      = VehicleDatabase::makes();
         $years      = VehicleDatabase::years();
-        $categories = [
-            'Engine','Transmission','Body','Suspension','Electrical',
-            'Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels','Consumable',
-        ];
+        $categories = self::AUTO_CATEGORIES;
 
-        $filters = $this->buildFilters($request);
+        $filters = $this->buildFilters($request, scope: 'auto');
         $parts   = $this->searchParts($filters);
         $rates   = $this->getCurrencyRates(); // kept for any legacy view references; no longer used for pricing
         $currency = $request->get('currency', 'USD');
@@ -84,6 +91,41 @@ class PartsSearchController extends Controller
                 'Accra Ghana'     => 'Accra Ghana 🇬🇭',
             ],
         ]);
+    }
+
+    // =========================================================
+    // GET /other-items — Consumables, Electronics, Computers, Other.
+    // NEW: previously these categories only showed up mixed into
+    // /parts (Consumable had a quick-tab there; Electronics/Computers/
+    // Other weren't even filterable). Separate section, separate URL,
+    // same underlying search/filter machinery as /parts (scoped).
+    // =========================================================
+    public function otherItems(Request $request)
+    {
+        $categories = self::OTHER_CATEGORIES;
+
+        $filters = $this->buildFilters($request, scope: 'other');
+        $parts   = $this->searchParts($filters);
+
+        $totalAvailable = DB::table('parts_inventory')
+            ->where('status', 'Available')
+            ->whereIn('part_category', self::OTHER_CATEGORIES)
+            ->count();
+
+        return view('parts.other-items', compact('categories', 'parts', 'filters', 'totalAvailable'))
+            ->with([
+                'total'     => $parts->total(),
+                'locations' => [
+                    'Waxahachie TX'   => 'Waxahachie TX 🇺🇸',
+                    'Elkhorn WI'      => 'Elkhorn WI 🇺🇸',
+                    'Ile-Ife Nigeria' => 'Ile-Ife Nigeria 🇳🇬',
+                    'Ibadan Nigeria'  => 'Ibadan Nigeria 🇳🇬',
+                    'Lagos Nigeria'   => 'Lagos Nigeria 🇳🇬',
+                    'Abuja Nigeria'   => 'Abuja Nigeria 🇳🇬',
+                    'Akure Nigeria'   => 'Akure Nigeria 🇳🇬',
+                    'Accra Ghana'     => 'Accra Ghana 🇬🇭',
+                ],
+            ]);
     }
 
     public function modelsByMake(Request $request): \Illuminate\Http\JsonResponse
@@ -173,7 +215,7 @@ class PartsSearchController extends Controller
 
     public function ajaxSearch(Request $request): \Illuminate\Http\JsonResponse
     {
-        $filters = $this->buildFilters($request);
+        $filters = $this->buildFilters($request, scope: $request->get('scope', 'auto'));
         $parts   = $this->searchParts($filters);
 
         return response()->json([
@@ -183,9 +225,10 @@ class PartsSearchController extends Controller
         ]);
     }
 
-    private function buildFilters(Request $request): array
+    private function buildFilters(Request $request, string $scope = 'auto'): array
     {
         return [
+            'scope'     => $scope,
             'make'      => trim($request->get('make', '')),
             'model'     => trim($request->get('model', '')),
             'year'      => trim($request->get('year', '')),
@@ -207,9 +250,21 @@ class PartsSearchController extends Controller
             ->where('status', 'Available')
             ->orderByDesc('created_at');
 
+        // NEW: scope constrains results to the right grouping even
+        // when no explicit category filter is chosen — this is what
+        // actually keeps /parts and /other-items from mixing. If a
+        // specific category IS chosen, it must also belong to that
+        // scope (prevents e.g. ?category=Electronics being usable on
+        // the /parts URL to sneak non-auto results in).
+        $scopeCategories = $filters['scope'] === 'other' ? self::OTHER_CATEGORIES : self::AUTO_CATEGORIES;
+        if ($filters['category'] && in_array($filters['category'], $scopeCategories, true)) {
+            $q->where('part_category', $filters['category']);
+        } else {
+            $q->whereIn('part_category', $scopeCategories);
+        }
+
         if ($filters['make'])     $q->where('brand', 'like', '%'.$filters['make'].'%');
         if ($filters['model'])    $q->where('model', 'like', '%'.$filters['model'].'%');
-        if ($filters['category']) $q->where('part_category', $filters['category']);
         if ($filters['location']) {
             // Customer-facing filter is now grouped by COUNTRY (USA /
             // Nigeria / Ghana) rather than individual city locations —

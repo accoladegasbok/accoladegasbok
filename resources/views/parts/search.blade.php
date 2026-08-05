@@ -102,7 +102,7 @@
         <div class="flex justify-center gap-2 mt-5">
             <button id="tabVin" class="tab-btn bg-gold text-navy font-display font-700 text-xs px-5 py-2 rounded-full tracking-wide">VIN SEARCH</button>
             <button id="tabBrowse" class="tab-btn bg-white bg-opacity-10 text-white hover:bg-opacity-20 font-display font-700 text-xs px-5 py-2 rounded-full tracking-wide transition-colors">BROWSE BY VEHICLE</button>
-            <a href="{{ route('parts.search') }}?category=Consumable" class="tab-btn bg-white bg-opacity-10 text-white hover:bg-opacity-20 font-display font-700 text-xs px-5 py-2 rounded-full tracking-wide transition-colors inline-block">SHOP OILS & FLUIDS</a>
+            <a href="{{ route('other-items') }}?category=Consumable" class="tab-btn bg-white bg-opacity-10 text-white hover:bg-opacity-20 font-display font-700 text-xs px-5 py-2 rounded-full tracking-wide transition-colors inline-block">SHOP OILS & FLUIDS</a>
         </div>
     </div>
 </div>
