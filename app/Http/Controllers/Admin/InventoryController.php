@@ -199,6 +199,12 @@ class InventoryController extends Controller
         }
         // ──────────────────────────────────────────────────────────────
 
+        // NEW: additional known OEM numbers for this part (see
+        // PartOemNumberService) — the primary number keeps living on
+        // parts_inventory.oem_part_number unchanged; this is anything
+        // beyond that single value.
+        $additionalOemNumbers = app(\App\Services\PartOemNumberService::class)->forPart($id);
+
         return view('admin.inventory.edit', [
             'part'                 => $part,
             'brands'               => self::BRANDS,
@@ -210,6 +216,7 @@ class InventoryController extends Controller
             'interchangeVehicles'  => $interchangeVehicles,
             'aggregatedStock'      => $aggregatedStock,
             'heuristicSuggestion'  => $heuristicSuggestion,
+            'additionalOemNumbers' => $additionalOemNumbers,
         ]);
     }
 
@@ -400,8 +407,59 @@ class InventoryController extends Controller
             'updated_at'             => now(),
         ]);
 
+        // NEW: keep part_oem_numbers' primary row in sync whenever this
+        // form edits the primary field directly — otherwise the new
+        // table would silently drift from parts_inventory.oem_part_number.
+        if ($request->filled('oem_part_number')) {
+            $oemService = app(\App\Services\PartOemNumberService::class);
+            $existingPrimary = DB::table('part_oem_numbers')->where('parts_inventory_id', $id)->where('is_primary', true)->first();
+            if ($existingPrimary) {
+                DB::table('part_oem_numbers')->where('id', $existingPrimary->id)->update([
+                    'oem_number' => trim($request->oem_part_number), 'updated_at' => now(),
+                ]);
+            } else {
+                $oemService->add($id, $request->oem_part_number);
+            }
+        }
+
         return redirect()->route('admin.inventory.index')
             ->with('success', 'Part updated successfully.');
+    }
+
+    // =========================================================
+    // AJAX: POST /admin/inventory/{id}/oem-numbers — add an
+    // additional known OEM number for a part.
+    // =========================================================
+    public function addOemNumber(Request $request, int $id)
+    {
+        $request->validate([
+            'oem_number'   => 'required|string|max:60',
+            'manufacturer' => 'nullable|string|max:60',
+        ]);
+
+        $part = DB::table('parts_inventory')->where('id', $id)->first();
+        abort_if(!$part, 404);
+
+        $exists = DB::table('part_oem_numbers')
+            ->where('parts_inventory_id', $id)
+            ->where('oem_number', trim($request->oem_number))
+            ->exists();
+        if ($exists) {
+            return response()->json(['error' => 'This OEM number is already recorded for this part.'], 422);
+        }
+
+        $oemId = app(\App\Services\PartOemNumberService::class)->add($id, $request->oem_number, $request->manufacturer);
+
+        return response()->json(['success' => true, 'id' => $oemId]);
+    }
+
+    // =========================================================
+    // AJAX: DELETE /admin/inventory/oem-numbers/{oemNumberId}
+    // =========================================================
+    public function removeOemNumber(int $oemNumberId)
+    {
+        app(\App\Services\PartOemNumberService::class)->remove($oemNumberId);
+        return response()->json(['success' => true]);
     }
 
     // ── Quick status update (AJAX) ────────────────────────────────

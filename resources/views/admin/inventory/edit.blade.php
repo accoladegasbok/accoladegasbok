@@ -175,9 +175,40 @@
         </div>
 
         <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number</label>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number <span class="text-gray-400 font-normal normal-case">(primary)</span></label>
           <input type="text" name="oem_part_number" value="{{ old('oem_part_number', $part->oem_part_number) }}"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400">
+          <p class="text-xs text-gray-400 font-body mt-1">Editing this still works exactly as before — updates the part's main OEM number.</p>
+        </div>
+
+        {{-- NEW: additional OEM numbers — e.g. an alternator that
+             matches both a Denso AND an Aisin part number. Separate
+             from the primary field above, which keeps working
+             unchanged for anything that only ever needs one number. --}}
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
+            Additional OEM Numbers <span class="text-gray-400 font-normal normal-case">(optional — this part sometimes matches more than one)</span>
+          </label>
+
+          @php $extraOemNumbers = $additionalOemNumbers->where('is_primary', false); @endphp
+          @if($extraOemNumbers->isNotEmpty())
+          <div class="space-y-1.5 mb-2">
+            @foreach($extraOemNumbers as $oem)
+            <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <span class="font-mono text-xs text-navy flex-1">{{ $oem->oem_number }}</span>
+              @if($oem->manufacturer)<span class="text-xs text-gray-400">{{ $oem->manufacturer }}</span>@endif
+              <button type="button" onclick="if(confirm('Remove this OEM number?')) removeOemNumber({{ $oem->id }}, this)"
+                class="text-red-400 hover:text-red-600 text-xs">✕</button>
+            </div>
+            @endforeach
+          </div>
+          @endif
+
+          <div class="flex gap-2">
+            <input type="text" id="newOemNumber" placeholder="e.g. 27060-0T230" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs font-body font-mono focus:outline-none focus:border-yellow-400">
+            <input type="text" id="newOemManufacturer" placeholder="Manufacturer (optional)" class="w-40 border border-gray-200 rounded-lg px-3 py-2 text-xs font-body focus:outline-none focus:border-yellow-400">
+            <button type="button" onclick="addOemNumber({{ $part->id }})" class="bg-navy text-white text-xs font-600 px-4 py-2 rounded-lg hover:bg-navy-light">Add</button>
+          </div>
         </div>
 
         <div>
@@ -497,6 +528,43 @@
 const CURRENT_ROOM_ID  = {{ $currentRoomId ?? 'null' }};
 const CURRENT_SHELF_ID = {{ $part->storage_shelf_id ?? 'null' }};
 const PART_ID = {{ $part->id }};
+
+// ── Additional OEM numbers ──────────────────────────────────────────────
+async function addOemNumber(partId) {
+    const numberInput = document.getElementById('newOemNumber');
+    const mfrInput = document.getElementById('newOemManufacturer');
+    const number = numberInput.value.trim();
+    if (!number) { numberInput.focus(); return; }
+
+    try {
+        const res = await fetch(`/admin/inventory/${partId}/oem-numbers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ oem_number: number, manufacturer: mfrInput.value.trim() || null }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            alert(data.error || 'Could not add OEM number.');
+            return;
+        }
+        location.reload();
+    } catch (e) {
+        alert('Could not add OEM number — check your connection.');
+    }
+}
+
+async function removeOemNumber(oemNumberId, btn) {
+    try {
+        const res = await fetch(`/admin/inventory/oem-numbers/${oemNumberId}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+        });
+        if (!res.ok) { alert('Could not remove — try again.'); return; }
+        btn.closest('div.flex').remove();
+    } catch (e) {
+        alert('Could not remove — check your connection.');
+    }
+}
 const HAS_GROUP = {{ $interchangeGroup ? 'true' : 'false' }};
 const GROUP_ID = {{ $interchangeGroup->id ?? 'null' }};
 

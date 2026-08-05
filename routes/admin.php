@@ -61,6 +61,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // entry-form dropdown. Literal path, placed before the
             // /{id} wildcard for the same reason as barcodes/bulk above.
             Route::get('/terminology', [InventoryController::class, 'terminologyOptions'])->name('terminology');
+            // NEW: additional OEM number management (see PartOemNumberService).
+            // /{id}/oem-numbers is fine alongside /{id}/barcode since both
+            // are scoped under the numeric {id} segment, not colliding
+            // with any literal-vs-wildcard ordering issue.
+            Route::post('/{id}/oem-numbers', [InventoryController::class, 'addOemNumber'])->name('oem-numbers.add');
+            Route::delete('/oem-numbers/{oemNumberId}', [InventoryController::class, 'removeOemNumber'])->name('oem-numbers.remove');
             Route::get('/{id}/barcode', [InventoryController::class, 'barcode'])->name('barcode');
             Route::get('/{id}/edit',    [InventoryController::class, 'edit'])->name('edit');
             Route::put('/{id}',         [InventoryController::class, 'update'])->name('update');
