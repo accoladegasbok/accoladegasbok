@@ -93,7 +93,13 @@
         @php $sym = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$order->currency_code ?? 'USD'] ?? '$'; @endphp
         @foreach($items as $item)
         <tr>
-          <td>{{ $item->part_name }}<br><span style="font-size:10px;color:#999;">{{ $item->part_code }}</span></td>
+          <td>{{ $item->part_name }}<br><span style="font-size:10px;color:#999;">{{ $item->part_code }}</span>
+          @if(!empty($item->returned))
+          <br><span style="display:inline-block; background:#fdecea; color:#a32d2d; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-top:2px;">
+              ↩ RETURNED — REFUNDED{{ $item->return_refund_method ? ' VIA ' . strtoupper(str_replace('_',' ', $item->return_refund_method)) : '' }}
+          </span>
+          @endif
+          </td>
           <td style="font-size:11px;color:#666;">{{ $item->brand }} {{ $item->model }} {{ $item->year_from }}@if($item->year_to != $item->year_from)–{{ $item->year_to }}@endif</td>
           <td style="text-align:right;">{{ $sym }}{{ ($order->currency_code ?? 'USD') === 'NGN' ? number_format($item->unit_price_local ?? $item->unit_price_ngn) : number_format($item->unit_price_local ?? $item->unit_price_usd, 2) }}</td>
         </tr>
