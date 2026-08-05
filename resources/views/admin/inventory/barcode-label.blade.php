@@ -225,7 +225,13 @@ body.size-large .label-small { display:none; }
         @if($fitsStr)
             <div class="fits-val">{{ $fitsStr }}</div>
             <div class="ic-source">
-                {{ $group ? '✓ Confirmed group: '.$group->group_code : '~ Suggested via OEM code' }}
+                @if($group && ($group->source ?? null) === 'platform')
+                    ⚙ Chassis platform match: {{ $group->generation ?? $group->group_code }}
+                @elseif($group)
+                    ✓ Confirmed group: {{ $group->group_code }}
+                @else
+                    ~ Suggested via OEM code
+                @endif
             </div>
         @else
             <div class="fits-val" style="color:#bbb;">No interchange data on file — see compatibility checker</div>

@@ -78,14 +78,45 @@ class BarcodeController extends Controller
                     $this->interchange->vehiclesForGroup($part->interchange_group_id)
                 );
             } else {
-                // Try heuristic for "also fits" suggestion
-                $heuristic = $this->interchange->interchangeFor(
-                    $part->part_name,
-                    $part->engine_code_oem,
-                    $part->transmission_code_oem
-                );
-                if ($heuristic['found']) {
-                    $vehicles = $this->interchange->mergeContiguousYearRanges($heuristic['vehicles'])->take(4);
+                // FIXED: this used to jump straight to the OEM-code
+                // heuristic for EVERY category — wrong tool for
+                // Suspension/Brakes (steering rack, control arms,
+                // calipers etc.), whose real fitment is driven by
+                // chassis platform, not which engine happens to be
+                // under the hood. Now checks PlatformDatabase FIRST,
+                // same tier order the Compatibility Checker page
+                // already uses (own-generation + confirmed cross-model
+                // platform-mates), and only falls back to the OEM-code
+                // heuristic when no platform data exists for this
+                // make/model at all.
+                $platform = \App\Data\PlatformDatabase::lookup($part->brand, $part->model, (int) $part->year_from);
+                $platformVehicles = collect($platform['shared_vehicles'] ?? [])
+                    ->filter(function ($sv) use ($part) {
+                        $entryCategories = $sv['categories'] ?? \App\Data\PlatformDatabase::CROSS_MODEL_SAFE_CATEGORIES;
+                        return in_array($part->part_category, $entryCategories, true);
+                    })
+                    ->map(fn($sv) => (object) [
+                        'make' => $sv['make'], 'model' => $sv['model'],
+                        'year_from' => $sv['year_from'], 'year_to' => $sv['year_to'],
+                    ]);
+
+                if ($platformVehicles->isNotEmpty()) {
+                    $vehicles = $this->interchange->mergeContiguousYearRanges($platformVehicles);
+                    $group = (object) [
+                        'group_code' => $platform['platform_code'] ?? ($platform['generation'] ?? 'PLATFORM'),
+                        'source'     => 'platform',
+                        'generation' => $platform['generation'] ?? null,
+                    ];
+                } else {
+                    // Try heuristic for "also fits" suggestion
+                    $heuristic = $this->interchange->interchangeFor(
+                        $part->part_name,
+                        $part->engine_code_oem,
+                        $part->transmission_code_oem
+                    );
+                    if ($heuristic['found']) {
+                        $vehicles = $this->interchange->mergeContiguousYearRanges($heuristic['vehicles'])->take(4);
+                    }
                 }
             }
 
