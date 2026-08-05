@@ -290,10 +290,23 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
 <body>
 
 <div class="print-controls" id="printControls">
-    <h2>INVOICE {{ $invoiceNo }}</h2>
+    {{-- FIXED: every invoice rendered here is created only at the point
+         of full payment (no partial-payment path exists for manual/
+         service/car-sale invoices) — so it's always actually a receipt,
+         not just for vehicle sales. --}}
+    <h2>RECEIPT {{ $invoiceNo }}</h2>
     @if(isset($invoice) && in_array(session('staff_role'), ['admin', 'manager']))
     <a href="{{ route('admin.invoices.manual.edit', $invoice->id) }}" style="background:#c9a84c;color:#0d1b2a;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:0.5px;">
         ✎ Edit Invoice
+    </a>
+    @endif
+    {{-- NEW: Return button — no return workflow was reachable from an
+         invoice at all before this. Pre-selects this invoice on the
+         Returns creation form so staff don't have to search for it
+         again by phone/invoice number. --}}
+    @if(isset($invoice) && !$isVehicleSale)
+    <a href="{{ route('admin.returns.create', ['invoice_id' => $invoice->id]) }}" style="background:#fff;color:#a32d2d;border:1.5px solid #a32d2d;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:0.5px;">
+        ↩ Log Return
     </a>
     @endif
     <span class="sep">|</span>
@@ -476,9 +489,9 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                 <div class="contact">📞 {{ $businessInfo['phone'] }} · 🌐 autozenithparts.com</div>
             </div>
             <div class="inv-meta">
-                <div class="inv-title">{{ $isVehicleSale ? 'VEHICLE SALE RECEIPT' : 'INVOICE' }}</div>
+                <div class="inv-title">{{ $isVehicleSale ? 'VEHICLE SALE RECEIPT' : 'RECEIPT' }}</div>
                 <table>
-                    <tr><td>{{ $isVehicleSale ? 'Receipt No:' : 'Invoice No:' }}</td><td>{{ $invoiceNo }}</td></tr>
+                    <tr><td>Receipt No:</td><td>{{ $invoiceNo }}</td></tr>
                     <tr><td>Date:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }}</td></tr>
                     <tr><td>Time:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('h:i A') }}</td></tr>
                     <tr><td>Location:</td><td>{{ $location }}</td></tr>
@@ -549,7 +562,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                 <div class="gate-field"><label>Phone Number</label><strong style="font-size:11px;">{{ $order->customer_phone ?? '________________' }}</strong></div>
                 <div class="gate-field"><label>Vehicle / Plate No.</label>&nbsp;</div>
                 <div class="gate-field"><label>No. of Items</label><strong style="font-size:11px;">{{ $lineItems->count() }} item(s)</strong></div>
-                <div class="gate-field"><label>Invoice No.</label><strong style="font-size:11px;">{{ $invoiceNo }}</strong></div>
+                <div class="gate-field"><label>Receipt No.</label><strong style="font-size:11px;">{{ $invoiceNo }}</strong></div>
                 <div class="gate-field"><label>Exit Time</label>&nbsp;</div>
             </div>
         </div>
@@ -583,6 +596,12 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                                 @else
                                     -{{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($item->discount_amount_local) : number_format($item->discount_amount_local, 2) }}
                                 @endif
+                            </span>
+                            @endif
+                            {{-- NEW: returned & refunded badge --}}
+                            @if(!empty($item->returned) && $copyKey !== 'waybill')
+                            <span style="display:inline-block; background:#fdecea; color:#a32d2d; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">
+                                ↩ RETURNED — REFUNDED{{ $item->return_refund_method ? ' VIA ' . strtoupper(str_replace('_',' ', $item->return_refund_method)) : '' }}
                             </span>
                             @endif
                         </div>
@@ -742,7 +761,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
             <p>
                 Thank you for your business! · <span class="website">autozenithparts.com</span>
                 · WhatsApp: {{ $businessInfo['phone'] }}<br>
-                This is a computer-generated {{ $isVehicleSale ? 'receipt' : 'invoice' }}. No physical signature required unless specified.
+                This is a computer-generated receipt. No physical signature required unless specified.
                 @if($copyKey === 'gate') · <strong style="color:#b71c1c;">GATE PASS — Present to security on exit</strong>@endif
             </p>
         </div>

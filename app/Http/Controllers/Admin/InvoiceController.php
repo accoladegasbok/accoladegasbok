@@ -262,6 +262,7 @@ class InvoiceController extends Controller
             ->leftJoin('parts_inventory as p', 'p.id', '=', 'oi.part_id')
             ->where('oi.order_id', $orderId)
             ->select(
+                'oi.id',
                 'oi.item_type',
                 'oi.unit_price_local',
                 'oi.subtotal_local',
@@ -308,6 +309,24 @@ class InvoiceController extends Controller
                 'unit_price_fmt' => self::formatLocal($item->unit_price_local ?? 0, $currencyCode),
                 'total_fmt'      => self::formatLocal($lineLocal, $currencyCode),
             ]);
+        });
+
+        // NEW: show "Returned & Refunded" on the original receipt for
+        // any line item that has a resolved return on file — so staff
+        // (and the customer, on their copy) can see at a glance that
+        // this specific item was returned, without having to cross-
+        // reference the Returns section separately.
+        $returnsByOrderItem = DB::table('returns')
+            ->where('order_id', $orderId)
+            ->where('status', 'resolved')
+            ->get()
+            ->keyBy('order_item_id');
+
+        $lineItems = $lineItems->map(function ($item) use ($returnsByOrderItem) {
+            $return = $returnsByOrderItem->get($item->id);
+            $item->returned            = (bool) $return;
+            $item->return_refund_method = $return->refund_method ?? null;
+            return $item;
         });
 
         $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
@@ -784,6 +803,10 @@ class InvoiceController extends Controller
         $currentStaffForCap          = DB::table('staff')->where('id', Session::get('staff_id'))->first();
         $grossLocal                  = $subtotalAfterLineDiscounts + $lineItems->sum('discount_amount_local');
         $discountPercentOfGross      = $grossLocal > 0 ? ($totalDiscountLocal / $grossLocal) * 100 : 0;
+        // The cap is the LESSER of the fixed and percent limits — a
+        // discount is blocked (requires an override reason) if it
+        // exceeds EITHER one, so staff can never give away more than
+        // whichever cap is more conservative for a given sale.
         $exceedsCap = false;
         if ($currentStaffForCap) {
             if ($currentStaffForCap->discount_cap_fixed !== null && $totalDiscountLocal > $currentStaffForCap->discount_cap_fixed) $exceedsCap = true;

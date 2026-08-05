@@ -435,10 +435,24 @@ class ReturnsController extends Controller
 
         DB::beginTransaction();
         try {
+            $part = DB::table('parts_inventory')->where('id', $return->part_id)->first();
+
             $partUpdate = [
                 'status'     => $statusMap[$request->resolution],
                 'updated_at' => now(),
             ];
+
+            // FIXED: this used to only flip status to 'Available' —
+            // stock_qty was never touched, so a returned part showed
+            // as "Available" but with whatever stock_qty it already
+            // had (often 0, if this was the last/only unit sold). No
+            // qty field exists on the returns table itself, so this
+            // assumes one physical unit per return record, matching
+            // how returns are logged (one row per item selected).
+            if ($request->resolution === 'restock_good') {
+                $partUpdate['stock_qty'] = ($part->stock_qty ?? 0) + 1;
+            }
+
             if ($request->resolution !== 'scrapped' && $request->storage_shelf_id) {
                 $shelf = DB::table('storage_shelves')->where('id', $request->storage_shelf_id)->first();
                 $partUpdate['storage_shelf_id'] = $request->storage_shelf_id;
