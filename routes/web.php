@@ -66,6 +66,14 @@ Route::post('/account/verify',         [\App\Http\Controllers\CustomerAuthContro
 Route::post('/account/verify/resend',  [\App\Http\Controllers\CustomerAuthController::class, 'resendOtp'])->name('customer.verify.resend');
 Route::post('/account/logout',         [\App\Http\Controllers\CustomerAuthController::class, 'logout'])->name('customer.logout');
 
+// ── Customer password reset — reuses the existing OTP infrastructure
+// (same email-code pattern as register/change-email), not a separate
+// link-token mechanism.
+Route::get('/account/forgot-password',  [\App\Http\Controllers\CustomerAuthController::class, 'showForgotPassword'])->name('customer.password.request');
+Route::post('/account/forgot-password', [\App\Http\Controllers\CustomerAuthController::class, 'sendPasswordResetOtp'])->name('customer.password.email');
+Route::get('/account/reset-password',   [\App\Http\Controllers\CustomerAuthController::class, 'showResetPasswordForm'])->name('customer.password.reset.form');
+Route::post('/account/reset-password',  [\App\Http\Controllers\CustomerAuthController::class, 'resetPasswordFinal'])->name('customer.password.update');
+
 // Called BY Telegram's servers, not by a browser — no customer_id
 // session available here, that's expected (see controller docblock).
 Route::post('/telegram/webhook', [\App\Http\Controllers\CustomerAuthController::class, 'telegramWebhook'])->name('customer.telegram.webhook');
