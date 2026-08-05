@@ -114,6 +114,27 @@
       <div id="searchResults" class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto"></div>
     </div>
 
+    {{-- NEW: bulk discount toolbar — select items via checkbox below,
+         apply one discount to all of them at once, matching Manual
+         Invoice's existing per-item discount capability. --}}
+    <div id="bulkDiscountBar" class="hidden mx-4 mt-2 mb-2 bg-navy text-white rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+      <span class="text-xs font-body"><span id="bulkDiscountCount">0</span> item(s) selected</span>
+      <div class="flex items-center gap-1.5 ml-auto">
+        <input type="number" id="bulkDiscountValue" placeholder="0" min="0"
+          class="w-20 border border-white border-opacity-30 bg-white bg-opacity-10 rounded-lg px-2 py-1.5 text-sm font-mono text-white placeholder-gray-300 focus:outline-none">
+        <select id="bulkDiscountType" class="border border-white border-opacity-30 bg-navy rounded-lg px-1.5 py-1.5 text-xs text-white focus:outline-none">
+          <option value="fixed">Fixed</option>
+          <option value="percent">%</option>
+        </select>
+        <button type="button" onclick="applyBulkDiscount()"
+          class="bg-gold text-navy font-display font-700 text-xs px-4 py-1.5 rounded-lg hover:bg-yellow-400 transition-colors whitespace-nowrap">
+          Apply to Selected
+        </button>
+        <button type="button" onclick="clearBulkDiscountSelection()"
+          class="text-white text-opacity-70 hover:text-opacity-100 text-xs px-2">Clear</button>
+      </div>
+    </div>
+
     <div id="cartContainer" class="divide-y divide-gray-100 p-4 space-y-2">
       <p class="text-xs text-gray-400 font-body text-center py-4" id="emptyCartMsg">No parts added yet — search above.</p>
     </div>
@@ -225,6 +246,9 @@ function addToCart(item) {
             brand: item.brand, model: item.model, location: item.location,
             price_local: item.price_local ?? item.price_usd, currency_code: item.currency_code || 'USD',
             qty: 1, stock_qty: item.stock_qty,
+            // NEW: per-item discount — parity with Manual Invoice,
+            // which already supports discounting individual lines.
+            discount_value: 0, discount_type: 'fixed',
         };
     }
     renderCart();
@@ -237,6 +261,44 @@ function removeFromCart(key) {
         delete cart[key];
         renderCart();
     });
+}
+
+// ── Bulk discount — select items via checkbox, apply one discount to
+// all of them at once, matching Manual Invoice's per-item discount
+// capability. ──
+function updateBulkDiscountBar() {
+    const checked = document.querySelectorAll('.item-select-checkbox:checked');
+    const bar = document.getElementById('bulkDiscountBar');
+    document.getElementById('bulkDiscountCount').textContent = checked.length;
+    bar.classList.toggle('hidden', checked.length === 0);
+}
+
+function applyBulkDiscount() {
+    const value = document.getElementById('bulkDiscountValue').value;
+    const type  = document.getElementById('bulkDiscountType').value;
+    if (!value || parseFloat(value) <= 0) {
+        alert('Enter a discount amount first.');
+        return;
+    }
+
+    const checked = document.querySelectorAll('.item-select-checkbox:checked');
+    if (checked.length === 0) return;
+
+    checked.forEach(cb => {
+        const key = cb.dataset.key;
+        if (cart[key]) {
+            cart[key].discount_value = parseFloat(value);
+            cart[key].discount_type  = type;
+        }
+    });
+
+    renderCart();
+    updateBulkDiscountBar(); // rebuilds fresh unchecked checkboxes, so this hides the bar again
+}
+
+function clearBulkDiscountSelection() {
+    document.querySelectorAll('.item-select-checkbox').forEach(cb => cb.checked = false);
+    updateBulkDiscountBar();
 }
 
 function changeQty(key, delta) {
@@ -263,19 +325,30 @@ function renderCart() {
     container.innerHTML = keys.map((key, idx) => {
         const item = cart[key];
         const sym = SYMBOLS[item.currency_code] || '$';
-        const lineTotal = item.price_local * item.qty;
+        const lineGross = item.price_local * item.qty;
+        // NEW: per-item discount applied to the line total.
+        const discVal = parseFloat(item.discount_value) || 0;
+        const discType = item.discount_type || 'fixed';
+        const lineDiscount = discVal <= 0 ? 0 : (discType === 'percent' ? lineGross * (discVal / 100) : Math.min(discVal, lineGross));
+        const lineTotal = lineGross - lineDiscount;
         totalsByCode[item.currency_code] = (totalsByCode[item.currency_code] || 0) + lineTotal;
         const priceFmt = item.currency_code === 'NGN' ? Math.round(lineTotal).toLocaleString() : lineTotal.toFixed(2);
         const isService = item.item_type === 'service';
 
         return `
-        <div class="flex items-center justify-between py-2.5">
-            <div class="flex-1">
-                <div class="font-700 text-navy text-sm">${item.part_name} ${isService ? '<span class="text-blue-500 text-[10px]">⚙ SERVICE</span>' : ''}</div>
-                <div class="text-xs text-gray-400">${item.part_code} · ${item.brand ?? ''} ${item.model ?? ''} ${item.location ? '· '+item.location : ''}</div>
+        <div class="py-2.5">
+        <div class="flex items-center justify-between">
+            <div class="flex-1 flex items-start gap-2">
+                <input type="checkbox" class="item-select-checkbox accent-gold mt-1" data-key="${key}" onchange="updateBulkDiscountBar()">
+                <div>
+                    <div class="font-700 text-navy text-sm">${item.part_name} ${isService ? '<span class="text-blue-500 text-[10px]">⚙ SERVICE</span>' : ''}</div>
+                    <div class="text-xs text-gray-400">${item.part_code} · ${item.brand ?? ''} ${item.model ?? ''} ${item.location ? '· '+item.location : ''}</div>
+                </div>
                 <input type="hidden" name="items[${idx}][item_type]" value="${item.item_type}">
                 <input type="hidden" name="items[${idx}][id]" value="${item.id}">
                 <input type="hidden" name="items[${idx}][qty]" value="${item.qty}">
+                <input type="hidden" name="items[${idx}][discount_value]" value="${discVal}">
+                <input type="hidden" name="items[${idx}][discount_type]" value="${discType}">
             </div>
             <div class="flex items-center gap-2">
                 <button type="button" onclick="changeQty('${key}', -1)" class="w-6 h-6 border border-gray-200 rounded text-xs hover:bg-gray-100">−</button>
@@ -284,6 +357,8 @@ function renderCart() {
                 <span class="font-display font-700 text-navy text-sm w-24 text-right">${sym}${priceFmt}</span>
                 <button type="button" onclick="removeFromCart('${key}')" class="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
             </div>
+        </div>
+        ${lineDiscount > 0 ? `<div class="text-[10px] text-amber-600 mt-0.5 ml-6">Discount: ${discType === 'percent' ? discVal + '%' : sym + discVal} (−${sym}${lineDiscount.toFixed(2)})</div>` : ''}
         </div>`;
     }).join('');
 

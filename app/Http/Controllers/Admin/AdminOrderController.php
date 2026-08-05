@@ -124,6 +124,12 @@ class AdminOrderController extends Controller
             'items.*.item_type'=> 'required|in:part,service',
             'items.*.id'       => 'required|integer',
             'items.*.qty'      => 'required|integer|min:1',
+            // NEW: per-item discount — Place Order previously only had
+            // ONE discount for the whole order. This is the real
+            // parity fix with Manual Invoice, which already supports
+            // discounting individual line items.
+            'items.*.discount_value' => 'nullable|numeric|min:0',
+            'items.*.discount_type'  => 'nullable|in:fixed,percent',
             // FIXED: the form already had a fully working discount UI
             // with live preview and cap checking — this controller
             // simply never read any of it, meaning a discount entered
@@ -140,10 +146,18 @@ class AdminOrderController extends Controller
         $firstPartLocation = null;
 
         foreach ($request->items as $item) {
+            // NEW: per-item discount, carried alongside qty for both
+            // parts and services.
+            $itemDiscountType  = $item['discount_type']  ?? 'fixed';
+            $itemDiscountValue = (float) ($item['discount_value'] ?? 0);
+
             if ($item['item_type'] === 'service') {
                 $service = DB::table('service_rates')->where('id', $item['id'])->where('is_active', true)->first();
                 if (!$service) { $stockErrors[] = "A selected service no longer exists."; continue; }
-                $lineItems[] = ['type' => 'service', 'service' => $service, 'qty' => (int) $item['qty']];
+                $lineItems[] = [
+                    'type' => 'service', 'service' => $service, 'qty' => (int) $item['qty'],
+                    'discount_type' => $itemDiscountType, 'discount_value' => $itemDiscountValue,
+                ];
                 continue;
             }
 
@@ -159,7 +173,10 @@ class AdminOrderController extends Controller
                 $stockErrors[] = "{$part->part_code}: requested {$qty}, only {$part->stock_qty} in stock.";
                 continue;
             }
-            $lineItems[] = ['type' => 'part', 'part' => $part, 'qty' => $qty];
+            $lineItems[] = [
+                'type' => 'part', 'part' => $part, 'qty' => $qty,
+                'discount_type' => $itemDiscountType, 'discount_value' => $itemDiscountValue,
+            ];
             $firstPartLocation = $firstPartLocation ?: $part->location;
         }
 
@@ -177,16 +194,39 @@ class AdminOrderController extends Controller
         $primaryLocation = $firstPartLocation ?: $request->get('location', 'Waxahachie TX');
         $orderCurrencyCode = InvoiceController::currencyForLocation($primaryLocation)['code'];
         $totalLocal = 0;
+        $totalLineDiscountLocal = 0; // NEW: sum of every line's own discount
 
-        foreach ($lineItems as $li) {
+        foreach ($lineItems as &$li) {
             if ($li['type'] === 'part') {
                 $priceLocal = $li['part']->price_local ?? $li['part']->price_usd;
             } else {
                 $priced = \App\Http\Controllers\Admin\ServiceRateController::priceForLocation($li['service']->id, $primaryLocation);
                 $priceLocal = $priced['price'];
             }
-            $totalLocal += $priceLocal * $li['qty'];
+
+            $lineGross = $priceLocal * $li['qty'];
+
+            // NEW: apply this line's own discount — same math as
+            // Manual Invoice's per-item discount (never trust the
+            // client's preview math, recompute server-side, and cap
+            // so a line discount can never exceed that line's own
+            // gross value).
+            $lineDiscount = 0;
+            if ($li['discount_value'] > 0) {
+                $lineDiscount = $li['discount_type'] === 'percent'
+                    ? $lineGross * ($li['discount_value'] / 100)
+                    : min($li['discount_value'], $lineGross);
+            }
+            $lineNet = $lineGross - $lineDiscount;
+
+            $li['line_gross']    = $lineGross;
+            $li['line_discount'] = round($lineDiscount, 2);
+            $li['line_net']      = $lineNet;
+
+            $totalLocal             += $lineNet;
+            $totalLineDiscountLocal += $lineDiscount;
         }
+        unset($li);
 
         // NEW: apply the discount that was already being computed and
         // shown in the browser's live preview, but never actually read
@@ -201,6 +241,27 @@ class AdminOrderController extends Controller
                 ? $totalLocal * ($discountValueIn / 100)
                 : min($discountValueIn, $totalLocal);
             $totalLocal -= $discountLocal;
+        }
+
+        // NEW: server-side discount cap enforcement — Place Order had
+        // NONE at all before (grossTotalLocal was computed but never
+        // actually used for anything). Manual Invoice already enforces
+        // this; matching that exact pattern here — the cap is the
+        // LESSER of the staff's fixed/percent limits (see the earlier
+        // fix/revert on InvoiceController for why lesser, not greater),
+        // checked against the TRUE combined discount (item discounts +
+        // whole-order discount together) versus the true original gross.
+        $totalCombinedDiscountLocal = $totalLineDiscountLocal + $discountLocal;
+        $discountPercentOfGross     = $grossTotalLocal > 0 ? ($totalCombinedDiscountLocal / $grossTotalLocal) * 100 : 0;
+
+        $currentStaffForCap = DB::table('staff')->where('id', Session::get('staff_id'))->first();
+        $exceedsCap = false;
+        if ($currentStaffForCap) {
+            if ($currentStaffForCap->discount_cap_fixed !== null && $totalCombinedDiscountLocal > $currentStaffForCap->discount_cap_fixed) $exceedsCap = true;
+            if ($currentStaffForCap->discount_cap_percent !== null && $discountPercentOfGross > $currentStaffForCap->discount_cap_percent) $exceedsCap = true;
+        }
+        if ($exceedsCap && !$request->filled('discount_override_reason')) {
+            return back()->withInput()->with('error', 'This discount exceeds your allowance cap. Please provide an override reason and resubmit.');
         }
 
         $orderRef = $this->generateOrderRef();
@@ -257,6 +318,9 @@ class AdminOrderController extends Controller
                 'discount_amount_local' => round($discountLocal, 2),
                 'discount_type'         => $discountLocal > 0 ? $discountType : null,
                 'discount_value'        => $discountLocal > 0 ? $discountValueIn : null,
+                // NEW: cap-override tracking, matching invoices.
+                'discount_override'        => $exceedsCap,
+                'discount_override_reason' => $exceedsCap ? $request->discount_override_reason : null,
                 'currency_code'       => $orderCurrencyCode,
                 'total_amount_ngn'    => $orderCurrencyCode === 'NGN' ? round($totalLocal) : null,
                 'total_amount_usd'    => $orderCurrencyCode === 'USD' ? round($totalLocal, 2) : null,
@@ -299,10 +363,19 @@ class AdminOrderController extends Controller
                         // No conversion — store the part's own real price,
                         // in its own real currency, in the matching column.
                         'unit_price_local'=> $priceLocal,
-                        'subtotal_local'  => round($priceLocal * $li['qty'], 2),
+                        // FIXED: this used to always be the GROSS value
+                        // (price × qty), silently ignoring any per-item
+                        // discount entered — now reflects the real net
+                        // amount, matching Manual Invoice's convention.
+                        'subtotal_local'  => round($li['line_net'], 2),
+                        // NEW: per-item discount, saved so it survives
+                        // past this request (editing, printing, reports).
+                        'discount_amount_local' => $li['line_discount'],
+                        'discount_type'         => $li['line_discount'] > 0 ? $li['discount_type'] : null,
+                        'discount_value'        => $li['line_discount'] > 0 ? $li['discount_value'] : null,
                         'unit_price_ngn'  => $itemCurrency === 'NGN' ? round($priceLocal) : null,
                         'unit_price_usd'  => $itemCurrency === 'USD' ? round($priceLocal, 2) : null,
-                        'subtotal_ngn'    => $itemCurrency === 'NGN' ? round($priceLocal * $li['qty']) : null,
+                        'subtotal_ngn'    => $itemCurrency === 'NGN' ? round($li['line_net']) : null,
                         'created_at'      => now(),
                         'updated_at'      => now(),
                     ]);
@@ -354,10 +427,15 @@ class AdminOrderController extends Controller
                         'condition_grade' => null,
                         'location'        => $primaryLocation,
                         'unit_price_local'=> $priceLocal,
-                        'subtotal_local'  => round($priceLocal * $li['qty'], 2),
+                        // FIXED: same gross-vs-net fix as the part
+                        // branch — reflects the item-discounted value.
+                        'subtotal_local'  => round($li['line_net'], 2),
+                        'discount_amount_local' => $li['line_discount'],
+                        'discount_type'         => $li['line_discount'] > 0 ? $li['discount_type'] : null,
+                        'discount_value'        => $li['line_discount'] > 0 ? $li['discount_value'] : null,
                         'unit_price_ngn'  => $itemCurrency === 'NGN' ? round($priceLocal) : null,
                         'unit_price_usd'  => $itemCurrency === 'USD' ? round($priceLocal, 2) : null,
-                        'subtotal_ngn'    => $itemCurrency === 'NGN' ? round($priceLocal * $li['qty']) : null,
+                        'subtotal_ngn'    => $itemCurrency === 'NGN' ? round($li['line_net']) : null,
                         'created_at'      => now(),
                         'updated_at'      => now(),
                     ]);
