@@ -476,6 +476,45 @@ class PlatformDatabase
             }
         }
 
+        // ══════════════════════════════════════════════════════
+        // CHEVROLET CRUZE / BUICK VERANO — GM Delta II platform.
+        // Verano and Cruze share the same platform/chassis; Suspension
+        // and Brakes (steering rack, control arms, calipers etc.) are
+        // confirmed cross-model shares. Body panels are NOT — Verano
+        // has fully distinct Buick-specific exterior sheet metal.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'CHEVROLET' && $model === 'CRUZE') {
+            if ($year >= 2016) return array_merge($default, [
+                'platform_code' => 'D2XX', 'generation' => 'Cruze Gen 2 (D2XX)',
+                'body_style' => 'Sedan/Hatchback', 'compat_year_from' => 2016, 'compat_year_to' => 2019,
+                'shared_models' => ['Chevrolet Cruze (2016-2019) - own generation'],
+                'shared_vehicles' => [
+                    ['make'=>'CHEVROLET','model'=>'CRUZE','year_from'=>2016,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES],
+                ],
+            ]);
+            if ($year >= 2011) return array_merge($default, [
+                'platform_code' => 'DELTA_II', 'generation' => 'Cruze Gen 1 (J300, Delta II)',
+                'body_style' => 'Sedan', 'compat_year_from' => 2011, 'compat_year_to' => 2015,
+                'shared_models' => ['Chevrolet Cruze (2011-2015) - own generation', 'Buick Verano (2012-2017) - Delta II platform-mate, chassis-mate only'],
+                'shared_vehicles' => [
+                    ['make'=>'CHEVROLET','model'=>'CRUZE','year_from'=>2011,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES],
+                    ['make'=>'BUICK','model'=>'VERANO','year_from'=>2012,'year_to'=>2017,'categories'=>self::CROSS_MODEL_SAFE_CATEGORIES],
+                ],
+            ]);
+        }
+
+        if ($make === 'BUICK' && $model === 'VERANO') {
+            return array_merge($default, [
+                'platform_code' => 'DELTA_II', 'generation' => 'Verano (Delta II)',
+                'body_style' => 'Sedan', 'compat_year_from' => 2012, 'compat_year_to' => 2017,
+                'shared_models' => ['Buick Verano (2012-2017) - own generation', 'Chevrolet Cruze (2011-2015) - Delta II platform-mate, chassis-mate only'],
+                'shared_vehicles' => [
+                    ['make'=>'BUICK','model'=>'VERANO','year_from'=>2012,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES],
+                    ['make'=>'CHEVROLET','model'=>'CRUZE','year_from'=>2011,'year_to'=>2015,'categories'=>self::CROSS_MODEL_SAFE_CATEGORIES],
+                ],
+            ]);
+        }
+
         return $default;
     }
 }
