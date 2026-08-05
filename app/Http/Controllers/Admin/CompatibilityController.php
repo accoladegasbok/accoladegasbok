@@ -357,6 +357,10 @@ class CompatibilityController extends Controller
         $sym    = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$part->currency_code ?? 'NGN'] ?? '₦';
         $photos = json_decode($part->photos ?? '[]', true);
 
+        // FIXED: same fragmentation fix as the barcode tag — merge
+        // genuinely contiguous years into one range, never bridge a
+        // real gap.
+        $vehicles = $this->interchange->mergeContiguousYearRanges($vehicles);
         $fitsVehicles = $vehicles->map(
             fn($v) => "{$v->make} {$v->model} ({$v->year_from}-{$v->year_to})"
         )->implode(', ');

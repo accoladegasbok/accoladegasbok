@@ -65,7 +65,18 @@ class BarcodeController extends Controller
                 $group    = DB::table('part_interchange_groups')
                     ->where('id', $part->interchange_group_id)
                     ->first();
-                $vehicles = $this->interchange->vehiclesForGroup($part->interchange_group_id);
+                // FIXED: previously listed every individual vehicle row
+                // exactly as stored — "TOYOTA COROLLA (2014-2014) ·
+                // TOYOTA COROLLA (2016-2016)" instead of a clean
+                // "2014-2016" range when those years are genuinely
+                // contiguous. Merges only truly adjacent years — a real
+                // gap (e.g. 2009 sitting alone, disconnected from
+                // 2014-2016) stays its own separate entry rather than
+                // being falsely bridged into a range that overclaims
+                // years nobody actually confirmed.
+                $vehicles = $this->interchange->mergeContiguousYearRanges(
+                    $this->interchange->vehiclesForGroup($part->interchange_group_id)
+                );
             } else {
                 // Try heuristic for "also fits" suggestion
                 $heuristic = $this->interchange->interchangeFor(
@@ -74,7 +85,7 @@ class BarcodeController extends Controller
                     $part->transmission_code_oem
                 );
                 if ($heuristic['found']) {
-                    $vehicles = $heuristic['vehicles']->take(4);
+                    $vehicles = $this->interchange->mergeContiguousYearRanges($heuristic['vehicles'])->take(4);
                 }
             }
 

@@ -20,6 +20,50 @@ use Illuminate\Support\Facades\DB;
 class InterchangeService
 {
     // =========================================================
+    // NEW: merges contiguous/overlapping single-year vehicle entries
+    // into clean ranges for display — e.g. three separate rows for
+    // 2014, 2015, 2016 become one "2014-2016" range. Deliberately
+    // does NOT bridge real gaps: 2014 + 2016 with no 2015 entry stay
+    // as two separate ranges, since collapsing them would silently
+    // claim a year nobody ever actually confirmed — that's a real
+    // accuracy regression, not a display nicety, given this whole
+    // system is built on evidence-weighted confidence.
+    //
+    // Grouped by make+model first — a 2014 Corolla row and a 2014
+    // Matrix row are never merged with each other regardless of year.
+    // =========================================================
+    public function mergeContiguousYearRanges($vehicles)
+    {
+        return collect($vehicles)
+            ->groupBy(fn($v) => strtoupper($v->make ?? '') . '|' . strtoupper($v->model ?? ''))
+            ->flatMap(function ($group) {
+                $sorted = $group->sortBy('year_from')->values();
+                $merged = collect();
+
+                foreach ($sorted as $v) {
+                    $last = $merged->last();
+                    // Contiguous or overlapping with the previous range
+                    // (gap of 0 or 1 year, e.g. year_to=2014 meeting
+                    // year_from=2015) — extend it. Otherwise start a
+                    // new, separate range.
+                    if ($last && $v->year_from <= $last->year_to + 1) {
+                        $last->year_to = max($last->year_to, $v->year_to);
+                    } else {
+                        $merged->push((object) [
+                            'make'      => $v->make,
+                            'model'     => $v->model,
+                            'year_from' => $v->year_from,
+                            'year_to'   => $v->year_to,
+                        ]);
+                    }
+                }
+
+                return $merged;
+            })
+            ->values();
+    }
+
+    // =========================================================
     // Find (or null) the interchange group a part belongs to.
     // =========================================================
     public function groupForPart(int $partId): ?object
