@@ -98,10 +98,19 @@ body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px;
 .lbl-footer .website { font-weight:700; color:#c9a84c; }
 
 @media print {
-    body { background:white; }
+    body { background:white; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
     .controls { display:none !important; }
     .labels-wrap { margin:0; padding:0; gap:0; }
     .label-small, .label-large { border:none !important; }
+
+    /* NEW: thermal printers often render text lighter than the on-
+       screen preview even at font-weight 900 — thin strokes at small
+       sizes get lost in the print/rasterization process. A subtle
+       text-stroke thickens every glyph without changing layout, which
+       reads as genuinely bolder on thermal output. Print-only — the
+       screen preview is unaffected. */
+    * { -webkit-text-stroke: 0.35px currentColor; }
+    .part-name, .biz-name, .retail, .flag { -webkit-text-stroke: 0.5px currentColor; }
 }
 @media print {
     body.size-small .label-large { display:none !important; }

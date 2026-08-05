@@ -126,6 +126,27 @@
       </div>
     </div>
 
+    {{-- NEW: bulk discount toolbar — select items via checkbox above,
+         then apply one discount to all of them at once instead of
+         typing into each line's discount field individually. --}}
+    <div id="bulkDiscountBar" class="hidden mx-4 mt-2 mb-2 bg-navy text-white rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+      <span class="text-xs font-body"><span id="bulkDiscountCount">0</span> item(s) selected</span>
+      <div class="flex items-center gap-1.5 ml-auto">
+        <input type="number" id="bulkDiscountValue" placeholder="0" min="0"
+          class="w-20 border border-white border-opacity-30 bg-white bg-opacity-10 rounded-lg px-2 py-1.5 text-sm font-mono text-white placeholder-gray-300 focus:outline-none">
+        <select id="bulkDiscountType" class="border border-white border-opacity-30 bg-navy rounded-lg px-1.5 py-1.5 text-xs text-white focus:outline-none">
+          <option value="fixed">Fixed</option>
+          <option value="percent">%</option>
+        </select>
+        <button type="button" onclick="applyBulkDiscount()"
+          class="bg-gold text-navy font-display font-700 text-xs px-4 py-1.5 rounded-lg hover:bg-yellow-400 transition-colors whitespace-nowrap">
+          Apply to Selected
+        </button>
+        <button type="button" onclick="clearBulkDiscountSelection()"
+          class="text-white text-opacity-70 hover:text-opacity-100 text-xs px-2">Clear</button>
+      </div>
+    </div>
+
     <div id="itemsContainer" class="divide-y divide-gray-100 p-4 space-y-3">
       {{-- Items added dynamically --}}
     </div>
@@ -316,7 +337,10 @@ function addItem() {
     row.className = 'bg-gray-50 rounded-xl p-3 border border-gray-200';
     row.innerHTML = `
         <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-display font-700 text-navy uppercase">Item #${i}</span>
+            <label class="flex items-center gap-1.5 text-xs font-display font-700 text-navy uppercase cursor-pointer">
+                <input type="checkbox" class="item-select-checkbox accent-gold" data-item-index="${i}" onchange="updateBulkDiscountBar()">
+                Item #${i}
+            </label>
             <button type="button" onclick="removeItem(${i})" class="text-red-400 hover:text-red-600 text-xs">✕ Remove</button>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
@@ -405,6 +429,45 @@ function removeItem(i) {
     delete legalTraceItems[i];
     checkLegalTrace();
     updateTotal();
+}
+
+// ── Bulk discount — select items via checkbox, apply one discount to
+// all of them at once, instead of typing into each line's discount
+// field individually. Fills in the SAME per-item discount_value /
+// discount_type fields the form already had — this doesn't add a new
+// discount mechanism, just a faster way to fill in the existing one. ──
+function updateBulkDiscountBar() {
+    const checked = document.querySelectorAll('.item-select-checkbox:checked');
+    const bar = document.getElementById('bulkDiscountBar');
+    document.getElementById('bulkDiscountCount').textContent = checked.length;
+    bar.classList.toggle('hidden', checked.length === 0);
+}
+
+function applyBulkDiscount() {
+    const value = document.getElementById('bulkDiscountValue').value;
+    const type  = document.getElementById('bulkDiscountType').value;
+    if (!value || parseFloat(value) <= 0) {
+        alert('Enter a discount amount first.');
+        return;
+    }
+
+    const checked = document.querySelectorAll('.item-select-checkbox:checked');
+    if (checked.length === 0) return;
+
+    checked.forEach(cb => {
+        const idx = cb.dataset.itemIndex;
+        const discInput = document.getElementById('item-discount-' + idx);
+        const typeSelect = document.getElementById('item-discount-type-' + idx);
+        if (discInput)  discInput.value = value;
+        if (typeSelect) typeSelect.value = type;
+    });
+
+    updateTotal();
+}
+
+function clearBulkDiscountSelection() {
+    document.querySelectorAll('.item-select-checkbox').forEach(cb => cb.checked = false);
+    updateBulkDiscountBar();
 }
 
 function getLocationParts() {
