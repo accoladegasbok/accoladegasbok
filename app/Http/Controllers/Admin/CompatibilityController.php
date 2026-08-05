@@ -74,6 +74,11 @@ class CompatibilityController extends Controller
             'year'       => 'required|integer|min:1980|max:2030',
             'cylinders'  => 'nullable|integer|min:0|max:16',
             'engine_l'   => 'nullable|numeric|min:0|max:10',
+            // NEW: optional trim/sub-model narrowing — matches RAPID's
+            // own pattern (Sub Model selector, "Don't Know" fallback).
+            // Never required — most searches won't have it, and
+            // omitting it just means "any trim."
+            'trim'       => 'nullable|string|max:60',
         ]);
 
         $make      = strtoupper(trim($request->make));
@@ -83,6 +88,8 @@ class CompatibilityController extends Controller
         $engineL   = (float) $request->get('engine_l', 0.0);
         $partName  = trim($request->get('part_name', ''));
         $category  = trim($request->get('category', ''));
+        // NEW: optional donor trim narrowing.
+        $trim      = trim($request->get('trim', ''));
 
         $results = collect();
 
@@ -123,6 +130,16 @@ class CompatibilityController extends Controller
             ->whereNotIn('id', $directIds);
         if ($partName) $directQuery->where('part_name', 'like', "%{$partName}%");
         if ($category) $directQuery->where('part_category', $category);
+        // NEW: trim narrowing — SOFT, not exclusionary. Since almost no
+        // existing inventory has donor_trim populated yet, a strict
+        // filter would hide nearly everything. Shows exact-trim matches
+        // PLUS anything with no trim recorded (unknown, not excluded) —
+        // matches RAPID's own "Don't Know" fallback philosophy.
+        if ($trim) {
+            $directQuery->where(function ($q) use ($trim) {
+                $q->where('donor_trim', $trim)->orWhereNull('donor_trim');
+            });
+        }
         foreach ($directQuery->get() as $part) {
             $results->push($this->formatResult($part, 'direct', null, collect(), null));
         }
@@ -273,7 +290,7 @@ class CompatibilityController extends Controller
                 // backward compat / debugging only).
                 'entries'       => $platformEntries,
             ],
-            'search'                => "{$year} {$make} {$model}" . ($partName ? " · {$partName}" : ''),
+            'search'                => "{$year} {$make} {$model}" . ($trim ? " {$trim}" : '') . ($partName ? " · {$partName}" : ''),
             // NEW: explicit echo of what was actually searched — lets
             // the frontend label results/panels by the real part
             // searched ("Door Shell") instead of generic platform talk,
@@ -392,6 +409,7 @@ class CompatibilityController extends Controller
             'part_code'       => $part->part_code,
             'part_name'       => $part->part_name,
             'part_category'   => $part->part_category,
+            'donor_trim'      => $part->donor_trim ?? null,
             'grade'           => $part->condition_grade,
             'price'           => $sym . number_format($part->price_local),
             'price_wholesale' => $part->price_wholesale ? $sym . number_format($part->price_wholesale) : null,

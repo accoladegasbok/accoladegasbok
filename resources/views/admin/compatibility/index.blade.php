@@ -88,7 +88,7 @@
             🤖 Get AI Suggestions
         </button>
     </div>
-    <div class="mt-3 grid grid-cols-2 gap-3">
+    <div class="mt-3 grid grid-cols-3 gap-3">
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Part Name (optional)</label>
             <input type="text" id="chk_part" list="partNameList"
@@ -109,6 +109,15 @@
                 <option value="{{ $cat }}">{{ $cat }}</option>
                 @endforeach
             </select>
+        </div>
+        <div>
+            {{-- NEW: Sub Model / Trim — matches RAPID XLParts' own
+                 pattern. Soft narrowing only (see CompatibilityController
+                 comment) — leaving this blank behaves exactly as before. --}}
+            <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">Trim / Sub Model (optional)</label>
+            <input type="text" id="chk_trim"
+                   placeholder="e.g. LE, LE Eco, SE..."
+                   class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
         </div>
     </div>
 
@@ -320,6 +329,7 @@ async function runCheck() {
     const year     = document.getElementById('chk_year').value.trim();
     const partName = document.getElementById('chk_part')?.value.trim()||'';
     const category = document.getElementById('chk_category')?.value.trim()||'';
+    const trim     = document.getElementById('chk_trim')?.value.trim()||'';
     const cylinders= document.getElementById('chk_cylinders')?.value||'';
     const engineL  = document.getElementById('chk_engine_l')?.value||'';
     if(!make||!model||!year){alert('Please select Make, Model and Year.');return;}
@@ -334,7 +344,7 @@ async function runCheck() {
         const res  = await fetch('{{ route('admin.compatibility.check') }}', {
             method:'POST',
             headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},
-            body:JSON.stringify({make,model,year,part_name:partName,category,cylinders,engine_l:engineL}),
+            body:JSON.stringify({make,model,year,part_name:partName,category,trim,cylinders,engine_l:engineL}),
         });
         const data = await res.json();
         document.getElementById('checkLoading').classList.add('hidden');
@@ -460,6 +470,7 @@ async function runCheck() {
                     ?`<img src="${p.photo}" class="w-full h-28 object-cover rounded-lg mb-2" onerror="this.src='/images/parts-photo-coming-soon.jpg'">`
                     :`<div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-300 text-xs">No photo</div>`}
                 <div class="font-600 text-sm text-navy">${p.part_name}</div>
+                ${p.donor_trim?`<div class="text-[9px] text-gray-400">Trim: ${p.donor_trim}</div>`:''}
                 <div class="font-mono text-[10px] text-gray-400">${p.part_code}</div>
                 ${p.fits_vehicles?`<div class="text-[10px] text-blue-500 mt-1">Fits ${p.fits_vehicle_count} model${p.fits_vehicle_count===1?'':'s'}: ${p.fits_vehicles}</div>`:''}
                 <div class="flex items-center justify-between mt-2">
