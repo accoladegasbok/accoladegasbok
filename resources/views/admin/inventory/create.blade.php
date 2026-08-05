@@ -120,9 +120,25 @@
           <input type="hidden" name="bin_location" id="binLocationInput">
         </div>
         <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number</label>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number <span class="text-gray-400 font-normal normal-case">(primary)</span></label>
           <input type="text" name="oem_part_number" value="{{ old('oem_part_number') }}"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body font-mono focus:outline-none focus:border-yellow-400">
+        </div>
+
+        {{-- NEW: additional OEM numbers, if more than one is already
+             known at entry time (e.g. Denso AND Aisin both make this
+             alternator) — optional, most parts only need the primary
+             field above. --}}
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-2">
+            Additional OEM Numbers <span class="text-gray-400 normal-case font-400">(optional)</span>
+          </label>
+          <div id="extraOemNumbers" class="space-y-2"></div>
+          <button type="button" onclick="addOemNumberRow()"
+            class="mt-2 text-xs font-body font-500 text-blue-600 hover:text-blue-800 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+            Add another OEM number
+          </button>
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Mileage</label>
@@ -243,6 +259,24 @@ document.getElementById('binSelect').addEventListener('change', function() {
     document.getElementById('storageShelfIdInput').value = this.value;
     document.getElementById('binLocationInput').value = code || '';
 });
+
+// ── Additional OEM numbers — repeatable rows, submitted with the
+// main form since the part doesn't have an ID yet at creation time. ──
+let oemRowIndex = 0;
+function addOemNumberRow() {
+    const container = document.getElementById('extraOemNumbers');
+    const idx = oemRowIndex++;
+    const div = document.createElement('div');
+    div.className = 'flex gap-2 oem-row';
+    div.innerHTML = `
+        <input type="text" name="oem_numbers[${idx}][number]" placeholder="OEM number"
+            class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs font-body font-mono focus:outline-none focus:border-yellow-400">
+        <input type="text" name="oem_numbers[${idx}][manufacturer]" placeholder="Manufacturer (optional)"
+            class="w-40 border border-gray-200 rounded-lg px-3 py-2 text-xs font-body focus:outline-none focus:border-yellow-400">
+        <button type="button" onclick="this.closest('.oem-row').remove()" class="text-red-400 hover:text-red-600 px-2 flex-shrink-0">✕</button>
+    `;
+    container.appendChild(div);
+}
 </script>
 @endpush
 @endsection

@@ -1035,6 +1035,29 @@ class InventoryController extends Controller
             DB::table('parts_inventory')->where('id', $partId)->update(['video_path' => $videoPath]);
         }
 
+        // NEW: additional OEM numbers submitted alongside creation —
+        // e.g. this alternator is known to match both a Denso AND an
+        // Aisin OEM number from the start. Optional; most parts only
+        // ever have the single primary field above filled in.
+        //
+        // IMPORTANT ordering: seed the primary row from the main
+        // oem_part_number field FIRST, so PartOemNumberService sees an
+        // existing primary and correctly marks every row from the loop
+        // below as non-primary — otherwise the FIRST additional row
+        // would get marked primary instead and silently overwrite the
+        // real primary value on parts_inventory.
+        $oemService = app(\App\Services\PartOemNumberService::class);
+        if ($request->filled('oem_part_number')) {
+            $oemService->add($partId, $request->oem_part_number);
+        }
+        if ($request->has('oem_numbers')) {
+            foreach ($request->oem_numbers as $row) {
+                $number = trim($row['number'] ?? '');
+                if ($number === '') continue;
+                $oemService->add($partId, $number, trim($row['manufacturer'] ?? '') ?: null);
+            }
+        }
+
         $msg = $isConsumable
             ? "Consumable item {$partCode} added to inventory."
             : "Part {$partCode} added to inventory.";

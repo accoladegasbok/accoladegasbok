@@ -189,9 +189,18 @@
                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold">
         </div>
         <div>
-            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number</label>
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">OEM Part Number <span class="text-gray-400 font-normal normal-case">(primary)</span></label>
             <input type="text" name="oem_part_number" value="{{ old('oem_part_number') }}" placeholder="e.g. 19000-0H010"
                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-gold">
+        </div>
+        <div class="sm:col-span-2">
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-2">Additional OEM Numbers <span class="text-gray-400 normal-case font-400">(optional)</span></label>
+            <div id="extraOemNumbers" class="space-y-2"></div>
+            <button type="button" onclick="addOemNumberRow()"
+                class="mt-2 text-xs font-500 text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                Add another OEM number
+            </button>
         </div>
     </div>
 
@@ -606,6 +615,24 @@ function previewPhotos(input){
         };
         reader.readAsDataURL(file);
     });
+}
+
+// ── Additional OEM numbers — repeatable rows, submitted with the
+// main form since the part doesn't have an ID yet at creation time. ──
+let oemRowIndex = 0;
+function addOemNumberRow() {
+    const container = document.getElementById('extraOemNumbers');
+    const idx = oemRowIndex++;
+    const div = document.createElement('div');
+    div.className = 'flex gap-2 oem-row';
+    div.innerHTML = `
+        <input type="text" name="oem_numbers[${idx}][number]" placeholder="OEM number"
+            class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-gold">
+        <input type="text" name="oem_numbers[${idx}][manufacturer]" placeholder="Manufacturer (optional)"
+            class="w-40 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-gold">
+        <button type="button" onclick="this.closest('.oem-row').remove()" class="text-red-400 hover:text-red-600 px-2 flex-shrink-0">✕</button>
+    `;
+    container.appendChild(div);
 }
 </script>
 
