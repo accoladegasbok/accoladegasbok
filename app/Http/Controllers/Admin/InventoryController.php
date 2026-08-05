@@ -433,8 +433,12 @@ class InventoryController extends Controller
     public function addOemNumber(Request $request, int $id)
     {
         $request->validate([
-            'oem_number'   => 'required|string|max:60',
-            'manufacturer' => 'nullable|string|max:60',
+            'oem_number'      => 'required|string|max:60',
+            'manufacturer'    => 'nullable|string|max:60',
+            // NEW: identifier type — Aftermarket, Casting Number, etc.,
+            // not just OEM. Defaults to OEM so any existing caller that
+            // doesn't send this keeps working unchanged.
+            'identifier_type' => 'nullable|string|in:' . implode(',', \App\Services\PartOemNumberService::IDENTIFIER_TYPES),
         ]);
 
         $part = DB::table('parts_inventory')->where('id', $id)->first();
@@ -445,10 +449,12 @@ class InventoryController extends Controller
             ->where('oem_number', trim($request->oem_number))
             ->exists();
         if ($exists) {
-            return response()->json(['error' => 'This OEM number is already recorded for this part.'], 422);
+            return response()->json(['error' => 'This identifier is already recorded for this part.'], 422);
         }
 
-        $oemId = app(\App\Services\PartOemNumberService::class)->add($id, $request->oem_number, $request->manufacturer);
+        $oemId = app(\App\Services\PartOemNumberService::class)->add(
+            $id, $request->oem_number, $request->manufacturer, null, $request->identifier_type ?: 'OEM'
+        );
 
         return response()->json(['success' => true, 'id' => $oemId]);
     }

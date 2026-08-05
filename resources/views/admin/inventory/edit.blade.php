@@ -187,7 +187,7 @@
              unchanged for anything that only ever needs one number. --}}
         <div class="sm:col-span-2">
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
-            Additional OEM Numbers <span class="text-gray-400 font-normal normal-case">(optional — this part sometimes matches more than one)</span>
+            Additional Identifiers <span class="text-gray-400 font-normal normal-case">(OEM, Aftermarket, Casting Number, etc.)</span>
           </label>
 
           @php $extraOemNumbers = $additionalOemNumbers->where('is_primary', false); @endphp
@@ -195,9 +195,10 @@
           <div class="space-y-1.5 mb-2">
             @foreach($extraOemNumbers as $oem)
             <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-navy text-white font-700 uppercase whitespace-nowrap">{{ $oem->identifier_type ?? 'OEM' }}</span>
               <span class="font-mono text-xs text-navy flex-1">{{ $oem->oem_number }}</span>
               @if($oem->manufacturer)<span class="text-xs text-gray-400">{{ $oem->manufacturer }}</span>@endif
-              <button type="button" onclick="if(confirm('Remove this OEM number?')) removeOemNumber({{ $oem->id }}, this)"
+              <button type="button" onclick="if(confirm('Remove this identifier?')) removeOemNumber({{ $oem->id }}, this)"
                 class="text-red-400 hover:text-red-600 text-xs">✕</button>
             </div>
             @endforeach
@@ -205,6 +206,15 @@
           @endif
 
           <div class="flex gap-2">
+            <select id="newOemType" class="w-36 border border-gray-200 rounded-lg px-2 py-2 text-xs font-body bg-white focus:outline-none focus:border-yellow-400">
+              <option value="OEM">OEM</option>
+              <option value="Aftermarket">Aftermarket</option>
+              <option value="Casting Number">Casting Number</option>
+              <option value="Engineering Number">Engineering Number</option>
+              <option value="Barcode">Barcode</option>
+              <option value="Internal Number">Internal Number</option>
+              <option value="Supplier Number">Supplier Number</option>
+            </select>
             <input type="text" id="newOemNumber" placeholder="e.g. 27060-0T230" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs font-body font-mono focus:outline-none focus:border-yellow-400">
             <input type="text" id="newOemManufacturer" placeholder="Manufacturer (optional)" class="w-40 border border-gray-200 rounded-lg px-3 py-2 text-xs font-body focus:outline-none focus:border-yellow-400">
             <button type="button" onclick="addOemNumber({{ $part->id }})" class="bg-navy text-white text-xs font-600 px-4 py-2 rounded-lg hover:bg-navy-light">Add</button>
@@ -533,6 +543,7 @@ const PART_ID = {{ $part->id }};
 async function addOemNumber(partId) {
     const numberInput = document.getElementById('newOemNumber');
     const mfrInput = document.getElementById('newOemManufacturer');
+    const typeSelect = document.getElementById('newOemType');
     const number = numberInput.value.trim();
     if (!number) { numberInput.focus(); return; }
 
@@ -540,7 +551,7 @@ async function addOemNumber(partId) {
         const res = await fetch(`/admin/inventory/${partId}/oem-numbers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
-            body: JSON.stringify({ oem_number: number, manufacturer: mfrInput.value.trim() || null }),
+            body: JSON.stringify({ oem_number: number, manufacturer: mfrInput.value.trim() || null, identifier_type: typeSelect.value }),
         });
         const data = await res.json();
         if (!res.ok || data.error) {
@@ -625,6 +636,7 @@ async function confirmAiSuggestion(s, btn) {
             form.append('model', s.model);
             form.append('year_from', s.year_from);
             form.append('year_to', s.year_to);
+            if (s.ai_suggestion_id) form.append('ai_suggestion_id', s.ai_suggestion_id);
             const res = await fetch(`/admin/interchange/groups/${GROUP_ID}/add-vehicle`, { method: 'POST', body: form });
             if (res.ok || res.redirected) {
                 markSuggestionConfirmed(btn);
@@ -648,6 +660,7 @@ async function confirmAiSuggestion(s, btn) {
             form.append('model', s.model);
             form.append('year_from', s.year_from);
             form.append('year_to', s.year_to);
+            if (s.ai_suggestion_id) form.append('ai_suggestion_id', s.ai_suggestion_id);
             const res = await fetch(`{{ route('admin.interchange.groups.create') }}`, { method: 'POST', body: form });
             const data = await res.json().catch(() => null);
 

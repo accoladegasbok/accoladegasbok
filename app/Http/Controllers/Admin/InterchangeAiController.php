@@ -49,7 +49,32 @@ class InterchangeAiController extends Controller
             return response()->json(['error' => $result['error']], 502);
         }
 
-        return response()->json(['suggestions' => $result['data']]);
+        // NEW: persist every suggestion (AI Knowledge Layer) — this
+        // used to be pure display data, discarded the moment the
+        // response left this method. Now each suggestion gets a real
+        // ai_suggestions row and its own ID, so the reasoning survives
+        // regardless of whether staff ever act on it.
+        $suggestions = collect($result['data'])->map(function ($s) use ($part) {
+            $id = DB::table('ai_suggestions')->insertGetId([
+                'part_id'             => $part->id,
+                'suggested_make'      => $s['brand'] ?? '',
+                'suggested_model'     => $s['model'] ?? '',
+                'suggested_year_from' => $s['year_from'] ?? 0,
+                'suggested_year_to'   => $s['year_to'] ?? ($s['year_from'] ?? 0),
+                'engine_code'         => $part->engine_code_oem ?? null,
+                'transmission_code'   => $part->transmission_code_oem ?? null,
+                'confidence'          => $s['confidence'] ?? 'low',
+                'reason'              => $s['reason'] ?? '',
+                'evidence_source'     => 'openai_gpt4o',
+                'review_status'       => 'pending',
+                'created_at'          => now(),
+                'updated_at'          => now(),
+            ]);
+            $s['ai_suggestion_id'] = $id;
+            return $s;
+        });
+
+        return response()->json(['suggestions' => $suggestions]);
     }
 
     // =========================================================
@@ -82,6 +107,31 @@ class InterchangeAiController extends Controller
         }
 
         $suggestions = $result['data'];
+
+        // NEW: persist per-vehicle suggestions too, same AI Knowledge
+        // Layer as the per-part pathway above. part_id stays null here
+        // — this pathway has no single originating part, just a
+        // searched vehicle (and optionally a part_name string, which
+        // isn't a real parts_inventory row).
+        $suggestions = collect($suggestions)->map(function ($s) use ($make, $model) {
+            $id = DB::table('ai_suggestions')->insertGetId([
+                'part_id'             => null,
+                'suggested_make'      => $s['brand'] ?? $make,
+                'suggested_model'     => $s['model'] ?? $model,
+                'suggested_year_from' => $s['year_from'] ?? 0,
+                'suggested_year_to'   => $s['year_to'] ?? ($s['year_from'] ?? 0),
+                'engine_code'         => $s['engine_code'] ?? null,
+                'transmission_code'   => $s['transmission_code'] ?? null,
+                'confidence'          => $s['confidence'] ?? 'low',
+                'reason'              => $s['reason'] ?? '',
+                'evidence_source'     => 'openai_gpt4o',
+                'review_status'       => 'pending',
+                'created_at'          => now(),
+                'updated_at'          => now(),
+            ]);
+            $s['ai_suggestion_id'] = $id;
+            return $s;
+        })->values();
 
         // Cross-reference AI-suggested related vehicles against actual
         // in-stock parts — matched TWO ways so we catch every part

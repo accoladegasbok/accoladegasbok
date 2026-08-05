@@ -28,6 +28,11 @@ class InterchangeController extends Controller
             'part_id'      => 'required|exists:parts_inventory,id',
             'group_code'   => 'required|string|max:80|unique:part_interchange_groups,group_code',
             'notes'        => 'nullable|string|max:1000',
+            // NEW: when this creation originated from confirming an AI
+            // suggestion, thread the suggestion's own ID through so it
+            // can be marked confirmed and linked to the resulting
+            // group — see ai_suggestions / AI Knowledge Layer.
+            'ai_suggestion_id' => 'nullable|integer|exists:ai_suggestions,id',
         ]);
 
         $part = DB::table('parts_inventory')->where('id', $request->part_id)->first();
@@ -51,6 +56,20 @@ class InterchangeController extends Controller
         );
 
        $this->interchange->assignPartToGroup($part->id, $groupId);
+
+        // NEW: mark the originating AI suggestion confirmed — this is
+        // what actually closes the loop on the AI Knowledge Layer: the
+        // suggestion's reasoning stays queryable, now linked to the
+        // real group it became.
+        if ($request->filled('ai_suggestion_id')) {
+            DB::table('ai_suggestions')->where('id', $request->ai_suggestion_id)->update([
+                'group_id'             => $groupId,
+                'review_status'        => 'confirmed',
+                'reviewed_by_staff_id' => Session::get('staff_id'),
+                'reviewed_at'          => now(),
+                'updated_at'           => now(),
+            ]);
+        }
 
         // AJAX callers (like the AI-suggestion "+ Confirm" button) get
         // JSON back with the new group_id so they can add further
@@ -79,6 +98,7 @@ class InterchangeController extends Controller
             'year_from'  => 'required|integer|min:1986|max:2027',
             'year_to'    => 'required|integer|min:1986|max:2027',
             'part_id'    => 'required|exists:parts_inventory,id', // for redirect back
+            'ai_suggestion_id' => 'nullable|integer|exists:ai_suggestions,id',
         ]);
 
         $this->interchange->addVehicleToGroup(
@@ -88,6 +108,17 @@ class InterchangeController extends Controller
             $request->year_from,
             $request->year_to
         );
+
+        // NEW: same AI Knowledge Layer close-out as createGroup() above.
+        if ($request->filled('ai_suggestion_id')) {
+            DB::table('ai_suggestions')->where('id', $request->ai_suggestion_id)->update([
+                'group_id'             => $groupId,
+                'review_status'        => 'confirmed',
+                'reviewed_by_staff_id' => Session::get('staff_id'),
+                'reviewed_at'          => now(),
+                'updated_at'           => now(),
+            ]);
+        }
 
         return redirect()->route('admin.inventory.edit', $request->part_id)
             ->with('success', "Added {$request->make} {$request->model} ({$request->year_from}–{$request->year_to}) to this interchange group.");
