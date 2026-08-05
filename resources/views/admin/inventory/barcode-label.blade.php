@@ -181,9 +181,22 @@ body.size-large .label-small { display:none; }
             <div class="part-name">{{ $part->part_name }}</div>
             <div class="part-sub">
                 {{ $vehicle ?: 'Universal' }}
-                @if($part->engine_code_oem) · {{ $part->engine_code_oem }} @endif
+                @if($part->engine_code_oem)
+                    · {{ $part->engine_code_oem }}@if($part->engine_displacement) ({{ $part->engine_displacement }})@endif
+                @endif
                 @if($part->side && $part->side !== 'N/A') · {{ $part->side }} @endif
             </div>
+            {{-- NEW: transmission code + pin count — was completely
+                 absent from the tag before, despite pin_count being
+                 explicitly the one proprietary attribute meant to
+                 travel with every gearbox. Scoped to Transmission
+                 category items only, per standing decision. --}}
+            @if($part->part_category === 'Transmission' && ($part->transmission_code_oem || $part->pin_count))
+            <div class="part-sub">
+                @if($part->transmission_code_oem){{ $part->transmission_code_oem }}@endif
+                @if($part->pin_count) · {{ $part->pin_count }}-pin @endif
+            </div>
+            @endif
             @if($part->mileage)<div class="part-sub">Mileage: {{ number_format($part->mileage) }} mi</div>@endif
         </div>
         <div class="grade-box {{ $grade }}">{{ $grade }}</div>

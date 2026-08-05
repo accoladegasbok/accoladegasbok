@@ -226,6 +226,35 @@ class CompatibilityController extends Controller
         $engineOptions = \App\Data\OemDatabase::engineOptions($make, $model, $year);
         $engineDisambiguated = ($cylinders > 0 || $engineL > 0);
 
+        // FIXED: previously exposed the raw, unfiltered shared_models
+        // list regardless of what category was searched — meaning a
+        // Body search would show "Suspension/Brakes only" chassis-mates
+        // as if relevant, AND (in an earlier attempted fix) risked the
+        // opposite mistake of hiding legitimate "own generation" entries
+        // (which DO cover Body) just because the category wasn't
+        // Suspension/Brakes. Now filters shared_vehicles by whether the
+        // searched category is actually in THAT entry's own categories
+        // list, and tags each surviving entry as own_generation vs
+        // cross_model so the frontend can phrase them correctly instead
+        // of generic "Chassis Platform" language.
+        $platformEntries = collect($platform['shared_vehicles'] ?? [])
+            ->filter(function ($sv) use ($category) {
+                $entryCategories = $sv['categories'] ?? \App\Data\PlatformDatabase::CROSS_MODEL_SAFE_CATEGORIES;
+                return !$category || in_array($category, $entryCategories, true);
+            })
+            ->map(function ($sv) use ($make, $model) {
+                $isOwnGeneration = strtoupper($sv['make']) === $make && strtoupper($sv['model']) === $model;
+                return [
+                    'make'      => $sv['make'],
+                    'model'     => $sv['model'],
+                    'year_from' => $sv['year_from'],
+                    'year_to'   => $sv['year_to'],
+                    'type'      => $isOwnGeneration ? 'own_generation' : 'cross_model',
+                    'label'     => "{$sv['make']} {$sv['model']} ({$sv['year_from']}-{$sv['year_to']})",
+                ];
+            })
+            ->values();
+
         return response()->json([
             'count'                 => $results->count(),
             'results'               => $results->values(),
@@ -238,6 +267,11 @@ class CompatibilityController extends Controller
                 'generation'    => $platform['generation'] ?? null,
                 'body_style'    => $platform['body_style'] ?? null,
                 'shared_models' => $platform['shared_models'] ?? [],
+                // NEW: category-filtered, type-tagged entries — this is
+                // what the frontend should actually render now instead
+                // of the raw shared_models strings above (kept for
+                // backward compat / debugging only).
+                'entries'       => $platformEntries,
             ],
             'search'                => "{$year} {$make} {$model}" . ($partName ? " · {$partName}" : ''),
             // NEW: explicit echo of what was actually searched — lets

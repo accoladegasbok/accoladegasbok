@@ -378,27 +378,26 @@ async function runCheck() {
         }
 
         // Platform/chassis reference — shown even with zero stock, same
-        // pattern as the powertrain panel above. Suspension/Brakes only —
-        // body, lighting, and interior are deliberately NOT claimed here
-        // since those need visual/physical confirmation before selling
-        // as interchange (see PlatformDatabase.php header comment).
+        // pattern as the powertrain panel above.
         //
-        // FIXED: this used to render unconditionally whenever a platform
-        // was found, even when staff searched a category (e.g. "Body" /
-        // a door) that this panel explicitly does NOT cover — showing a
-        // generic "Chassis Platform" box with no mention of the actual
-        // part searched was confusing at best, misleading at worst.
-        // Now: only renders when the search category is genuinely
-        // platform-relevant (Suspension/Brakes) or no category was
-        // specified at all — and always names what was actually
-        // searched instead of speaking generically.
-        const PLATFORM_SAFE_CATEGORIES = ['Suspension', 'Brakes'];
+        // FIXED (2nd pass): an earlier attempted fix blanket-suppressed
+        // this panel for any category other than Suspension/Brakes —
+        // which wrongly hid legitimate "own generation" entries (e.g.
+        // 2014-2019 Corolla, own model/generation) that DO cover Body/
+        // Interior/etc, since those aren't a cross-model claim at all.
+        // Now uses the backend's pre-filtered, type-tagged entries list
+        // (data.platform.entries) — only entries whose own categories
+        // actually include what was searched, correctly distinguishing
+        // "own generation" (broad) from genuine cross-model chassis-
+        // mates (Suspension/Brakes only).
         const searchedLabel = data.searched_part_name
             ? `${data.searched_part_name}${data.searched_category ? ' (' + data.searched_category + ')' : ''}`
             : (data.searched_category || null);
 
-        if (data.platform && data.platform.generation
-            && (!category || PLATFORM_SAFE_CATEGORIES.includes(category))) {
+        if (data.platform && data.platform.generation && data.platform.entries && data.platform.entries.length) {
+            const ownGen = data.platform.entries.filter(e => e.type === 'own_generation');
+            const crossModel = data.platform.entries.filter(e => e.type === 'cross_model');
+
             const pdiv=document.createElement('div');
             pdiv.id='platformRefPanel';
             pdiv.className='mt-4 bg-purple-50 border border-purple-200 rounded-xl p-4';
@@ -406,29 +405,36 @@ async function runCheck() {
                 <div class="text-xs font-700 text-navy uppercase tracking-wide mb-1">
                     ⚙ Chassis Platform: <span class="font-mono text-purple-700">${data.platform.generation}</span>
                     ${data.platform.body_style?`<span class="text-gray-400 ml-1">(${data.platform.body_style})</span>`:''}
+                    ${searchedLabel ? `<span class="text-gray-400 font-normal normal-case ml-2">— for ${searchedLabel}</span>` : ''}
                 </div>
-                <p class="text-xs text-gray-500 mb-2">Suspension/brake parts may interchange with chassis-mates below. Body, lighting, and interior are NOT included — those need visual/physical confirmation before selling as interchange.</p>
+                ${ownGen.length ? `
+                <p class="text-xs text-green-700 mb-1">✓ Same model, same generation — ${category || 'this category'} genuinely applies:</p>
+                <div class="flex flex-wrap gap-2 mb-2">
+                    ${ownGen.map(e=>`<span class="bg-white border border-green-200 text-green-700 text-xs px-3 py-1.5 rounded-full">${e.label}</span>`).join('')}
+                </div>` : ''}
+                ${crossModel.length ? `
+                <p class="text-xs text-gray-500 mb-1">⚠ Different model, same chassis — Suspension/Brakes only, needs visual/physical confirmation for anything else:</p>
                 <div class="flex flex-wrap gap-2">
-                    ${data.platform.shared_models.map(m=>`<span class="bg-white border border-purple-200 text-purple-700 text-xs px-3 py-1.5 rounded-full">${m}</span>`).join('')}
-                </div>`;
+                    ${crossModel.map(e=>`<span class="bg-white border border-purple-200 text-purple-700 text-xs px-3 py-1.5 rounded-full">${e.label}</span>`).join('')}
+                </div>` : ''}`;
             document.getElementById('checkEmpty').after(pdiv);
-        } else if (data.platform && data.platform.generation && category && !PLATFORM_SAFE_CATEGORIES.includes(category)) {
-            // NEW: instead of silently hiding it (which looks like the
-            // search just found nothing), explicitly explain WHY no
-            // cross-model platform claim applies to this category —
-            // matches what was asked for: specify the actual part
-            // ("Door"), not a generic platform statement.
+        } else if (data.platform && data.platform.generation && category) {
+            // Platform exists but NOTHING in it applies to the searched
+            // category (e.g. searched "Electrical" on a platform where
+            // only Suspension/Brakes cross-model entries exist, no own-
+            // generation entry either) — say so plainly instead of
+            // showing an irrelevant panel or silently showing nothing.
             const ndiv=document.createElement('div');
             ndiv.id='platformRefPanel';
             ndiv.className='mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4';
             ndiv.innerHTML=`
                 <div class="text-xs font-700 text-gray-500 uppercase tracking-wide mb-1">
-                    ${searchedLabel || category} — no cross-model claim
+                    ${searchedLabel || category} — no platform-level claim available
                 </div>
                 <p class="text-xs text-gray-500">
-                    ${category} parts don't reliably interchange across models sharing this chassis platform
-                    (<span class="font-mono">${data.platform.generation}</span>) — only Suspension/Brakes are safe to claim that way.
-                    Any ${category.toLowerCase()} match needs a confirmed Interchange Group or a direct year-range match on the SAME model.
+                    This chassis platform (<span class="font-mono">${data.platform.generation}</span>) has no confirmed
+                    ${category.toLowerCase()} sharing recorded. Any match needs a confirmed Interchange Group or a
+                    direct year-range match on the SAME model.
                 </p>`;
             document.getElementById('checkEmpty').after(ndiv);
         }
