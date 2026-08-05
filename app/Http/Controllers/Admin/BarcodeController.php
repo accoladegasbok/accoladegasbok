@@ -41,7 +41,7 @@ class BarcodeController extends Controller
                 'id', 'part_code', 'part_name', 'part_category',
                 'brand', 'model', 'year_from', 'year_to',
                 'compat_year_from', 'compat_year_to',
-                'engine_code_oem', 'engine_displacement', 'transmission_code_oem', 'pin_count', 'gear_alias',
+                'engine_code_oem', 'engine_displacement', 'transmission_code_oem', 'pin_count', 'gear_alias', 'drive_type',
                 'condition_grade', 'conditions_and_options',
                 'price_local', 'price_wholesale', 'currency_code',
                 'bin_location', 'location', 'donor_vin',

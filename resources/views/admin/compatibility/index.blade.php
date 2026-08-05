@@ -470,7 +470,7 @@ async function runCheck() {
                     ?`<img src="${p.photo}" class="w-full h-28 object-cover rounded-lg mb-2" onerror="this.src='/images/parts-photo-coming-soon.jpg'">`
                     :`<div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-300 text-xs">No photo</div>`}
                 <div class="font-600 text-sm text-navy">${p.part_name}</div>
-                ${p.donor_trim?`<div class="text-[9px] text-gray-400">Trim: ${p.donor_trim}</div>`:''}
+                ${p.donor_trim||p.drive_type?`<div class="text-[9px] text-gray-400">${[p.donor_trim, p.drive_type].filter(Boolean).join(' · ')}</div>`:''}
                 <div class="font-mono text-[10px] text-gray-400">${p.part_code}</div>
                 ${p.fits_vehicles?`<div class="text-[10px] text-blue-500 mt-1">Fits ${p.fits_vehicle_count} model${p.fits_vehicle_count===1?'':'s'}: ${p.fits_vehicles}</div>`:''}
                 <div class="flex items-center justify-between mt-2">
@@ -498,11 +498,21 @@ async function runCheck() {
         document.getElementById('checkResults').classList.remove('hidden');
 
         if(data.suggestions&&data.suggestions.length>0){
-            document.getElementById('suggestionsList').innerHTML=data.suggestions.map(s=>`
+            document.getElementById('suggestionsList').innerHTML=data.suggestions.map(s=>{
+                // e.g. "2GR-FE · 3.5L · AWD" — matches the format asked
+                // for, shown once per suggestion group rather than
+                // repeated per vehicle.
+                const driveLabel = s.drive_type ? ` · ${s.drive_type}` : '';
+                const vehicleList = (s.vehicles||[]).map(v =>
+                    typeof v === 'string' ? v : v.label
+                ).join(', ');
+                return `
                 <div class="border border-yellow-200 bg-yellow-50 rounded-xl px-4 py-3">
-                    <div class="text-xs font-700 text-yellow-800">${s.part_name} — OEM: ${s.engine_code}</div>
-                    <div class="text-[10px] text-yellow-600 mt-0.5">Also likely fits: ${Array.isArray(s.vehicles)?s.vehicles.join(', '):s.vehicles}</div>
-                </div>`).join('');
+                    <div class="text-xs font-700 text-yellow-800">${s.part_name} — OEM: ${s.engine_code}${driveLabel}</div>
+                    <div class="text-[10px] text-yellow-600 mt-0.5">Also likely fits: ${vehicleList}</div>
+                    ${s.part_category==='Transmission' ? `<div class="text-[9px] text-yellow-500 mt-1">⚙ Drive-type mismatches already excluded — transmissions/axles don't cross FWD/AWD.</div>` : ''}
+                </div>`;
+            }).join('');
             document.getElementById('suggestionsWrap').classList.remove('hidden');
         }
 

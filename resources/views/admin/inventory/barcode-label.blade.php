@@ -127,7 +127,7 @@ body.size-large .label-small { display:none; }
 @foreach($parts as $part)
 @php
     $group    = $part->interchange_group;
-    $vehicles = $part->interchange_vehicles;
+    $vehicles = $part->interchange_vehicles; // already merged in BarcodeController
     $fitsStr  = $vehicles->map(fn($v) => trim(($v->make??'').' '.($v->model??'').' ('.($v->year_from??'').'-'.($v->year_to??'').')'))->implode(' · ');
     $icCode   = $group?->group_code ?? $part->engine_code_oem ?? $part->transmission_code_oem ?? '—';
     $binLoc   = $part->bin_location ?? '—';
@@ -184,6 +184,7 @@ body.size-large .label-small { display:none; }
                 @if($part->engine_code_oem)
                     · {{ $part->engine_code_oem }}@if($part->engine_displacement) ({{ $part->engine_displacement }})@endif
                 @endif
+                @if($part->drive_type) · {{ $part->drive_type }} @endif
                 @if($part->side && $part->side !== 'N/A') · {{ $part->side }} @endif
             </div>
             {{-- NEW: transmission code + pin count — was completely

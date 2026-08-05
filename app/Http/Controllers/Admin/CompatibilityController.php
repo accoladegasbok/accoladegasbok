@@ -176,6 +176,11 @@ class CompatibilityController extends Controller
             }
         }
 
+        // Moved earlier (was after Tier 3) — Tier 3's drive-type
+        // narrowing below needs the SEARCHED vehicle's own drive_type,
+        // which this lookup provides.
+        $oem = \App\Data\OemDatabase::lookup($make, $model, $year, $cylinders, $engineL);
+
         // ── Tier 3: OEM-code heuristic (Ladipo algorithm) ──────────
         $oemQuery = DB::table('parts_inventory')
             ->where('brand', $make)->where('model', $model)
@@ -184,7 +189,7 @@ class CompatibilityController extends Controller
             ->whereNull('interchange_group_id')
             ->where('status', 'Available');
         if ($partName) $oemQuery->where('part_name', 'like', "%{$partName}%");
-        $oemParts = $oemQuery->select('part_name', 'engine_code_oem', 'transmission_code_oem')
+        $oemParts = $oemQuery->select('part_name', 'engine_code_oem', 'transmission_code_oem', 'part_category')
             ->distinct()->limit(5)->get();
 
         $heuristicSuggestions = collect();
@@ -195,12 +200,47 @@ class CompatibilityController extends Controller
                 $oemPart->transmission_code_oem
             );
             if ($heuristic['found'] && $heuristic['vehicles']->isNotEmpty()) {
+                // NEW: drive-type awareness. Transmission (which, per
+                // your own terminology taxonomy, also covers transfer
+                // case / CV axles / driveshafts) genuinely does NOT
+                // interchange across drive types — an AWD transmission
+                // and FWD transmission sharing the same engine code are
+                // physically different units. Engine itself is treated
+                // as informational only, since engines more often DO
+                // cross drive-types with just mount/accessory
+                // differences — no hard evidence either way to justify
+                // excluding, so it's shown, not hidden.
+                $isDrivetrainSensitive = $oemPart->part_category === 'Transmission';
+                $searchedDriveType = $oem['drive_type'] ?? null;
+
+                $vehiclesWithDriveFlag = $heuristic['vehicles']->take(8)->map(function ($v) use ($searchedDriveType, $isDrivetrainSensitive) {
+                    $driveType = $v->drive_type ?? null;
+                    $mismatch  = $isDrivetrainSensitive && $searchedDriveType && $driveType && $driveType !== $searchedDriveType;
+                    return [
+                        'label'          => "{$v->make} {$v->model} ({$v->year_from}-{$v->year_to})",
+                        'drive_type'     => $driveType,
+                        'drive_mismatch' => $mismatch,
+                    ];
+                });
+
+                // For Transmission specifically, drop confirmed drive-type
+                // mismatches from the suggestion entirely rather than
+                // just flagging them — showing "here's a match" for a
+                // physically incompatible transmission is worse than not
+                // suggesting it at all. Unknown drive_type (null) stays
+                // shown, same soft-narrowing philosophy as trim above.
+                if ($isDrivetrainSensitive) {
+                    $vehiclesWithDriveFlag = $vehiclesWithDriveFlag->reject(fn($v) => $v['drive_mismatch'])->values();
+                }
+
+                if ($vehiclesWithDriveFlag->isEmpty()) continue;
+
                 $heuristicSuggestions->push([
-                    'part_name'   => $oemPart->part_name,
-                    'engine_code' => $oemPart->engine_code_oem,
-                    'vehicles'    => $heuristic['vehicles']->take(5)->map(
-                        fn($v) => "{$v->make} {$v->model} ({$v->year_from}-{$v->year_to})"
-                    ),
+                    'part_name'    => $oemPart->part_name,
+                    'part_category'=> $oemPart->part_category,
+                    'engine_code'  => $oemPart->engine_code_oem,
+                    'drive_type'   => $searchedDriveType,
+                    'vehicles'     => $vehiclesWithDriveFlag->take(5),
                     'source' => 'auto_heuristic',
                 ]);
             }
@@ -213,7 +253,8 @@ class CompatibilityController extends Controller
         // which is why engineOptions() below matters: without it, an
         // ambiguous vehicle (e.g. Camry with both 4-cyl and V6 versions)
         // would silently guess one and never show the other.
-        $oem = \App\Data\OemDatabase::lookup($make, $model, $year, $cylinders, $engineL);
+        // (NOTE: $oem itself is computed earlier now, before Tier 3,
+        // since that block needs the searched vehicle's drive_type.)
         $allInterchange = \App\Data\OemDatabase::interchange();
         $interchangeReference = collect();
 
@@ -410,6 +451,12 @@ class CompatibilityController extends Controller
             'part_name'       => $part->part_name,
             'part_category'   => $part->part_category,
             'donor_trim'      => $part->donor_trim ?? null,
+            // NEW: drive type shown alongside every result — e.g. "2GR,
+            // 3.5L, AWD" — so staff can visually verify before treating
+            // a Transmission/axle match as interchangeable, without a
+            // hard exclusion at this display layer (the hard exclusion
+            // already happened upstream in Tier 3 for Transmission).
+            'drive_type'      => $part->drive_type ?? null,
             'grade'           => $part->condition_grade,
             'price'           => $sym . number_format($part->price_local),
             'price_wholesale' => $part->price_wholesale ? $sym . number_format($part->price_wholesale) : null,

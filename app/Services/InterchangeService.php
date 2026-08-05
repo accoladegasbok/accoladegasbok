@@ -136,7 +136,7 @@ class InterchangeService
                 $q->where('engine_code_oem', $matchCode)
                   ->orWhere('transmission_code_oem', $matchCode);
             })
-            ->select('brand as make', 'model', 'year_from', 'year_to', 'body_style')
+            ->select('brand as make', 'model', 'year_from', 'year_to', 'body_style', 'drive_type')
             ->distinct()
             ->get();
 
