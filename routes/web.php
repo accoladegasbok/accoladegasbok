@@ -33,6 +33,12 @@ Route::get('/', function () {
 // ── Public auth aliases (used in public layout nav) ───────────────
 // AccountIX / customer portal — redirect to accounts subdomain
 Route::get('/login',    function () { return redirect('https://accounts.autozenithparts.com/login'); })->name('login');
+
+// ── Staff password reset — public, no admin.auth (used before login) ──
+Route::get('/admin/forgot-password',  [\App\Http\Controllers\Admin\StaffPasswordResetController::class, 'showRequestForm'])->name('admin.password.request');
+Route::post('/admin/forgot-password', [\App\Http\Controllers\Admin\StaffPasswordResetController::class, 'sendResetLink'])->name('admin.password.email');
+Route::get('/admin/reset-password/{token}', [\App\Http\Controllers\Admin\StaffPasswordResetController::class, 'showResetForm'])->name('admin.password.reset.form');
+Route::post('/admin/reset-password', [\App\Http\Controllers\Admin\StaffPasswordResetController::class, 'resetPassword'])->name('admin.password.update');
 Route::get('/register', function () { return redirect('https://accounts.autozenithparts.com/register'); })->name('register');
 
 // ── Public receipt ─────────────────────────────────────────────────
