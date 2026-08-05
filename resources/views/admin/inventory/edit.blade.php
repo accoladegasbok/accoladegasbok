@@ -4,6 +4,13 @@
 @section('page-title','Edit Part')
 @section('page-sub', $part->part_code . ' — ' . $part->part_name)
 
+@section('header-actions')
+<a href="{{ route('admin.inventory.marketplace-export', $part->id) }}"
+   class="bg-gold text-navy font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-yellow-400 transition-colors">
+  📣 Export for Marketplace
+</a>
+@endsection
+
 @section('content')
 <div class="max-w-3xl">
 

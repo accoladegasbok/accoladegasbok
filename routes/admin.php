@@ -67,6 +67,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // with any literal-vs-wildcard ordering issue.
             Route::post('/{id}/oem-numbers', [InventoryController::class, 'addOemNumber'])->name('oem-numbers.add');
             Route::delete('/oem-numbers/{oemNumberId}', [InventoryController::class, 'removeOemNumber'])->name('oem-numbers.remove');
+            Route::get('/{id}/marketplace-export', [\App\Http\Controllers\Admin\MarketplaceExportController::class, 'show'])->name('marketplace-export');
             Route::get('/{id}/barcode', [InventoryController::class, 'barcode'])->name('barcode');
             Route::get('/{id}/edit',    [InventoryController::class, 'edit'])->name('edit');
             Route::put('/{id}',         [InventoryController::class, 'update'])->name('update');
