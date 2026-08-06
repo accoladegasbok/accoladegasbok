@@ -286,6 +286,10 @@ class OrderAdminController extends Controller
             // it (default 1 for any older form submission that doesn't
             // send it yet), matching AdminOrderController::store().
             'items.*.qty'       => 'nullable|integer|min:1',
+            // NEW: notes — previously only settable at creation, no way
+            // to add/update while processing or editing an order.
+            'notes'             => 'nullable|string|max:2000',
+            'staff_notes'       => 'nullable|string|max:2000',
         ]);
 
         $oldItems   = DB::table('order_items')->where('order_id', $id)->get();
@@ -401,6 +405,9 @@ class OrderAdminController extends Controller
                 'total_amount_ngn'   => $orderCurrency === 'NGN' ? round($newTotalLocal) : $order->total_amount_ngn,
                 'total_amount_usd'   => $orderCurrency === 'USD' ? round($newTotalLocal, 2) : $order->total_amount_usd,
                 'currency_code'      => $orderCurrency,
+                // NEW: notes, editable during processing now.
+                'notes'              => $request->notes,
+                'staff_notes'        => $request->staff_notes,
                 'updated_at'         => now(),
             ]);
 
@@ -503,6 +510,19 @@ class OrderAdminController extends Controller
         if (!$order) abort(404);
 
         $items = DB::table('order_items')->where('order_id', $id)->get();
+
+        // NEW: donor VIN — not snapshotted on order_items at sale time,
+        // so joined live from parts_inventory. Only ever shows when a
+        // part actually has one recorded (harvested parts do; services
+        // and non-harvested items won't).
+        $donorVins = DB::table('parts_inventory')
+            ->whereIn('id', $items->pluck('part_id')->filter())
+            ->pluck('donor_vin', 'id');
+
+        $items = $items->map(function ($item) use ($donorVins) {
+            $item->donor_vin = $donorVins->get($item->part_id) ?: null;
+            return $item;
+        });
 
         // NEW: same "Returned & Refunded" badge data as
         // InvoiceController::show() — this is a SEPARATE receipt

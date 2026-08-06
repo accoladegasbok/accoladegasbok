@@ -37,6 +37,28 @@
     {{-- rows injected by JS from EXISTING_ITEMS on load, and appended to when searching --}}
   </div>
 
+  {{-- NEW: notes — previously only settable at creation time, no way
+       to add or update notes while processing/editing an existing
+       order. Both `notes` (customer-visible context) and
+       `staff_notes` (internal-only) are editable here. --}}
+  <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-5">
+    <div class="px-5 py-3 bg-navy">
+      <h2 class="font-display font-700 text-white text-sm uppercase tracking-wide">Notes</h2>
+    </div>
+    <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Order Notes</label>
+        <textarea name="notes" rows="3" placeholder="Delivery instructions, customer requests, etc."
+          class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-gold">{{ old('notes', $order->notes) }}</textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Staff Notes <span class="text-gray-400 font-normal normal-case">(internal only)</span></label>
+        <textarea name="staff_notes" rows="3" placeholder="Internal notes — not shown to the customer"
+          class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-gold">{{ old('staff_notes', $order->staff_notes) }}</textarea>
+      </div>
+    </div>
+  </div>
+
   <div class="flex justify-end px-5 py-4 bg-gray-50 border-t border-gray-200">
     <div class="w-64">
       <div class="flex justify-between text-sm font-body py-1">

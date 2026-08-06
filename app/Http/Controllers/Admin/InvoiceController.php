@@ -281,7 +281,8 @@ class InvoiceController extends Controller
                 'p.transmission_code_oem',
                 'p.compat_year_from',
                 'p.compat_year_to',
-                'p.part_category'
+                'p.part_category',
+                'p.donor_vin'
             )->get()
             ->map(function ($item) use ($orderCurrency) {
                 if (empty($item->unit_price_local)) {
@@ -310,6 +311,11 @@ class InvoiceController extends Controller
                 'total_fmt'      => self::formatLocal($lineLocal, $currencyCode),
             ]);
         });
+
+        // NEW: donor VIN — already available via the leftJoin to
+        // parts_inventory above, just needed adding to the select.
+        // Only shown when actually present (harvested parts have it;
+        // services and non-harvested items won't).
 
         // NEW: show "Returned & Refunded" on the original receipt for
         // any line item that has a resolved return on file — so staff

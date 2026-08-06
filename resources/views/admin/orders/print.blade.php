@@ -94,6 +94,9 @@
         @foreach($items as $item)
         <tr>
           <td>{{ $item->part_name }}<br><span style="font-size:10px;color:#999;">{{ $item->part_code }}</span>
+          @if(!empty($item->donor_vin))
+          <br><span style="font-size:10px;color:#888;">Harvested from VIN: <span style="font-family:monospace;color:#555;">{{ $item->donor_vin }}</span></span>
+          @endif
           @if(!empty($item->returned))
           <br><span style="display:inline-block; background:#fdecea; color:#a32d2d; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-top:2px;">
               ↩ RETURNED — REFUNDED{{ $item->return_refund_method ? ' VIA ' . strtoupper(str_replace('_',' ', $item->return_refund_method)) : '' }}

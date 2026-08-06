@@ -605,6 +605,14 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                             </span>
                             @endif
                         </div>
+                        {{-- NEW: donor VIN — shown whenever the sold
+                             part actually has one on file (harvested
+                             parts do). --}}
+                        @if(!empty($item->donor_vin) && $copyKey !== 'waybill')
+                        <div style="font-size:10px; color:#888; margin-top:1px;">
+                            Harvested from VIN: <span style="font-family:monospace; color:#555;">{{ $item->donor_vin }}</span>
+                        </div>
+                        @endif
                         <div class="part-sub">
                             @if($isVehicleSale)
                                 @if(!empty($item->colour)){{ $item->colour }} · @endif
