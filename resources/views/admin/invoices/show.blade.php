@@ -311,12 +311,17 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     @endif
     <span class="sep">|</span>
     <span style="font-size:12px;color:#aaa;">Select copy to print:</span>
-    <button class="copy-btn active" onclick="showCopy('customer')" id="btn-customer">📄 Customer Copy</button>
+    <button class="copy-btn active" onclick="showCopy('default')" id="btn-default" style="border-color:#c9a84c;color:#c9a84c;">📄📦 Customer + Waybill (default)</button>
+    <span class="sep">|</span>
+    <span style="font-size:11px;color:#777;">Optional:</span>
+    <button class="copy-btn" onclick="showCopy('customer')" id="btn-customer">📄 Customer Only</button>
+    <button class="copy-btn" onclick="showCopy('waybill')" id="btn-waybill">📦 Waybill Only</button>
     <button class="copy-btn" onclick="showCopy('warehouse')" id="btn-warehouse">🏭 Warehouse Copy</button>
     <button class="copy-btn" onclick="showCopy('accounts')" id="btn-accounts">📊 Accounts Copy</button>
     <button class="copy-btn" onclick="showCopy('gate')" id="btn-gate">🚧 Gate Pass</button>
-    <button class="copy-btn" onclick="showCopy('waybill')" id="btn-waybill">📦 Waybill / Packing List</button>
-    <button class="copy-btn active" onclick="showCopy('all')" id="btn-all" style="border-color:#c9a84c;color:#c9a84c;">📋 All 5 Copies</button>
+    <button class="copy-btn" onclick="showCopy('all')" id="btn-all">📋 All 5 Copies</button>
+    <span class="sep">|</span>
+    <span style="font-size:10px;color:#666;">(Warehouse/Accounts/Gate — the physical tag's tear-away stubs now carry this audit trail; print these only if you specifically need a paper copy too)</span>
     <span class="sep">|</span>
     <button class="print-single-btn" onclick="window.print()">🖨 Print</button>
     <a href="{{ url()->previous() }}" style="color:#aaa;font-size:12px;text-decoration:none;">← Back</a>
@@ -783,17 +788,24 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
 <script>
 function showCopy(which) {
     const copies = ['customer','warehouse','accounts','gate','waybill'];
-    const btns   = ['customer','warehouse','accounts','gate','waybill','all'];
+    const btns   = ['customer','warehouse','accounts','gate','waybill','all','default'];
     btns.forEach(b => { document.getElementById('btn-' + b)?.classList.remove('active'); });
     document.getElementById('btn-' + which)?.classList.add('active');
     copies.forEach(c => {
         const el = document.getElementById('copy-' + c);
         if (!el) return;
         if (which === 'all') { el.classList.remove('hidden'); }
+        // NEW: default view — Customer Copy + Waybill only. Warehouse/
+        // Accounts/Gate become optional, on-demand copies now that the
+        // physical tag's tear-away stubs carry the audit trail
+        // (pull confirmation, warehouse scan, security/gate record)
+        // instead of needing separate paper copies of the invoice
+        // itself for that purpose.
+        else if (which === 'default') { el.classList.toggle('hidden', !(c === 'customer' || c === 'waybill')); }
         else { el.classList.toggle('hidden', c !== which); }
     });
 }
-showCopy('all');
+showCopy('default');
 document.addEventListener('keydown', function(e) {
     if (e.key === '1') showCopy('customer');
     if (e.key === '2') showCopy('warehouse');
@@ -801,6 +813,7 @@ document.addEventListener('keydown', function(e) {
     if (e.key === '4') showCopy('gate');
     if (e.key === '5') showCopy('waybill');
     if (e.key === 'a' || e.key === 'A') showCopy('all');
+    if (e.key === 'd' || e.key === 'D') showCopy('default');
     if (e.key === 'p' || e.key === 'P') window.print();
 });
 </script>
