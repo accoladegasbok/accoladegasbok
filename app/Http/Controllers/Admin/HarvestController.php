@@ -468,15 +468,12 @@ class HarvestController extends Controller
         if (!empty($customPartsInput) && !in_array(Session::get('staff_role'), ['admin', 'manager'])) {
             return back()->with('error', 'Only admin or manager can add custom part names. Please select a part from the standard list, or ask them to add it.');
         }
-        // Custom parts also each need their own bin (#A) and at least 1 photo
+        // Custom parts also each need their own bin (#A) — photo is
+        // optional here too now, same reasoning as the ticked-parts
+        // fix above.
         foreach ($customPartsInput as $idx => $cp) {
             if (empty($cp['bin_id'])) {
                 return back()->with('error', 'Every custom part needs a bin selected before saving.');
-            }
-            $cpPhotoFiles = $request->file("custom_parts.{$idx}.photos") ?? [];
-            $cpValidCount = count(array_filter($cpPhotoFiles, fn($f) => $f && $f->isValid()));
-            if ($cpValidCount < 1) {
-                return back()->with('error', 'Every custom part needs at least 1 photo before saving.');
             }
         }
 
@@ -522,18 +519,13 @@ class HarvestController extends Controller
             return back()->with('error', "The same bin was selected for more than one item in this batch ({$dupeBinCodes}) — each bin can only hold one part unless you confirmed grouping in the checklist. Please choose a different bin or go back and confirm grouping.");
         }
 
-        // ── At least 1 photo required per ticked part — server-side too.
-        $missingPhotos = [];
-        foreach ($parts as $partKey) {
-            $photoFiles = $request->file("photos.{$partKey}") ?? [];
-            $validCount = count(array_filter($photoFiles, fn($f) => $f && $f->isValid()));
-            if ($validCount < 1) {
-                $missingPhotos[] = $partKey;
-            }
-        }
-        if (!empty($missingPhotos)) {
-            return back()->with('error', 'Every ticked part needs at least 1 photo before saving — missing for: ' . implode(', ', $missingPhotos));
-        }
+        // FIXED: this used to hard-block the entire save if ANY ticked
+        // part had zero photos — inconsistent with manual add, which
+        // has always allowed saving with no photo and relying on the
+        // "photo coming soon" placeholder at display time (see the
+        // comment in InventoryController::store()). Harvest should
+        // behave the same way — staff can add photos later without
+        // being blocked from saving the part at all right now.
 
         // Preload all referenced bins' full_bin_code in one query
         // (covers both regular ticked parts and custom parts' bins).
