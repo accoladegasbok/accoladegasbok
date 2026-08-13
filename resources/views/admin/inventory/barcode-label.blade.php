@@ -118,8 +118,29 @@ body { font-family:'Inter',Arial,sans-serif; background:#f5f5f5; font-size:12px;
     body.size-small { size:2in 1in; }
     body.size-large { size:4in 6in; }
 }
-body.size-small .label-large { display:none; }
-body.size-large .label-small { display:none; }
+body.size-small .label-large { display:none !important; }
+body.size-large .label-small { display:none !important; }
+body.size-small .label-tearaway { display:none !important; }
+body.size-large .label-tearaway { display:none !important; }
+body.size-tearaway .label-small { display:none !important; }
+body.size-tearaway .label-large { display:none !important; }
+
+.label-tearaway {
+    width: 4in; background: #fff; border: 1px solid #000;
+    font-family: 'Courier New', monospace; font-size: 10px; color: #000;
+    margin: 0 auto 20px; page-break-after: always;
+}
+.tear-section { padding: 10px 12px; }
+.tear-section-title { font-weight: 800; font-size: 10.5px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+.tear-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.tear-perf { border-top: 2px dashed #000; position: relative; margin: 0; text-align: center; }
+.tear-perf::before { content: "✂"; position: absolute; left: -4px; top: -9px; font-size: 12px; background: #fff; padding: 0 3px; }
+.tear-perf::after { content: "TEAR HERE"; position: absolute; right: 4px; top: -8px; font-size: 6px; letter-spacing: 1px; color: #999; background: #fff; padding: 0 3px; }
+.tear-signature { border-bottom: 1px solid #000; display: inline-block; min-width: 110px; margin-left: 4px; }
+.tear-barcode-wrap { text-align: center; margin: 6px 0; }
+.tear-barcode-wrap svg { max-width: 100%; height: 32px; }
+
+@media print { body.size-tearaway { size: 4in 9in; } }
 </style>
 </head>
 <body id="labelBody">
@@ -129,6 +150,7 @@ body.size-large .label-small { display:none; }
     <span style="color:#aaa;font-size:11px;">Size:</span>
     <button class="ctrl-btn {{ $size==='small'?'on':'off' }}" onclick="setSize('small')" id="btn-small">2×1" Scan Only</button>
     <button class="ctrl-btn {{ $size==='large'?'on':'off' }}" onclick="setSize('large')" id="btn-large">4×6" Full Label</button>
+    <button class="ctrl-btn {{ $size==='tearaway'?'on':'off' }}" onclick="setSize('tearaway')" id="btn-tearaway">✂ Tear-Away (3-Part)</button>
     <span style="color:#555;">|</span>
     <button class="ctrl-btn print-btn" onclick="window.print()">🖨 Print</button>
     <a href="javascript:history.back()" style="color:#aaa;font-size:11px;text-decoration:none;">← Back</a>
@@ -301,6 +323,77 @@ body.size-large .label-small { display:none; }
     </div>
 
 </div>
+
+{{-- ══════════════════════════════════════════════════════════════
+     TEAR-AWAY 3-PART TAG — mirrors the LKQ-style tear-off workflow:
+     Main Tag stays wired to the part; Stub 1 torn off when the part
+     is physically pulled from the shelf; Stub 2 torn off at the
+     loading dock and stapled to the route sheet/invoice. This is a
+     PHYSICAL PROCESS document, not just a barcode — it now carries
+     the audit trail that used to require separate printed Warehouse/
+     Accounts/Gate invoice copies.
+     ══════════════════════════════════════════════════════════════ --}}
+<div class="label-tearaway">
+
+    {{-- ── MAIN TAG — stays wired to the part ── --}}
+    <div class="tear-section">
+        <div class="tear-section-title">Auto Zenith Parts — Main Tag</div>
+        <div class="tear-row"><span>PART #: {{ $part->part_code }}</span><span>STOCK #: {{ $part->part_code }}</span></div>
+        <div class="tear-row"><span>DESC: {{ $part->part_name }}</span></div>
+        <div class="tear-row">
+            <span>{{ $vehicle ?: 'Universal' }}</span>
+            <span>GRADE: {{ $part->condition_grade ?? '—' }}</span>
+        </div>
+        @if($part->engine_code_oem)
+        <div class="tear-row"><span>ENGINE: {{ $part->engine_code_oem }}@if($part->engine_displacement) ({{ $part->engine_displacement }})@endif</span></div>
+        @endif
+        <div class="tear-row">
+            <span>VIN: {{ $part->donor_vin ?? '—' }}</span>
+            <span>LOC: {{ $binLoc }}</span>
+        </div>
+        @if($part->mileage)
+        <div class="tear-row"><span>MILES: {{ number_format($part->mileage) }}</span></div>
+        @endif
+        <div class="tear-barcode-wrap">
+            <svg id="barcode-tear-main-{{ $part->id }}"></svg>
+        </div>
+        <div class="tear-row"><span>IC #: {{ $icCode }}</span><span>{{ $part->price_fmt }}</span></div>
+        <div class="tear-row" style="margin-top:6px;"><span>DISMANTLER TECH ID:</span><span class="tear-signature"></span></div>
+    </div>
+
+    <div class="tear-perf"></div>
+
+    {{-- ── STUB 1 — torn off when physically pulled from shelf ── --}}
+    <div class="tear-section">
+        <div class="tear-section-title">Stub 1 — Pull Confirmation</div>
+        <div class="tear-row"><span>PART #: {{ $part->part_code }}</span><span>STOCK #: {{ $part->part_code }}</span></div>
+        <div class="tear-row"><span>{{ $vehicle ?: 'Universal' }}</span></div>
+        <div class="tear-row"><span>LOC: {{ $binLoc }}</span></div>
+        <div class="tear-barcode-wrap">
+            <svg id="barcode-tear-stub1-{{ $part->id }}"></svg>
+        </div>
+        <div class="tear-row" style="margin-top:6px;"><span>PULLED BY:</span><span class="tear-signature"></span></div>
+        <div class="tear-row"><span>DATE:</span><span class="tear-signature"></span></div>
+    </div>
+
+    <div class="tear-perf"></div>
+
+    {{-- ── STUB 2 — torn off at loading dock, stapled to route sheet/
+         invoice. Covers what used to need separate Warehouse/
+         Accounts/Gate invoice copies, all on one stub. ── --}}
+    <div class="tear-section">
+        <div class="tear-section-title">Stub 2 — Audit &amp; Shipping Receipt</div>
+        <div class="tear-row"><span>PART #: {{ $part->part_code }}</span><span>ORDER / INVOICE #:</span></div>
+        <div class="tear-barcode-wrap">
+            <svg id="barcode-tear-stub2-{{ $part->id }}"></svg>
+        </div>
+        <div class="tear-row" style="margin-top:6px;"><span>WAREHOUSE VERIFIED BY:</span><span class="tear-signature"></span></div>
+        <div class="tear-row"><span>DRIVER / LOADER SIGNATURE:</span><span class="tear-signature"></span></div>
+        <div class="tear-row"><span>GATE / SECURITY:</span><span class="tear-signature"></span></div>
+        <div class="tear-row"><span>DATE:</span><span class="tear-signature"></span></div>
+    </div>
+
+</div>
 @endforeach
 </div>
 
@@ -354,11 +447,18 @@ const PART_CODES = @json($parts->pluck('part_code', 'id'));
 Object.keys(PART_CODES).forEach(id => {
     renderBarcode('barcode-small-' + id, PART_CODES[id], { width: 1.6, height: 40 });
     renderBarcode('barcode-large-' + id, PART_CODES[id], { width: 2.6, height: 65 });
+    // NEW: tear-away tag — same barcode repeated on all 3 sections,
+    // matching the LKQ mockup pattern (each stub stays independently
+    // scannable once torn off from the others).
+    renderBarcode('barcode-tear-main-'  + id, PART_CODES[id], { width: 1.4, height: 32 });
+    renderBarcode('barcode-tear-stub1-' + id, PART_CODES[id], { width: 1.4, height: 32 });
+    renderBarcode('barcode-tear-stub2-' + id, PART_CODES[id], { width: 1.4, height: 32 });
 });
 
 function setSize(size) {
     document.getElementById('btn-small').className = 'ctrl-btn ' + (size==='small'?'on':'off');
     document.getElementById('btn-large').className = 'ctrl-btn ' + (size==='large'?'on':'off');
+    document.getElementById('btn-tearaway').className = 'ctrl-btn ' + (size==='tearaway'?'on':'off');
     document.body.className = 'size-' + size;
     const url = new URL(window.location.href);
     url.searchParams.set('size', size);
