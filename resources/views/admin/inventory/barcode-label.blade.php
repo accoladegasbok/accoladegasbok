@@ -125,6 +125,15 @@ body.size-large .label-tearaway { display:none !important; }
 body.size-tearaway .label-small { display:none !important; }
 body.size-tearaway .label-large { display:none !important; }
 
+/* ── 4×9 box-style visibility — hide it everywhere except its own
+   mode, and hide the other three formats while it's active ── */
+body.size-small .label-box49    { display:none !important; }
+body.size-large .label-box49    { display:none !important; }
+body.size-tearaway .label-box49 { display:none !important; }
+body.size-box49 .label-small    { display:none !important; }
+body.size-box49 .label-large    { display:none !important; }
+body.size-box49 .label-tearaway { display:none !important; }
+
 .label-tearaway {
     width: 4in; background: #fff; border: 1px solid #000;
     font-family: 'Courier New', monospace; font-size: 10px; color: #000;
@@ -141,6 +150,56 @@ body.size-tearaway .label-large { display:none !important; }
 .tear-barcode-wrap svg { max-width: 100%; height: 32px; }
 
 @media print { body.size-tearaway { size: 4in 9in; } }
+
+/* ═══════════════════════════════════════════════════════
+   4×9 BOX STYLE — bordered/boxed layout matching the LKQ
+   reference mockup exactly (full frame per section, header
+   bar, grid rows, boxed barcode) but with AutoZenith's own
+   field names/data throughout. A distinct alternative to the
+   card-style tear-away above — pick whichever prints cleaner
+   on your stock.
+═══════════════════════════════════════════════════════ */
+.label-box49 {
+    width: 4in; background: #fff; border: 2px solid #000;
+    font-family: 'Courier New', monospace; font-size: 9.5px; color: #000;
+    margin: 0 auto 20px; page-break-after: always;
+}
+.box-hdr {
+    background: #0d1b2a; color: #fff; padding: 5px 8px;
+    font-weight: 800; font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: 0.5px; display: flex; justify-content: space-between;
+}
+.box-hdr .gold { color: #c9a84c; }
+.box-grid2 { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #000; }
+.box-grid2 .cell { padding: 4px 8px; border-right: 1px solid #000; }
+.box-grid2 .cell:last-child { border-right: none; }
+.box-grid2 .cell label { display: block; font-size: 6.5px; color: #555; text-transform: uppercase; letter-spacing: 0.3px; }
+.box-grid2 .cell .val { font-weight: 700; font-size: 9.5px; }
+.box-row-full { padding: 4px 8px; border-top: 1px solid #000; font-size: 9px; }
+.box-row-full label { font-size: 6.5px; color: #555; text-transform: uppercase; margin-right: 4px; }
+.box-barcode-wrap { text-align: center; padding: 6px 8px; border-top: 1px solid #000; }
+.box-barcode-wrap svg { max-width: 100%; height: 34px; }
+.box-code { font-size: 9px; letter-spacing: 1px; margin-top: 2px; font-weight: 700; }
+.box-remarks { padding: 5px 8px; border-top: 1px solid #000; font-size: 7.5px; line-height: 1.4; color: #333; }
+
+/* Perforation between sections — heavier dashed rule + scissors,
+   matching the "TEAR HERE" convention already used on the card-style
+   tear-away, styled to read clearly even at thermal-adjacent print
+   quality. */
+.box-perf { border-top: 2px dashed #000; position: relative; margin: 10px 0 0; }
+.box-perf::before { content: "✂"; position: absolute; left: -2px; top: -9px; font-size: 13px; background: #fff; padding: 0 3px; }
+.box-perf::after {
+    content: "– – TEAR ALONG DOTTED LINE – –";
+    position: absolute; left: 50%; top: -8px; transform: translateX(-50%);
+    font-size: 6px; letter-spacing: 0.5px; color: #777; background: #fff;
+    padding: 0 4px; white-space: nowrap;
+}
+.box-stub-title {
+    text-align: center; padding: 4px 8px 0; font-weight: 800;
+    font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+@media print { body.size-box49 { size: 4in 9in; } }
 </style>
 </head>
 <body id="labelBody">
@@ -151,6 +210,7 @@ body.size-tearaway .label-large { display:none !important; }
     <button class="ctrl-btn {{ $size==='small'?'on':'off' }}" onclick="setSize('small')" id="btn-small">2×1" Scan Only</button>
     <button class="ctrl-btn {{ $size==='large'?'on':'off' }}" onclick="setSize('large')" id="btn-large">4×6" Full Label</button>
     <button class="ctrl-btn {{ $size==='tearaway'?'on':'off' }}" onclick="setSize('tearaway')" id="btn-tearaway">✂ Tear-Away (3-Part)</button>
+    <button class="ctrl-btn {{ $size==='box49'?'on':'off' }}" onclick="setSize('box49')" id="btn-box49">📦 4×9 Box Style</button>
     <span style="color:#555;">|</span>
     <button class="ctrl-btn print-btn" onclick="window.print()">🖨 Print</button>
     <a href="javascript:history.back()" style="color:#aaa;font-size:11px;text-decoration:none;">← Back</a>
@@ -276,7 +336,7 @@ body.size-tearaway .label-large { display:none !important; }
                  on hand." --}}
             @if($part->oem_reference->isNotEmpty())
             <div class="oem-reference">
-                <div class="oem-ref-label">OEM REFERENCE — also known to share {{ $part->engine_code_oem ?: $part->transmission_code_oem }} (verify before selling as interchange)</div>
+                <div class="oem-ref-label">OEM REFERENCE — also known to share {{ $part->engine_code_oem ?: $part->transmission_code_oem}} (verify before selling as interchange)</div>
                 <div class="oem-ref-list">{{ $part->oem_reference->implode(' · ') }}</div>
             </div>
             @endif
@@ -298,9 +358,6 @@ body.size-tearaway .label-large { display:none !important; }
     <div class="lbl-price">
         <div>
             <div class="retail">{{ $part->price_fmt }}</div>
-            @if($part->wholesale_fmt)
-            <div class="trade">Trade: {{ $part->wholesale_fmt }}</div>
-            @endif
         </div>
         <div class="flags">
             @if($part->is_major_component)<span class="flag major">⚡ MAJOR COMPONENT</span>@endif
@@ -394,6 +451,102 @@ body.size-tearaway .label-large { display:none !important; }
     </div>
 
 </div>
+
+{{-- ══════════════════════════════════════════════════════════════
+     4×9 BOX-STYLE TAG — bordered/boxed layout, same 3-part workflow
+     as the tear-away above (Main Tag stays on the part; Stub 1 torn
+     at pull; Stub 2 torn at audit/shipping) but built to mirror the
+     LKQ reference mockup's framed-box look, using AutoZenith's own
+     field names and data throughout — no Hollander numbers, no LKQ
+     branding.
+     ══════════════════════════════════════════════════════════════ --}}
+<div class="label-box49">
+
+    {{-- ── MAIN TAG ── --}}
+    <div class="box-hdr">
+        <span>AUTO <span class="gold">ZENITH</span> PARTS</span>
+        <span>STOCK #: {{ $part->part_code }}</span>
+    </div>
+    <div class="box-row-full"><label>Desc:</label>{{ $part->part_name }}</div>
+    <div class="box-grid2">
+        <div class="cell">
+            <label>Year / Make / Model</label>
+            <div class="val">{{ $vehicle ?: 'Universal' }}</div>
+        </div>
+        <div class="cell">
+            <label>Grade</label>
+            <div class="val">{{ $part->condition_grade ?? '—' }}</div>
+        </div>
+    </div>
+    <div class="box-grid2">
+        <div class="cell">
+            <label>VIN</label>
+            <div class="val" style="font-size:8px;">{{ $part->donor_vin ?? '—' }}</div>
+        </div>
+        <div class="cell">
+            <label>Location</label>
+            <div class="val">{{ $binLoc }}</div>
+        </div>
+    </div>
+    @if($part->mileage || $part->engine_code_oem)
+    <div class="box-row-full">
+        @if($part->mileage)<label>Miles:</label>{{ number_format($part->mileage) }}@endif
+        @if($part->engine_code_oem)&nbsp;&nbsp;<label>Engine:</label>{{ $part->engine_code_oem }}@if($part->engine_displacement) ({{ $part->engine_displacement }})@endif @endif
+    </div>
+    @endif
+    <div class="box-barcode-wrap">
+        <svg id="barcode-box-main-{{ $part->id }}"></svg>
+        <div class="box-code">*{{ $part->part_code }}*</div>
+    </div>
+    @if($fitsStr || $part->conditions_and_options || $part->description)
+    <div class="box-remarks">
+        <strong>REMARKS:</strong>
+        {{ $part->conditions_and_options ?? $part->description ?? '' }}
+        @if($fitsStr) {{ $fitsStr ? ' Also fits: '.$fitsStr : '' }} @endif
+    </div>
+    @endif
+
+    <div class="box-perf"></div>
+
+    {{-- ── STUB 1 — Dismantling / Pulling Tag ── --}}
+    <div class="box-stub-title">Stub 1 — Dismantling / Pulling Tag</div>
+    <div class="box-grid2" style="border-top:none;">
+        <div class="cell">
+            <label>Part / Stock #</label>
+            <div class="val">{{ $part->part_code }}</div>
+        </div>
+        <div class="cell">
+            <label>Location</label>
+            <div class="val">{{ $binLoc }}</div>
+        </div>
+    </div>
+    <div class="box-row-full"><label>Y/M/M:</label>{{ $vehicle ?: 'Universal' }}</div>
+    <div class="box-barcode-wrap">
+        <svg id="barcode-box-stub1-{{ $part->id }}"></svg>
+        <div class="box-code">*{{ $part->part_code }}*</div>
+    </div>
+
+    <div class="box-perf"></div>
+
+    {{-- ── STUB 2 — Audit / Order Picking Receipt ── --}}
+    <div class="box-stub-title">Stub 2 — Audit / Order Picking Receipt</div>
+    <div class="box-grid2" style="border-top:none;">
+        <div class="cell">
+            <label>Part #</label>
+            <div class="val">{{ $part->part_code }}</div>
+        </div>
+        <div class="cell">
+            <label>Stock #</label>
+            <div class="val">{{ $part->part_code }}</div>
+        </div>
+    </div>
+    <div class="box-row-full"><label>Date Pulled:</label>____/____/{{ now()->format('Y') }} &nbsp;&nbsp; <label>Tech ID:</label>________________</div>
+    <div class="box-barcode-wrap">
+        <svg id="barcode-box-stub2-{{ $part->id }}"></svg>
+        <div class="box-code">*{{ $part->part_code }}*</div>
+    </div>
+
+</div>
 @endforeach
 </div>
 
@@ -453,12 +606,18 @@ Object.keys(PART_CODES).forEach(id => {
     renderBarcode('barcode-tear-main-'  + id, PART_CODES[id], { width: 1.4, height: 32 });
     renderBarcode('barcode-tear-stub1-' + id, PART_CODES[id], { width: 1.4, height: 32 });
     renderBarcode('barcode-tear-stub2-' + id, PART_CODES[id], { width: 1.4, height: 32 });
+    // NEW: 4×9 box-style tag — same 3 sections, same barcode data,
+    // rendered independently so each stub still scans once torn off.
+    renderBarcode('barcode-box-main-'  + id, PART_CODES[id], { width: 1.6, height: 34 });
+    renderBarcode('barcode-box-stub1-' + id, PART_CODES[id], { width: 1.6, height: 34 });
+    renderBarcode('barcode-box-stub2-' + id, PART_CODES[id], { width: 1.6, height: 34 });
 });
 
 function setSize(size) {
     document.getElementById('btn-small').className = 'ctrl-btn ' + (size==='small'?'on':'off');
     document.getElementById('btn-large').className = 'ctrl-btn ' + (size==='large'?'on':'off');
     document.getElementById('btn-tearaway').className = 'ctrl-btn ' + (size==='tearaway'?'on':'off');
+    document.getElementById('btn-box49').className = 'ctrl-btn ' + (size==='box49'?'on':'off');
     document.body.className = 'size-' + size;
     const url = new URL(window.location.href);
     url.searchParams.set('size', size);
