@@ -673,6 +673,15 @@ class HarvestController extends Controller
                     'year_to'               => $session->year,
                     'compat_year_from'      => $compatFrom,
                     'compat_year_to'        => $compatTo,
+                    // FIXED: both of these were already being collected
+                    // (trim on the harvest session, displacement via
+                    // parseEngineSize()) and used for OEM code matching
+                    // elsewhere in this file — but never actually
+                    // written onto the saved part itself, so every
+                    // harvested part silently lost this data at save
+                    // time regardless of what staff entered on Step 2.
+                    'donor_trim'            => $session->trim ?: null,
+                    'engine_displacement'   => ($dispL = $this->parseEngineSize($session->engine ?? null)) > 0 ? $dispL . 'L' : null,
                     'part_name'             => $tpl['label'],
                     'part_terminology_id'   => $terminologyId,
                     'part_category'         => $tpl['category'],
@@ -778,6 +787,8 @@ class HarvestController extends Controller
                     'year_to'               => $session->year,
                     'compat_year_from'      => $session->year,
                     'compat_year_to'        => $session->year,
+                    'donor_trim'            => $session->trim ?: null,
+                    'engine_displacement'   => ($dispL = $this->parseEngineSize($session->engine ?? null)) > 0 ? $dispL . 'L' : null,
                     'part_name'             => $cp['name'],
                     'part_terminology_id'   => $cpTerminologyId,
                     'part_category'         => $cp['category']    ?? 'Other',
