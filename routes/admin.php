@@ -359,6 +359,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/{id}/prices', [\App\Http\Controllers\Admin\ServiceRateController::class, 'editPrices'])->name('prices.edit');
             Route::post('/{id}/prices', [\App\Http\Controllers\Admin\ServiceRateController::class, 'updatePrices'])->name('prices.update');
         });
+
+        // Homepage photo/video gallery (self-managed through admin)
+        Route::prefix('gallery')->name('gallery.')->group(function () {
+            Route::get('/',            [\App\Http\Controllers\Admin\MediaGalleryController::class, 'index'])->name('index');
+            Route::post('/',           [\App\Http\Controllers\Admin\MediaGalleryController::class, 'store'])->name('store');
+            Route::post('/{id}/toggle',[\App\Http\Controllers\Admin\MediaGalleryController::class, 'toggle'])->name('toggle');
+            Route::post('/reorder',    [\App\Http\Controllers\Admin\MediaGalleryController::class, 'reorder'])->name('reorder');
+            Route::delete('/{id}',     [\App\Http\Controllers\Admin\MediaGalleryController::class, 'destroy'])->name('destroy');
+        });
     }); // end admin.auth middleware
 
 }); // end admin prefix
