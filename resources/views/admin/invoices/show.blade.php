@@ -304,7 +304,7 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
          invoice at all before this. Pre-selects this invoice on the
          Returns creation form so staff don't have to search for it
          again by phone/invoice number. --}}
-    @if(isset($invoice) && !$isVehicleSale)
+    @if(isset($invoice) && empty($isVehicleSale))
     <a href="{{ route('admin.returns.create', ['invoice_id' => $invoice->id]) }}" style="background:#fff;color:#a32d2d;border:1.5px solid #a32d2d;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:0.5px;">
         ↩ Log Return
     </a>
