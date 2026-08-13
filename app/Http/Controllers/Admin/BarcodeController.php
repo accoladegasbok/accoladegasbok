@@ -31,7 +31,7 @@ class BarcodeController extends Controller
         // Support both ?ids=1,2,3 and route /{id}/barcode
         $rawIds = $request->get('ids', $request->route('id'));
         $ids    = array_filter(array_map('intval', explode(',', (string) $rawIds)));
-        $size   = in_array($request->get('size', 'large'), ['small', 'large']) ? $request->get('size', 'large') : 'large';
+        $size   = in_array($request->get('size', 'large'), ['small', 'large', 'tearaway']) ? $request->get('size', 'large') : 'large';
 
         if (empty($ids)) abort(400, 'No part IDs provided.');
 
