@@ -389,7 +389,7 @@ class HarvestController extends Controller
             ->where('hs.id', $sessionId)
             ->select(
                 'hs.*',
-                'dv.make', 'dv.model', 'dv.year', 'dv.vin',
+                'dv.make', 'dv.model', 'dv.year', 'dv.vin', 'dv.trim',
                 'dv.mileage', 'dv.colour', 'dv.body_style', 'dv.engine',
                 'dv.location', 'dv.id as donor_id'
             )
@@ -435,7 +435,7 @@ class HarvestController extends Controller
             ->where('hs.id', $sessionId)
             ->select(
                 'hs.*',
-                'dv.make', 'dv.model', 'dv.year', 'dv.vin',
+                'dv.make', 'dv.model', 'dv.year', 'dv.vin', 'dv.trim',
                 'dv.mileage', 'dv.colour', 'dv.body_style', 'dv.engine',
                 'dv.location', 'dv.id as donor_id'
             )
