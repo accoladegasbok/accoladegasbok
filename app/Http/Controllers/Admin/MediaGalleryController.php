@@ -103,4 +103,26 @@ class MediaGalleryController extends Controller
         if ($category) $query->where('category', $category);
         return $query->get();
     }
+
+    /**
+     * GET /gallery-data — PUBLIC, unauthenticated JSON endpoint for
+     * the homepage. Needed because home.blade.php is wrapped in
+     * @verbatim (stops Blade parsing @media/@type CSS/JS as
+     * directives), so it can't use a normal Blade @foreach loop —
+     * fetches this via JS instead, same pattern the rest of that page
+     * already uses for dynamic content.
+     */
+    public function publicJson()
+    {
+        $items = self::activeItems()->map(fn($item) => [
+            'id'         => $item->id,
+            'type'       => $item->media_type,
+            'title'      => $item->title,
+            'category'   => $item->category,
+            'url'        => asset('storage/' . $item->file_path),
+            'thumb_url'  => $item->thumbnail_path ? asset('storage/' . $item->thumbnail_path) : null,
+        ]);
+
+        return response()->json(['items' => $items]);
+    }
 }

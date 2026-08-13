@@ -391,6 +391,23 @@
     </div>
   </section>
 
+  <!-- ══════ GALLERY — self-managed via /admin/gallery ══════ -->
+  <section id="gallery" style="background:#fff; border-top:1px solid var(--line);">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-eyebrow">Behind The Business</div>
+        <h2 class="display">Our brand.<br>Our people.</h2>
+        <p>A look at the team and the yard behind every part we ship.</p>
+      </div>
+      <div id="galleryGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:16px; margin-top:32px;"></div>
+    </div>
+  </section>
+
+  <!-- Simple lightbox for enlarged photo/video viewing -->
+  <div id="galleryLightbox" style="display:none; position:fixed; inset:0; background:rgba(10,31,92,0.92); z-index:9999; align-items:center; justify-content:center; padding:24px; cursor:zoom-out;" onclick="closeGalleryLightbox()">
+    <div id="galleryLightboxContent" style="max-width:90vw; max-height:90vh;" onclick="event.stopPropagation()"></div>
+  </div>
+
   <!-- ══════ WARRANTY ══════ -->
   <section class="warranty" id="warranty">
     <div class="wrap warranty-inner">
@@ -447,6 +464,47 @@
 </footer>
 
 <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+
+<script>
+// ── Homepage gallery — fetched via public JSON endpoint since this
+// whole page is wrapped in @verbatim and can't use a Blade @foreach.
+fetch('/gallery-data')
+    .then(res => res.json())
+    .then(data => {
+        const grid = document.getElementById('galleryGrid');
+        const items = data.items || [];
+        if (items.length === 0) {
+            document.getElementById('gallery').style.display = 'none';
+            return;
+        }
+        grid.innerHTML = items.map(item => {
+            const thumb = item.type === 'video' ? (item.thumb_url || null) : item.url;
+            return `
+            <div onclick='openGalleryLightbox(${JSON.stringify(item).replace(/'/g, "&#39;")})'
+                 style="cursor:pointer; border-radius:12px; overflow:hidden; aspect-ratio:1; background:#f0ede4; position:relative;">
+                ${thumb
+                    ? `<img src="${thumb}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">`
+                    : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:32px;">🎬</div>`}
+                ${item.type === 'video' ? `<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(10,31,92,0.25);"><div style="width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; font-size:16px;">▶</div></div>` : ''}
+                ${item.title ? `<div style="position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent, rgba(10,31,92,0.8)); color:#fff; font-size:11px; padding:16px 8px 6px;">${item.title}</div>` : ''}
+            </div>`;
+        }).join('');
+    })
+    .catch(() => { document.getElementById('gallery').style.display = 'none'; });
+
+function openGalleryLightbox(item) {
+    const box = document.getElementById('galleryLightbox');
+    const content = document.getElementById('galleryLightboxContent');
+    content.innerHTML = item.type === 'video'
+        ? `<video src="${item.url}" controls autoplay style="max-width:90vw; max-height:90vh; border-radius:8px;"></video>`
+        : `<img src="${item.url}" style="max-width:90vw; max-height:90vh; border-radius:8px;">`;
+    box.style.display = 'flex';
+}
+function closeGalleryLightbox() {
+    document.getElementById('galleryLightbox').style.display = 'none';
+    document.getElementById('galleryLightboxContent').innerHTML = '';
+}
+</script>
 </body>
 </html>
 @endverbatim

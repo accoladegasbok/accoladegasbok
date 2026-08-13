@@ -54,6 +54,7 @@ Route::get('/parts/compatibility', [\App\Http\Controllers\PartsSearchController:
 // Root '/' redirects here in production (see top of file). The
 // homepage's own "Search Parts" nav/CTA links point to /parts.
 Route::view('/home', 'public.home')->name('home');
+Route::get('/gallery-data', [\App\Http\Controllers\Admin\MediaGalleryController::class, 'publicJson'])->name('gallery.public');
 
 // ── Customer accounts (real accounts — separate from AccountIX,
 // which handles a different login at accounts.autozenithparts.com) ──
