@@ -494,13 +494,38 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                 <div class="contact">📞 {{ $businessInfo['phone'] }} · 🌐 autozenithparts.com</div>
             </div>
             <div class="inv-meta">
-                <div class="inv-title">{{ $isVehicleSale ? 'VEHICLE SALE RECEIPT' : 'RECEIPT' }}</div>
+                <div class="inv-title">
+                    {{ $isVehicleSale ? 'VEHICLE SALE RECEIPT' : 'RECEIPT' }}
+                    @if(isset($revisionNumber) && $revisionNumber > 1)
+                        <span style="background:#a32d2d;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;letter-spacing:0.5px;margin-left:6px;vertical-align:middle;">REV {{ $revisionNumber }}</span>
+                    @endif
+                </div>
                 <table>
                     <tr><td>Receipt No:</td><td>{{ $invoiceNo }}</td></tr>
                     <tr><td>Date:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }}</td></tr>
                     <tr><td>Time:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('h:i A') }}</td></tr>
                     <tr><td>Location:</td><td>{{ $location }}</td></tr>
                     <tr><td>Currency:</td><td>{{ $currency['code'] }}</td></tr>
+                    {{-- NEW: who originally issued this receipt — works for
+                         both order-based ($order->created_by) and manual/
+                         service/car-sale invoices ($invoice->created_by),
+                         since both tables already store this. --}}
+                    @php $issuedBy = ($invoice->created_by ?? $order->created_by ?? null); @endphp
+                    @if($issuedBy)
+                    <tr><td>Issued By:</td><td>{{ $issuedBy }}</td></tr>
+                    @endif
+                    {{-- NEW: last edit attribution — only appears once an
+                         invoice has actually been revised. Shows who made
+                         the edit and, if a supervisor edit required
+                         override approval, who approved it (override_by
+                         already stores a readable "Name (role)" string
+                         from the PIN modal, not a raw token). --}}
+                    @if(isset($lastEditLog) && $lastEditLog)
+                    <tr><td>Last Edited By:</td><td>{{ $lastEditLog->edited_by }} ({{ $lastEditLog->staff_role }})</td></tr>
+                    @if($lastEditLog->override_by)
+                    <tr><td>Approved By:</td><td>{{ $lastEditLog->override_by }}</td></tr>
+                    @endif
+                    @endif
                 </table>
                 <img src="https://api.qrserver.com/v1/create-qr-code/?size=65x65&data={{ urlencode($qrUrl) }}" alt="QR" style="margin-top:6px;">
             </div>

@@ -124,13 +124,15 @@ class OverrideController extends Controller
 
     // =========================================================
     // POST /admin/override/clear-pin/{staffId}
-    // Admin can clear (not view) another staff member's PIN,
-    // forcing them to set a new one.
+    // Admin or Manager can clear (not view) another staff member's
+    // PIN, forcing them to set a new one. Supervisor and below
+    // cannot — resetting a PIN is itself a higher-trust action than
+    // using one.
     // =========================================================
     public function clearPin(int $staffId)
     {
-        if (Session::get('staff_role') !== 'admin') {
-            return response()->json(['error' => 'Admin only.'], 403);
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            return response()->json(['error' => 'Admin or Manager only.'], 403);
         }
 
         DB::table('staff')->where('id', $staffId)->update([

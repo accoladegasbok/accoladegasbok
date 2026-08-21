@@ -668,6 +668,10 @@ class InvoiceController extends Controller
             'discount_type'             => $invoiceDiscValue > 0 ? $invoiceDiscType : null,
             'discount_value'            => $invoiceDiscValue > 0 ? $invoiceDiscValue : null,
             'notes'                     => $request->notes ?? null,
+            // NEW: every save bumps the revision — lets the printed
+            // receipt show "REV 2", "REV 3", etc. so an edited receipt
+            // is never mistaken for the original.
+            'revision_number'           => ($invoice->revision_number ?? 1) + 1,
             'updated_at'                => now(),
         ]);
 
@@ -1625,12 +1629,22 @@ class InvoiceController extends Controller
         // bank/contact details in the header as before.
         $footerAddresses = self::footerAddressesForLocation($saleLocation);
 
+        // NEW: revision number + who last edited/approved it — only
+        // meaningful once an invoice has actually been edited at
+        // least once (revision_number > 1). A never-edited invoice
+        // shows nothing extra on the receipt, preserving the existing
+        // look for the common case.
+        $revisionNumber = $invoice->revision_number ?? 1;
+        $lastEditLog = $revisionNumber > 1
+            ? DB::table('invoice_edit_log')->where('invoice_id', $id)->orderByDesc('created_at')->first()
+            : null;
+
         return view('admin.invoices.show', compact(
             'invoice', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
             'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt', 'footerAddresses',
-            'returnCreditApplied', 'returnCreditFmt'
+            'returnCreditApplied', 'returnCreditFmt', 'revisionNumber', 'lastEditLog'
         ));
     }
 
