@@ -517,10 +517,22 @@
                                     @endif
                                 </div>
 
-                                {{-- Compatibility badge --}}
+                                {{-- Compatibility badge — NEW: uses the shared well-known
+                                     year range (confirmed interchange group →
+                                     PlatformDatabase generation → OemDatabase
+                                     engine/trans code → raw donor year as last
+                                     resort), same logic now driving the barcode
+                                     tag, Compatibility Checker, and part detail
+                                     page. FIXED: previously appended the raw
+                                     donor year_to a second time after the
+                                     compat-year fallback, which could produce
+                                     garbled output like "2006–2006–2010" when
+                                     the two disagreed. --}}
+                                @php
+                                    $wellKnown = app(\App\Services\InterchangeService::class)->wellKnownYearRange($part);
+                                @endphp
                                 <div class="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5 mb-3 text-xs font-body text-blue-700">
-                                    ✓ Fits: {{ $part->brand }} {{ $part->model }} {{ $part->compat_year_from ?? $part->year_from }}@if(($part->compat_year_to ?? $part->year_to) != ($part->compat_year_from ?? $part->year_from))–{{ $part->compat_year_to ?? $part->year_to }}@endif
-                                    @if($part->year_to != $part->year_from)–{{ $part->year_to }}@endif
+                                    ✓ Fits: {{ $part->brand }} {{ $part->model }} {{ $wellKnown['year_from'] }}@if($wellKnown['year_to'] != $wellKnown['year_from'])–{{ $wellKnown['year_to'] }}@endif
                                     @if($part->body_style && $part->body_style !== 'N/A')
                                         · {{ $part->body_style }}
                                     @endif

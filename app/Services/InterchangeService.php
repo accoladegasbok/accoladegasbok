@@ -98,6 +98,70 @@ class InterchangeService
     }
 
     // =========================================================
+    // NEW: the ONE shared "what year range should we confidently show
+    // for this part" helper — used by the customer-facing part page,
+    // search results grid, barcode tag, and Compatibility Checker, so
+    // all four surfaces agree instead of each computing this
+    // separately (which is exactly how the barcode tag and the
+    // customer page ended up disagreeing before this fix).
+    //
+    // Priority order (same as BarcodeController's existing logic):
+    //   1. Confirmed interchange group — this part's OWN make/model
+    //      entry within its group, merged for contiguous years. Most
+    //      trustworthy since it's admin-confirmed.
+    //   2. PlatformDatabase — the vehicle's own generation range.
+    //      Works for ANY category, since a generation range is a
+    //      property of the VEHICLE, not the part.
+    //   3. OemDatabase — engine/transmission code driven. Only
+    //      meaningful for Engine/Transmission parts, checked last
+    //      since it's the narrowest-scope source.
+    //   4. Raw donor year(s) already on the part — last resort, exactly
+    //      what every page showed before this fix.
+    // =========================================================
+    public function wellKnownYearRange(object $part): array
+    {
+        // 1. Confirmed interchange group — this part's own vehicle
+        //    entry, merged with any contiguous years in the same group.
+        if (!empty($part->interchange_group_id)) {
+            $ownEntries = $this->vehiclesForGroup($part->interchange_group_id)
+                ->filter(fn($v) => strtoupper($v->make) === strtoupper($part->brand ?? '')
+                                 && strtoupper($v->model) === strtoupper($part->model ?? ''));
+            if ($ownEntries->isNotEmpty()) {
+                $merged = $this->mergeContiguousYearRanges($ownEntries)->first();
+                if ($merged) {
+                    return ['year_from' => $merged->year_from, 'year_to' => $merged->year_to, 'source' => 'confirmed'];
+                }
+            }
+        }
+
+        // 2. PlatformDatabase — generation range, category-agnostic.
+        if (!empty($part->brand) && !empty($part->model) && !empty($part->year_from)) {
+            $platform = \App\Data\PlatformDatabase::lookup($part->brand, $part->model, (int) $part->year_from);
+            if (!empty($platform['compat_year_from']) && !empty($platform['compat_year_to'])) {
+                return ['year_from' => $platform['compat_year_from'], 'year_to' => $platform['compat_year_to'], 'source' => 'platform'];
+            }
+        }
+
+        // 3. OemDatabase — engine/transmission code driven.
+        if (!empty($part->brand) && !empty($part->model) && !empty($part->year_from)) {
+            $oem = \App\Data\OemDatabase::lookup(
+                $part->brand, $part->model, (int) $part->year_from,
+                (int) ($part->cylinders ?? 0), (float) ($part->engine_displacement ?? 0)
+            );
+            if (!empty($oem['compat_year_from']) && !empty($oem['compat_year_to'])) {
+                return ['year_from' => $oem['compat_year_from'], 'year_to' => $oem['compat_year_to'], 'source' => 'oem'];
+            }
+        }
+
+        // 4. Last resort — whatever's already on the part row.
+        return [
+            'year_from' => $part->compat_year_from ?? $part->year_from,
+            'year_to'   => $part->compat_year_to ?? $part->year_to,
+            'source'    => 'donor',
+        ];
+    }
+
+    // =========================================================
     // Find (or null) the interchange group a part belongs to.
     // =========================================================
     public function groupForPart(int $partId): ?object
