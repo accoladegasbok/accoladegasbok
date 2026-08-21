@@ -119,8 +119,8 @@ class MediaGalleryController extends Controller
             'type'       => $item->media_type,
             'title'      => $item->title,
             'category'   => $item->category,
-            'url'        => asset('storage/' . $item->file_path),
-            'thumb_url'  => $item->thumbnail_path ? asset('storage/' . $item->thumbnail_path) : null,
+            'url'        => asset(config('media.prefix') . '/' . $item->file_path),
+            'thumb_url'  => $item->thumbnail_path ? asset(config('media.prefix') . '/' . $item->thumbnail_path) : null,
         ]);
 
         return response()->json(['items' => $items]);

@@ -57,13 +57,13 @@
       <div class="relative aspect-square bg-gray-100">
         @if($item->media_type === 'video')
           @if($item->thumbnail_path)
-          <img src="{{ asset('storage/' . $item->thumbnail_path) }}" class="w-full h-full object-cover">
+          <img src="{{ asset(config('media.prefix') . '/' . $item->thumbnail_path) }}" class="w-full h-full object-cover">
           @else
           <div class="w-full h-full flex items-center justify-center text-gray-400 text-2xl">🎬</div>
           @endif
           <span class="absolute top-1 right-1 text-[9px] bg-navy text-white px-1.5 py-0.5 rounded font-700">VIDEO</span>
         @else
-          <img src="{{ asset('storage/' . $item->file_path) }}" class="w-full h-full object-cover">
+          <img src="{{ asset(config('media.prefix') . '/' . $item->file_path) }}" class="w-full h-full object-cover">
         @endif
       </div>
       <div class="p-2">
