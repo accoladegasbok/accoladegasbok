@@ -822,6 +822,22 @@ class PlatformDatabase
             return array_merge($default, ['platform_code'=>'E130','generation'=>'Vibe Gen 1','body_style'=>'Hatchback','compat_year_from'=>2003,'compat_year_to'=>2008,'shared_models'=>['Pontiac Vibe (2003-2008) - own generation', 'Toyota Matrix (2003-2008) - chassis-mate only'],'shared_vehicles'=>[['make'=>'PONTIAC','model'=>'VIBE','year_from'=>2003,'year_to'=>2008,'categories'=>self::OWN_GENERATION_CATEGORIES],['make'=>'TOYOTA','model'=>'MATRIX','year_from'=>2003,'year_to'=>2008,'categories'=>self::CROSS_MODEL_SAFE_CATEGORIES]]]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // SCION tC — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'SCION' && $model === 'TC') {
+            if ($year >= 2011) return array_merge($default, ['platform_code'=>'AGT20','generation'=>'tC Gen 2','body_style'=>'Coupe','compat_year_from'=>2011,'compat_year_to'=>2016,'shared_models'=>['Scion tC (2011-2016) - own generation'],'shared_vehicles'=>[['make'=>'SCION','model'=>'TC','year_from'=>2011,'year_to'=>2016,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'ANT10','generation'=>'tC Gen 1','body_style'=>'Coupe','compat_year_from'=>2005,'compat_year_to'=>2010,'shared_models'=>['Scion tC (2005-2010) - own generation'],'shared_vehicles'=>[['make'=>'SCION','model'=>'TC','year_from'=>2005,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // SCION xA — search-verified. Single generation, very short
+        // production run (only 3 model years).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'SCION' && $model === 'XA') {
+            return array_merge($default, ['platform_code'=>'NCP61','generation'=>'xA (single gen)','body_style'=>'Hatchback','compat_year_from'=>2004,'compat_year_to'=>2006,'shared_models'=>['Scion xA (2004-2006) - own generation'],'shared_vehicles'=>[['make'=>'SCION','model'=>'XA','year_from'=>2004,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
         return $default;
     }
 }
