@@ -1258,6 +1258,75 @@ class PlatformDatabase
             return array_merge($default, ['platform_code'=>'W166.5/V167','generation'=>'GLE (2016+)','body_style'=>'SUV','compat_year_from'=>2016,'compat_year_to'=>2019,'shared_models'=>['Mercedes-Benz GLE (2016-2019) - own generation'],'shared_vehicles'=>[['make'=>'MERCEDES-BENZ','model'=>'GLE','year_from'=>2016,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // NISSAN MICRA — search-verified. Not sold in US; included
+        // for Nigerian/Ghanaian market relevance (common Tokunbo/
+        // grey-import small car).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'MICRA') {
+            if ($year >= 2017) return array_merge($default, ['platform_code'=>'K14','generation'=>'Micra K14','body_style'=>'Hatchback','compat_year_from'=>2017,'compat_year_to'=>2023,'shared_models'=>['Nissan Micra (2017-2023) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'MICRA','year_from'=>2017,'year_to'=>2023,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2010) return array_merge($default, ['platform_code'=>'K13','generation'=>'Micra K13','body_style'=>'Hatchback','compat_year_from'=>2010,'compat_year_to'=>2016,'shared_models'=>['Nissan Micra (2010-2016) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'MICRA','year_from'=>2010,'year_to'=>2016,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'K12','generation'=>'Micra K12','body_style'=>'Hatchback','compat_year_from'=>2002,'compat_year_to'=>2010,'shared_models'=>['Nissan Micra (2002-2010) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'MICRA','year_from'=>2002,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN PATROL — not sold in US; a very common Nigerian-
+        // market body-on-frame SUV (Ladipo/Tokunbo staple). General-
+        // knowledge boundaries, spot-check recommended given no US
+        // sales data exists to cross-reference.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'PATROL') {
+            if ($year >= 2010) return array_merge($default, ['platform_code'=>'Y62','generation'=>'Patrol Y62','body_style'=>'SUV','compat_year_from'=>2010,'compat_year_to'=>2024,'shared_models'=>['Nissan Patrol (2010-2024) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'PATROL','year_from'=>2010,'year_to'=>2024,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Y61','generation'=>'Patrol Y61','body_style'=>'SUV','compat_year_from'=>1997,'compat_year_to'=>2009,'shared_models'=>['Nissan Patrol (1997-2009) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'PATROL','year_from'=>1997,'year_to'=>2009,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HYUNDAI GENESIS (sedan, pre-luxury-brand-split) — general-
+        // knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HYUNDAI' && $model === 'GENESIS') {
+            if ($year >= 2015) return array_merge($default, ['platform_code'=>'DH','generation'=>'Genesis DH','body_style'=>'Sedan','compat_year_from'=>2015,'compat_year_to'=>2016,'shared_models'=>['Hyundai Genesis (2015-2016) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'GENESIS','year_from'=>2015,'year_to'=>2016,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'BH','generation'=>'Genesis BH','body_style'=>'Sedan','compat_year_from'=>2009,'compat_year_to'=>2014,'shared_models'=>['Hyundai Genesis (2009-2014) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'GENESIS','year_from'=>2009,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // KIA SEDONA — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'KIA' && $model === 'SEDONA') {
+            if ($year >= 2015) return array_merge($default, ['platform_code'=>'YP','generation'=>'Sedona YP','body_style'=>'Minivan','compat_year_from'=>2015,'compat_year_to'=>2020,'shared_models'=>['Kia Sedona (2015-2020) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'SEDONA','year_from'=>2015,'year_to'=>2020,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2006) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'Sedona Gen 2','body_style'=>'Minivan','compat_year_from'=>2006,'compat_year_to'=>2014,'shared_models'=>['Kia Sedona (2006-2014) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'SEDONA','year_from'=>2006,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Sedona Gen 1','body_style'=>'Minivan','compat_year_from'=>2002,'compat_year_to'=>2005,'shared_models'=>['Kia Sedona (2002-2005) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'SEDONA','year_from'=>2002,'year_to'=>2005,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // FORD RANGER — general-knowledge boundaries (pre-hiatus US
+        // generations; 2019+ relaunch not yet common in used/Tokunbo
+        // stock, add later if it starts showing up).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'FORD' && $model === 'RANGER' && $year <= 2011) {
+            if ($year >= 2004) return array_merge($default, ['platform_code'=>'Gen4','generation'=>'Ranger Gen 4','body_style'=>'Pickup','compat_year_from'=>2004,'compat_year_to'=>2011,'shared_models'=>['Ford Ranger (2004-2011) - own generation'],'shared_vehicles'=>[['make'=>'FORD','model'=>'RANGER','year_from'=>2004,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen3','generation'=>'Ranger Gen 3','body_style'=>'Pickup','compat_year_from'=>1998,'compat_year_to'=>2003,'shared_models'=>['Ford Ranger (1998-2003) - own generation'],'shared_vehicles'=>[['make'=>'FORD','model'=>'RANGER','year_from'=>1998,'year_to'=>2003,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA PASSPORT — Gen 1 was an Isuzu Rodeo-based rebadge
+        // (1994-2002); Gen 3 is the modern Pilot-based model
+        // (2019+). No Gen 2 exists — Honda skipped the Passport
+        // nameplate entirely from 2002-2019.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'PASSPORT') {
+            if ($year >= 2019) return array_merge($default, ['platform_code'=>'Gen3','generation'=>'Passport Gen 3','body_style'=>'SUV','compat_year_from'=>2019,'compat_year_to'=>2023,'shared_models'=>['Honda Passport (2019-2023) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'PASSPORT','year_from'=>2019,'year_to'=>2023,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Passport Gen 1 (Isuzu Rodeo-based)','body_style'=>'SUV','compat_year_from'=>1994,'compat_year_to'=>2002,'shared_models'=>['Honda Passport (1994-2002) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'PASSPORT','year_from'=>1994,'year_to'=>2002,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA RIDGELINE — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'RIDGELINE') {
+            if ($year >= 2017) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'Ridgeline Gen 2','body_style'=>'Pickup','compat_year_from'=>2017,'compat_year_to'=>2023,'shared_models'=>['Honda Ridgeline (2017-2023) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'RIDGELINE','year_from'=>2017,'year_to'=>2023,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Ridgeline Gen 1','body_style'=>'Pickup','compat_year_from'=>2006,'compat_year_to'=>2014,'shared_models'=>['Honda Ridgeline (2006-2014) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'RIDGELINE','year_from'=>2006,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
         return $default;
     }
 }
