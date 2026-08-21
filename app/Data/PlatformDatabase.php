@@ -718,6 +718,110 @@ class PlatformDatabase
             return array_merge($default, ['platform_code'=>'MS','generation'=>'Optima MS','body_style'=>'Sedan','compat_year_from'=>2006,'compat_year_to'=>2010,'shared_models'=>['Kia Optima (2006-2010) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'OPTIMA','year_from'=>2006,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // TOYOTA MATRIX — search-verified. Cross-references the
+        // existing Corolla/Matrix/Vibe block for 2003-2008 and
+        // 2009-2013 — this entry exists so a direct Matrix lookup
+        // (not via Corolla) still resolves correctly.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'MATRIX') {
+            if ($year >= 2009) return array_merge($default, ['platform_code'=>'E140','generation'=>'Matrix Gen 2','body_style'=>'Hatchback','compat_year_from'=>2009,'compat_year_to'=>2013,'shared_models'=>['Toyota Matrix (2009-2013) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'MATRIX','year_from'=>2009,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'E130','generation'=>'Matrix Gen 1','body_style'=>'Hatchback','compat_year_from'=>2003,'compat_year_to'=>2008,'shared_models'=>['Toyota Matrix (2003-2008) - own generation', 'Pontiac Vibe (2003-2008) - chassis-mate only'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'MATRIX','year_from'=>2003,'year_to'=>2008,'categories'=>self::OWN_GENERATION_CATEGORIES],['make'=>'PONTIAC','model'=>'VIBE','year_from'=>2003,'year_to'=>2008,'categories'=>self::CROSS_MODEL_SAFE_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA YARIS — search-verified US generation boundaries.
+        // Note: your 2002 stock entry predates US Yaris (2007+) —
+        // may be an earlier-market (Vitz/Nigeria) import; not covered
+        // by this US-market split, flag for review if it recurs.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'YARIS') {
+            if ($year >= 2012) return array_merge($default, ['platform_code'=>'XP150','generation'=>'Yaris Gen 2 (US)','body_style'=>'Hatchback/Sedan','compat_year_from'=>2012,'compat_year_to'=>2018,'shared_models'=>['Toyota Yaris (2012-2018) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'YARIS','year_from'=>2012,'year_to'=>2018,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'XP90','generation'=>'Yaris Gen 1 (US)','body_style'=>'Hatchback/Sedan','compat_year_from'=>2007,'compat_year_to'=>2011,'shared_models'=>['Toyota Yaris (2007-2011) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'YARIS','year_from'=>2007,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA TACOMA — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'TACOMA') {
+            if ($year >= 2016) return array_merge($default, ['platform_code'=>'Gen3','generation'=>'Tacoma Gen 3','body_style'=>'Pickup','compat_year_from'=>2016,'compat_year_to'=>2023,'shared_models'=>['Toyota Tacoma (2016-2023) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'TACOMA','year_from'=>2016,'year_to'=>2023,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2005) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'Tacoma Gen 2','body_style'=>'Pickup','compat_year_from'=>2005,'compat_year_to'=>2015,'shared_models'=>['Toyota Tacoma (2005-2015) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'TACOMA','year_from'=>2005,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Tacoma Gen 1','body_style'=>'Pickup','compat_year_from'=>1995,'compat_year_to'=>2004,'shared_models'=>['Toyota Tacoma (1995-2004) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'TACOMA','year_from'=>1995,'year_to'=>2004,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA ODYSSEY — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'ODYSSEY') {
+            if ($year >= 2011) return array_merge($default, ['platform_code'=>'RL5','generation'=>'Odyssey Gen 4','body_style'=>'Minivan','compat_year_from'=>2011,'compat_year_to'=>2017,'shared_models'=>['Honda Odyssey (2011-2017) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ODYSSEY','year_from'=>2011,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2005) return array_merge($default, ['platform_code'=>'RL3','generation'=>'Odyssey Gen 3','body_style'=>'Minivan','compat_year_from'=>2005,'compat_year_to'=>2010,'shared_models'=>['Honda Odyssey (2005-2010) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ODYSSEY','year_from'=>2005,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 1999) return array_merge($default, ['platform_code'=>'RL1','generation'=>'Odyssey Gen 2','body_style'=>'Minivan','compat_year_from'=>1999,'compat_year_to'=>2004,'shared_models'=>['Honda Odyssey (1999-2004) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ODYSSEY','year_from'=>1999,'year_to'=>2004,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'RA1','generation'=>'Odyssey Gen 1','body_style'=>'Minivan','compat_year_from'=>1995,'compat_year_to'=>1998,'shared_models'=>['Honda Odyssey (1995-1998) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ODYSSEY','year_from'=>1995,'year_to'=>1998,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA PILOT — general-knowledge boundaries, spot-check
+        // recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'PILOT') {
+            if ($year >= 2016) return array_merge($default, ['platform_code'=>'YF5','generation'=>'Pilot Gen 3','body_style'=>'SUV','compat_year_from'=>2016,'compat_year_to'=>2022,'shared_models'=>['Honda Pilot (2016-2022) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'PILOT','year_from'=>2016,'year_to'=>2022,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2009) return array_merge($default, ['platform_code'=>'YF3','generation'=>'Pilot Gen 2','body_style'=>'SUV','compat_year_from'=>2009,'compat_year_to'=>2015,'shared_models'=>['Honda Pilot (2009-2015) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'PILOT','year_from'=>2009,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'YF1','generation'=>'Pilot Gen 1','body_style'=>'SUV','compat_year_from'=>2003,'compat_year_to'=>2008,'shared_models'=>['Honda Pilot (2003-2008) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'PILOT','year_from'=>2003,'year_to'=>2008,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA CIVIC — general-knowledge boundaries for the range
+        // in stock (2001-2012), spot-check recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'CIVIC') {
+            if ($year >= 2012) return array_merge($default, ['platform_code'=>'FB','generation'=>'Civic Gen 9 (FB)','body_style'=>'Sedan/Coupe','compat_year_from'=>2012,'compat_year_to'=>2015,'shared_models'=>['Honda Civic (2012-2015) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'CIVIC','year_from'=>2012,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2006) return array_merge($default, ['platform_code'=>'FA/FG','generation'=>'Civic Gen 8 (FA/FG)','body_style'=>'Sedan/Coupe','compat_year_from'=>2006,'compat_year_to'=>2011,'shared_models'=>['Honda Civic (2006-2011) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'CIVIC','year_from'=>2006,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'EM/ES','generation'=>'Civic Gen 7 (EM/ES)','body_style'=>'Sedan/Coupe','compat_year_from'=>2001,'compat_year_to'=>2005,'shared_models'=>['Honda Civic (2001-2005) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'CIVIC','year_from'=>2001,'year_to'=>2005,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA CR-V — search-verified for Gen 3; Gen 1/2 boundaries
+        // from general knowledge, spot-check recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'CR-V') {
+            if ($year >= 2007) return array_merge($default, ['platform_code'=>'RE','generation'=>'CR-V Gen 3','body_style'=>'SUV','compat_year_from'=>2007,'compat_year_to'=>2011,'shared_models'=>['Honda CR-V (2007-2011) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'CR-V','year_from'=>2007,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2002) return array_merge($default, ['platform_code'=>'RD4-7','generation'=>'CR-V Gen 2','body_style'=>'SUV','compat_year_from'=>2002,'compat_year_to'=>2006,'shared_models'=>['Honda CR-V (2002-2006) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'CR-V','year_from'=>2002,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'RD1-3','generation'=>'CR-V Gen 1','body_style'=>'SUV','compat_year_from'=>1997,'compat_year_to'=>2001,'shared_models'=>['Honda CR-V (1997-2001) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'CR-V','year_from'=>1997,'year_to'=>2001,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA FIT — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'FIT') {
+            if ($year >= 2015) return array_merge($default, ['platform_code'=>'GK','generation'=>'Fit Gen 3','body_style'=>'Hatchback','compat_year_from'=>2015,'compat_year_to'=>2020,'shared_models'=>['Honda Fit (2015-2020) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'FIT','year_from'=>2015,'year_to'=>2020,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2009) return array_merge($default, ['platform_code'=>'GE','generation'=>'Fit Gen 2','body_style'=>'Hatchback','compat_year_from'=>2009,'compat_year_to'=>2014,'shared_models'=>['Honda Fit (2009-2014) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'FIT','year_from'=>2009,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'GD','generation'=>'Fit Gen 1','body_style'=>'Hatchback','compat_year_from'=>2007,'compat_year_to'=>2008,'shared_models'=>['Honda Fit (2007-2008) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'FIT','year_from'=>2007,'year_to'=>2008,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // SUBARU FORESTER — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'SUBARU' && $model === 'FORESTER') {
+            if ($year >= 2019) return array_merge($default, ['platform_code'=>'SK','generation'=>'Forester SK','body_style'=>'SUV','compat_year_from'=>2019,'compat_year_to'=>2024,'shared_models'=>['Subaru Forester (2019-2024) - own generation'],'shared_vehicles'=>[['make'=>'SUBARU','model'=>'FORESTER','year_from'=>2019,'year_to'=>2024,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2014) return array_merge($default, ['platform_code'=>'SJ','generation'=>'Forester SJ','body_style'=>'SUV','compat_year_from'=>2014,'compat_year_to'=>2018,'shared_models'=>['Subaru Forester (2014-2018) - own generation'],'shared_vehicles'=>[['make'=>'SUBARU','model'=>'FORESTER','year_from'=>2014,'year_to'=>2018,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2009) return array_merge($default, ['platform_code'=>'SH','generation'=>'Forester SH','body_style'=>'SUV','compat_year_from'=>2009,'compat_year_to'=>2013,'shared_models'=>['Subaru Forester (2009-2013) - own generation'],'shared_vehicles'=>[['make'=>'SUBARU','model'=>'FORESTER','year_from'=>2009,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'SG','generation'=>'Forester SG','body_style'=>'SUV/Wagon','compat_year_from'=>2003,'compat_year_to'=>2008,'shared_models'=>['Subaru Forester (2003-2008) - own generation'],'shared_vehicles'=>[['make'=>'SUBARU','model'=>'FORESTER','year_from'=>2003,'year_to'=>2008,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // PONTIAC VIBE — direct lookup entry (previously only existed
+        // as a cross-model reference inside the Matrix entries, so a
+        // Vibe part searched directly wouldn't have resolved). Gen 2
+        // deliberately ends 2010, NOT 2013 like the Matrix Gen 2 —
+        // Pontiac was discontinued in 2010, so the Vibe stopped two
+        // years before its Matrix twin did. Don't assume identical
+        // end dates just because they're chassis-mates.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'PONTIAC' && $model === 'VIBE') {
+            if ($year >= 2009) return array_merge($default, ['platform_code'=>'E140','generation'=>'Vibe Gen 2','body_style'=>'Hatchback','compat_year_from'=>2009,'compat_year_to'=>2010,'shared_models'=>['Pontiac Vibe (2009-2010) - own generation', 'Toyota Matrix (2009-2013) - chassis-mate only'],'shared_vehicles'=>[['make'=>'PONTIAC','model'=>'VIBE','year_from'=>2009,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES],['make'=>'TOYOTA','model'=>'MATRIX','year_from'=>2009,'year_to'=>2013,'categories'=>self::CROSS_MODEL_SAFE_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'E130','generation'=>'Vibe Gen 1','body_style'=>'Hatchback','compat_year_from'=>2003,'compat_year_to'=>2008,'shared_models'=>['Pontiac Vibe (2003-2008) - own generation', 'Toyota Matrix (2003-2008) - chassis-mate only'],'shared_vehicles'=>[['make'=>'PONTIAC','model'=>'VIBE','year_from'=>2003,'year_to'=>2008,'categories'=>self::OWN_GENERATION_CATEGORIES],['make'=>'TOYOTA','model'=>'MATRIX','year_from'=>2003,'year_to'=>2008,'categories'=>self::CROSS_MODEL_SAFE_CATEGORIES]]]);
+        }
+
         return $default;
     }
 }
