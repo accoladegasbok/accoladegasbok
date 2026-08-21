@@ -287,6 +287,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/promote-heuristic',             [\App\Http\Controllers\Admin\InterchangeController::class, 'promoteHeuristic'])->name('promote-heuristic');
             Route::post('/parts/{partId}/remove',         [\App\Http\Controllers\Admin\InterchangeController::class, 'removePart'])->name('parts.remove');
             Route::post('/parts/{partId}/assign',         [\App\Http\Controllers\Admin\InterchangeController::class, 'assignExisting'])->name('parts.assign');
+            // NEW: staff-added free-text "Extra Compatibility Note"
+            Route::post('/parts/{partId}/notes',          [\App\Http\Controllers\Admin\InterchangeController::class, 'addNote'])->name('notes.add');
+            Route::delete('/notes/{noteId}',               [\App\Http\Controllers\Admin\InterchangeController::class, 'removeNote'])->name('notes.remove');
         });
         // Staff management (admin/manager only)
         Route::middleware('admin.auth:admin,manager')
