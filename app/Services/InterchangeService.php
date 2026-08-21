@@ -281,14 +281,22 @@ class InterchangeService
     // the newly harvested part should join that group automatically
     // so stock aggregates correctly without admin having to set it
     // up manually every time.
+    //
+    // FIXED: make/model are now normalized to uppercase before the
+    // comparison, matching how PlatformDatabase/OemDatabase/
+    // mergeContiguousYearRanges already normalize internally. Without
+    // this, a group whose vehicles were entered as "Toyota" wouldn't
+    // match a harvest sending "TOYOTA" (or vice versa), silently
+    // fragmenting into duplicate groups instead of joining the
+    // existing one.
     // =========================================================
     public function findGroupByVehicle(string $partName, string $make, string $model, int $year): ?object
     {
         return DB::table('part_interchange_groups as g')
             ->join('part_interchange_vehicles as v', 'v.group_id', '=', 'g.id')
             ->where('g.part_name', $partName)
-            ->where('v.make', $make)
-            ->where('v.model', $model)
+            ->whereRaw('UPPER(v.make) = ?', [strtoupper(trim($make))])
+            ->whereRaw('UPPER(v.model) = ?', [strtoupper(trim($model))])
             ->where('v.year_from', '<=', $year)
             ->where('v.year_to', '>=', $year)
             ->select('g.*')
@@ -311,12 +319,18 @@ class InterchangeService
         ]);
     }
 
+    // FIXED: make/model normalized to uppercase on every write — this
+    // is the single write path for interchange vehicles (called from
+    // createGroup's own-vehicle seed, addVehicle, promoteHeuristicToGroup,
+    // and CompatibilityController::save()'s existing-group branch), so
+    // normalizing here means every caller gets it for free without each
+    // one having to remember to uppercase before calling.
     public function addVehicleToGroup(int $groupId, string $make, string $model, int $yearFrom, int $yearTo, ?string $trim = null, ?string $bodyStyle = null): int
     {
         return DB::table('part_interchange_vehicles')->insertGetId([
             'group_id'   => $groupId,
-            'make'       => $make,
-            'model'      => $model,
+            'make'       => strtoupper(trim($make)),
+            'model'      => strtoupper(trim($model)),
             'year_from'  => $yearFrom,
             'year_to'    => $yearTo,
             'trim'       => $trim,

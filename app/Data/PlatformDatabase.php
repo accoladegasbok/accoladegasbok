@@ -563,6 +563,161 @@ class PlatformDatabase
             ]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // TOYOTA SIENNA (XL10/XL20) — search-verified generation
+        // boundaries. XL30 (2011+) not yet added since current stock
+        // only goes to 2009; add on request when needed.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'SIENNA') {
+            if ($year >= 2011) return array_merge($default, [
+                'platform_code' => 'XL30', 'generation' => 'Sienna Gen 3 (XL30)',
+                'body_style' => 'Minivan', 'compat_year_from' => 2011, 'compat_year_to' => 2017,
+                'shared_models' => ['Toyota Sienna (2011-2017) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'SIENNA','year_from'=>2011,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+            if ($year >= 2004) return array_merge($default, [
+                'platform_code' => 'XL20', 'generation' => 'Sienna Gen 2 (XL20)',
+                'body_style' => 'Minivan', 'compat_year_from' => 2004, 'compat_year_to' => 2010,
+                'shared_models' => ['Toyota Sienna (2004-2010) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'SIENNA','year_from'=>2004,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+            return array_merge($default, [
+                'platform_code' => 'XL10', 'generation' => 'Sienna Gen 1 (XL10)',
+                'body_style' => 'Minivan', 'compat_year_from' => 1998, 'compat_year_to' => 2003,
+                'shared_models' => ['Toyota Sienna (1998-2003) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'SIENNA','year_from'=>1998,'year_to'=>2003,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA HIGHLANDER (XU20/XU40) — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'HIGHLANDER') {
+            if ($year >= 2008) return array_merge($default, [
+                'platform_code' => 'XU40', 'generation' => 'Highlander Gen 2 (XU40)',
+                'body_style' => 'SUV', 'compat_year_from' => 2008, 'compat_year_to' => 2013,
+                'shared_models' => ['Toyota Highlander (2008-2013) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'HIGHLANDER','year_from'=>2008,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+            return array_merge($default, [
+                'platform_code' => 'XU20', 'generation' => 'Highlander Gen 1 (XU20)',
+                'body_style' => 'SUV', 'compat_year_from' => 2001, 'compat_year_to' => 2007,
+                'shared_models' => ['Toyota Highlander (2001-2007) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'HIGHLANDER','year_from'=>2001,'year_to'=>2007,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA CAMRY XV10 (1992-1996) — extends existing Camry
+        // coverage back before the 1997-2001 bucket already on file.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'CAMRY' && $year < 1997) {
+            return array_merge($default, [
+                'platform_code' => 'XV10', 'generation' => 'Camry Gen 3 (XV10)',
+                'body_style' => 'Sedan', 'compat_year_from' => 1992, 'compat_year_to' => 1996,
+                'shared_models' => ['Toyota Camry (1992-1996) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'CAMRY','year_from'=>1992,'year_to'=>1996,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA PRIUS — hybrid platform. Battery/inverter/HV system
+        // are category-specific concerns beyond this generation split;
+        // OWN_GENERATION_CATEGORIES here covers body/suspension/
+        // interior only, same as every other entry — it does NOT
+        // imply hybrid-system parts (battery, inverter, HV cables)
+        // are safe across even this range without separate hybrid-
+        // specific verification.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'PRIUS') {
+            if ($year >= 2010) return array_merge($default, [
+                'platform_code' => 'ZVW30', 'generation' => 'Prius Gen 3 (ZVW30)',
+                'body_style' => 'Hatchback', 'compat_year_from' => 2010, 'compat_year_to' => 2015,
+                'shared_models' => ['Toyota Prius (2010-2015) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'PRIUS','year_from'=>2010,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+            return array_merge($default, [
+                'platform_code' => 'NHW20', 'generation' => 'Prius Gen 2 (NHW20)',
+                'body_style' => 'Hatchback', 'compat_year_from' => 2004, 'compat_year_to' => 2009,
+                'shared_models' => ['Toyota Prius (2004-2009) - own generation'],
+                'shared_vehicles' => [['make'=>'TOYOTA','model'=>'PRIUS','year_from'=>2004,'year_to'=>2009,'categories'=>self::OWN_GENERATION_CATEGORIES]],
+            ]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HYUNDAI SONATA — general-knowledge boundaries, high
+        // confidence (mainstream, well-documented), not individually
+        // search-verified this session. Spot-check before treating
+        // as fully confirmed the way Sienna/Highlander/Altima are.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HYUNDAI' && $model === 'SONATA') {
+            if ($year >= 2015) return array_merge($default, ['platform_code'=>'LF','generation'=>'Sonata LF','body_style'=>'Sedan','compat_year_from'=>2015,'compat_year_to'=>2019,'shared_models'=>['Hyundai Sonata (2015-2019) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'SONATA','year_from'=>2015,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2011) return array_merge($default, ['platform_code'=>'YF','generation'=>'Sonata YF','body_style'=>'Sedan','compat_year_from'=>2011,'compat_year_to'=>2014,'shared_models'=>['Hyundai Sonata (2011-2014) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'SONATA','year_from'=>2011,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2006) return array_merge($default, ['platform_code'=>'NF','generation'=>'Sonata NF','body_style'=>'Sedan','compat_year_from'=>2006,'compat_year_to'=>2010,'shared_models'=>['Hyundai Sonata (2006-2010) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'SONATA','year_from'=>2006,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'EF','generation'=>'Sonata EF','body_style'=>'Sedan','compat_year_from'=>1999,'compat_year_to'=>2005,'shared_models'=>['Hyundai Sonata (1999-2005) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'SONATA','year_from'=>1999,'year_to'=>2005,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HYUNDAI ELANTRA — general-knowledge boundaries, spot-check
+        // recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HYUNDAI' && $model === 'ELANTRA') {
+            if ($year >= 2017) return array_merge($default, ['platform_code'=>'AD','generation'=>'Elantra AD','body_style'=>'Sedan','compat_year_from'=>2017,'compat_year_to'=>2020,'shared_models'=>['Hyundai Elantra (2017-2020) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'ELANTRA','year_from'=>2017,'year_to'=>2020,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2011) return array_merge($default, ['platform_code'=>'MD','generation'=>'Elantra MD','body_style'=>'Sedan','compat_year_from'=>2011,'compat_year_to'=>2016,'shared_models'=>['Hyundai Elantra (2011-2016) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'ELANTRA','year_from'=>2011,'year_to'=>2016,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2007) return array_merge($default, ['platform_code'=>'HD','generation'=>'Elantra HD','body_style'=>'Sedan','compat_year_from'=>2007,'compat_year_to'=>2010,'shared_models'=>['Hyundai Elantra (2007-2010) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'ELANTRA','year_from'=>2007,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'XD','generation'=>'Elantra XD','body_style'=>'Sedan','compat_year_from'=>2001,'compat_year_to'=>2006,'shared_models'=>['Hyundai Elantra (2001-2006) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'ELANTRA','year_from'=>2001,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HYUNDAI PALISADE — single generation covers all current
+        // stock (2022 only).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HYUNDAI' && $model === 'PALISADE') {
+            return array_merge($default, ['platform_code'=>'LX2','generation'=>'Palisade LX2 Gen 1','body_style'=>'SUV','compat_year_from'=>2020,'compat_year_to'=>2022,'shared_models'=>['Hyundai Palisade (2020-2022) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'PALISADE','year_from'=>2020,'year_to'=>2022,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA ACCORD — general-knowledge boundaries for the range
+        // actually in stock (1994-2017). Pre-1994 (1986-1993, 3rd/4th
+        // gen) not added — send a specific part if you need those
+        // covered, rather than guessing at boundaries for cars this old.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'ACCORD') {
+            if ($year >= 2013) return array_merge($default, ['platform_code'=>'CR','generation'=>'Accord Gen 9 (CR)','body_style'=>'Sedan/Coupe','compat_year_from'=>2013,'compat_year_to'=>2017,'shared_models'=>['Honda Accord (2013-2017) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ACCORD','year_from'=>2013,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2008) return array_merge($default, ['platform_code'=>'CU','generation'=>'Accord Gen 8 (CU)','body_style'=>'Sedan/Coupe','compat_year_from'=>2008,'compat_year_to'=>2012,'shared_models'=>['Honda Accord (2008-2012) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ACCORD','year_from'=>2008,'year_to'=>2012,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2003) return array_merge($default, ['platform_code'=>'CL/CM','generation'=>'Accord Gen 7 (CL/CM)','body_style'=>'Sedan/Coupe','compat_year_from'=>2003,'compat_year_to'=>2007,'shared_models'=>['Honda Accord (2003-2007) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ACCORD','year_from'=>2003,'year_to'=>2007,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 1998) return array_merge($default, ['platform_code'=>'CF/CG','generation'=>'Accord Gen 6 (CF/CG)','body_style'=>'Sedan/Coupe','compat_year_from'=>1998,'compat_year_to'=>2002,'shared_models'=>['Honda Accord (1998-2002) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ACCORD','year_from'=>1998,'year_to'=>2002,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'CD','generation'=>'Accord Gen 5 (CD)','body_style'=>'Sedan/Coupe','compat_year_from'=>1994,'compat_year_to'=>1997,'shared_models'=>['Honda Accord (1994-1997) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'ACCORD','year_from'=>1994,'year_to'=>1997,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN ALTIMA — search-verified.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'ALTIMA') {
+            if ($year >= 2013) return array_merge($default, ['platform_code'=>'L33','generation'=>'Altima Gen 5 (L33)','body_style'=>'Sedan','compat_year_from'=>2013,'compat_year_to'=>2018,'shared_models'=>['Nissan Altima (2013-2018) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ALTIMA','year_from'=>2013,'year_to'=>2018,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2007) return array_merge($default, ['platform_code'=>'L32','generation'=>'Altima Gen 4 (L32)','body_style'=>'Sedan','compat_year_from'=>2007,'compat_year_to'=>2012,'shared_models'=>['Nissan Altima (2007-2012) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ALTIMA','year_from'=>2007,'year_to'=>2012,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'L31','generation'=>'Altima Gen 3 (L31)','body_style'=>'Sedan','compat_year_from'=>2002,'compat_year_to'=>2006,'shared_models'=>['Nissan Altima (2002-2006) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ALTIMA','year_from'=>2002,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN SENTRA — general-knowledge boundaries, spot-check
+        // recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'SENTRA') {
+            if ($year >= 2013) return array_merge($default, ['platform_code'=>'B17','generation'=>'Sentra B17','body_style'=>'Sedan','compat_year_from'=>2013,'compat_year_to'=>2019,'shared_models'=>['Nissan Sentra (2013-2019) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'SENTRA','year_from'=>2013,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2007) return array_merge($default, ['platform_code'=>'B16','generation'=>'Sentra B16','body_style'=>'Sedan','compat_year_from'=>2007,'compat_year_to'=>2012,'shared_models'=>['Nissan Sentra (2007-2012) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'SENTRA','year_from'=>2007,'year_to'=>2012,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'B15','generation'=>'Sentra B15','body_style'=>'Sedan','compat_year_from'=>2000,'compat_year_to'=>2006,'shared_models'=>['Nissan Sentra (2000-2006) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'SENTRA','year_from'=>2000,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // KIA OPTIMA — general-knowledge boundaries, spot-check
+        // recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'KIA' && $model === 'OPTIMA') {
+            if ($year >= 2011) return array_merge($default, ['platform_code'=>'TF','generation'=>'Optima TF','body_style'=>'Sedan','compat_year_from'=>2011,'compat_year_to'=>2015,'shared_models'=>['Kia Optima (2011-2015) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'OPTIMA','year_from'=>2011,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'MS','generation'=>'Optima MS','body_style'=>'Sedan','compat_year_from'=>2006,'compat_year_to'=>2010,'shared_models'=>['Kia Optima (2006-2010) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'OPTIMA','year_from'=>2006,'year_to'=>2010,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
         return $default;
     }
 }
