@@ -343,6 +343,22 @@ body.size-box49 .label-tearaway { display:none !important; }
         @else
             <div class="fits-val" style="color:#bbb;">No interchange data on file — see compatibility checker</div>
         @endif
+
+        {{-- NEW: staff-added free-text "Extra Compatibility Note" —
+             shown regardless of whether structured interchange data
+             exists above, since a caveat/confirmation can apply either
+             way. Each note is attributed to whoever wrote it. --}}
+        @if($part->compatibility_notes->isNotEmpty())
+        <div class="oem-reference" style="border-top:1px dashed #ddd;">
+            <div class="oem-ref-label">STAFF NOTE{{ $part->compatibility_notes->count() > 1 ? 'S' : '' }} — Extra Compatibility</div>
+            @foreach($part->compatibility_notes as $note)
+            <div class="oem-ref-list" style="margin-bottom:2px;">
+                {{ $note->note }}
+                <span style="color:#bbb;">— {{ $note->added_by_name ?? 'Staff' }}, {{ \Carbon\Carbon::parse($note->created_at)->format('M Y') }}</span>
+            </div>
+            @endforeach
+        </div>
+        @endif
     </div>
 
     {{-- Conditions --}}

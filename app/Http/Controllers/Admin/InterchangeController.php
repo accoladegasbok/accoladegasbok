@@ -19,6 +19,56 @@ class InterchangeController extends Controller
     }
 
     // =========================================================
+    // POST /admin/interchange/parts/{partId}/notes — staff adds a
+    // free-text "Extra Compatibility Note" to a part. Any authenticated
+    // staff member can add one (matches how conditions_and_options and
+    // other descriptive fields work) — attribution is what keeps this
+    // trustworthy, not restricting who can write it.
+    // =========================================================
+    public function addNote(Request $request, int $partId)
+    {
+        $request->validate(['note' => 'required|string|max:1000']);
+
+        $part = DB::table('parts_inventory')->where('id', $partId)->first();
+        abort_if(!$part, 404);
+
+        $this->interchange->addCompatibilityNote(
+            $partId,
+            $request->note,
+            Session::get('staff_id'),
+            Session::get('staff_name') ?? 'Unknown',
+            Session::get('staff_role') ?? 'staff'
+        );
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true]);
+        }
+
+        return redirect()->route('admin.inventory.edit', $partId)
+            ->with('success', 'Compatibility note added.');
+    }
+
+    // =========================================================
+    // DELETE /admin/interchange/notes/{noteId} — admin/manager only,
+    // matching who can already delete other confirmed records
+    // (interchange groups, oem numbers) elsewhere in this controller.
+    // =========================================================
+    public function removeNote(int $noteId)
+    {
+        if (!in_array(Session::get('staff_role'), ['admin', 'manager'])) {
+            abort(403, 'Only admin or manager can remove a compatibility note.');
+        }
+
+        $this->interchange->removeCompatibilityNote($noteId);
+
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json(['success' => true]);
+        }
+
+        return back()->with('success', 'Compatibility note removed.');
+    }
+
+    // =========================================================
     // POST /admin/interchange/groups — create a new group and
     // immediately assign the current part to it.
     // =========================================================

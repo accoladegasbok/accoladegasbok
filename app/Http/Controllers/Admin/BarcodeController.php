@@ -140,6 +140,13 @@ class BarcodeController extends Controller
                 if ($ref) $part->oem_reference = collect($ref);
             }
 
+            // NEW: staff-added free-text "Extra Compatibility Note" —
+            // for anything the structured make/model/year system can't
+            // capture (a caveat, a confirmed modified-unit fit, etc).
+            // Shown on the tag beneath the structured Also Fits/OEM
+            // Reference sections, clearly attributed to who wrote it.
+            $part->compatibility_notes = $this->interchange->notesForPart($part->id);
+
             // Business info for label header
             $part->business = app(\App\Http\Controllers\Admin\InvoiceController::class)
                 ->getBusinessInfo($part->location ?? 'Waxahachie TX');

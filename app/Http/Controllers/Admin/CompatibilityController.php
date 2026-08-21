@@ -423,6 +423,11 @@ class CompatibilityController extends Controller
             fn($v) => "{$v->make} {$v->model} ({$v->year_from}-{$v->year_to})"
         )->implode(', ');
 
+        // NEW: staff-added free-text "Extra Compatibility Note" —
+        // surfaces on the checker results too, not just the barcode
+        // tag, so staff searching a vehicle see the same caveats.
+        $compatibilityNotes = $this->interchange->notesForPart($part->id);
+
         // NEW: explicit count — "Fits 3 models" — so staff/customers
         // don't have to manually count the comma-separated list to
         // know the scope. Simple logic, exactly what was asked for:
@@ -451,6 +456,14 @@ class CompatibilityController extends Controller
             'part_name'       => $part->part_name,
             'part_category'   => $part->part_category,
             'donor_trim'      => $part->donor_trim ?? null,
+            // NEW: staff-added free-text compatibility caveats/notes —
+            // each entry attributed to who wrote it and when.
+            'compatibility_notes' => $compatibilityNotes->map(fn($n) => [
+                'note'       => $n->note,
+                'added_by'   => $n->added_by_name,
+                'added_role' => $n->added_by_role,
+                'added_at'   => $n->created_at,
+            ]),
             // NEW: drive type shown alongside every result — e.g. "2GR,
             // 3.5L, AWD" — so staff can visually verify before treating
             // a Transmission/axle match as interchangeable, without a

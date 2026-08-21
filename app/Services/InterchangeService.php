@@ -64,6 +64,40 @@ class InterchangeService
     }
 
     // =========================================================
+    // NEW: "Extra Compatibility Note" — a free-text note a confirmed
+    // staff member can add to any part, for cases that don't fit the
+    // structured make/model/year interchange schema (e.g. a caveat,
+    // a modified-unit confirmation, a note about a specific batch).
+    // Attributed and append-only — see migration comment for why this
+    // is its own table rather than a single overwritable field.
+    // =========================================================
+    public function addCompatibilityNote(int $partId, string $note, ?int $staffId, ?string $staffName, ?string $staffRole): int
+    {
+        return DB::table('part_compatibility_notes')->insertGetId([
+            'parts_inventory_id' => $partId,
+            'note'               => trim($note),
+            'added_by_staff_id'  => $staffId,
+            'added_by_name'      => $staffName,
+            'added_by_role'      => $staffRole,
+            'created_at'         => now(),
+            'updated_at'         => now(),
+        ]);
+    }
+
+    public function notesForPart(int $partId)
+    {
+        return DB::table('part_compatibility_notes')
+            ->where('parts_inventory_id', $partId)
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    public function removeCompatibilityNote(int $noteId): void
+    {
+        DB::table('part_compatibility_notes')->where('id', $noteId)->delete();
+    }
+
+    // =========================================================
     // Find (or null) the interchange group a part belongs to.
     // =========================================================
     public function groupForPart(int $partId): ?object
