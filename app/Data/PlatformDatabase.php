@@ -515,6 +515,54 @@ class PlatformDatabase
             ]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // LAND ROVER RANGE ROVER (L322, 3rd gen) — 2002-2012 overall,
+        // but deliberately split into THREE sub-generations rather
+        // than one broad range. This isn't a styling facelift split —
+        // it tracks real powertrain/electronics changes:
+        //   2002-2005: BMW ownership era — BMW-sourced V8/diesel
+        //              engines, BMW electronics architecture.
+        //   2006-2009: Sold to Ford in 2006 — Jaguar engines replace
+        //              the BMW units, electronics/infotainment
+        //              upgraded. A DIFFERENT electrical architecture
+        //              from the BMW-era cars despite being the same
+        //              generation chassis.
+        //   2010-2012: Facelift — supercharged 5.0L V8 introduced,
+        //              8-speed ZF transmission (up from 6-speed).
+        // An ECU/engine-electrical part from a 2009 car is NOT
+        // interchangeable with a 2003 car even though both are
+        // "L322" — this split prevents that overclaim. Body/exterior
+        // sheet metal is likely broader than this split allows, but
+        // narrower-than-necessary is the safe direction to err when
+        // uncertain; widen later if confirmed.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'LAND ROVER' && $model === 'RANGE ROVER') {
+            if ($year >= 2010) return array_merge($default, [
+                'platform_code' => 'L322', 'generation' => 'Range Rover L322 — facelift (5.0L SC V8, 8-spd)',
+                'body_style' => 'SUV', 'compat_year_from' => 2010, 'compat_year_to' => 2012,
+                'shared_models' => ['Land Rover Range Rover (2010-2012) - own generation'],
+                'shared_vehicles' => [
+                    ['make'=>'LAND ROVER','model'=>'RANGE ROVER','year_from'=>2010,'year_to'=>2012,'categories'=>self::OWN_GENERATION_CATEGORIES],
+                ],
+            ]);
+            if ($year >= 2006) return array_merge($default, [
+                'platform_code' => 'L322', 'generation' => 'Range Rover L322 — Ford/Jaguar era (post-2006)',
+                'body_style' => 'SUV', 'compat_year_from' => 2006, 'compat_year_to' => 2009,
+                'shared_models' => ['Land Rover Range Rover (2006-2009) - own generation'],
+                'shared_vehicles' => [
+                    ['make'=>'LAND ROVER','model'=>'RANGE ROVER','year_from'=>2006,'year_to'=>2009,'categories'=>self::OWN_GENERATION_CATEGORIES],
+                ],
+            ]);
+            return array_merge($default, [
+                'platform_code' => 'L322', 'generation' => 'Range Rover L322 — BMW era (2002-2005)',
+                'body_style' => 'SUV', 'compat_year_from' => 2002, 'compat_year_to' => 2005,
+                'shared_models' => ['Land Rover Range Rover (2002-2005) - own generation'],
+                'shared_vehicles' => [
+                    ['make'=>'LAND ROVER','model'=>'RANGE ROVER','year_from'=>2002,'year_to'=>2005,'categories'=>self::OWN_GENERATION_CATEGORIES],
+                ],
+            ]);
+        }
+
         return $default;
     }
 }
