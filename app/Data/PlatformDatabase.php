@@ -1079,6 +1079,185 @@ class PlatformDatabase
             return array_merge($default, ['platform_code'=>'PS','generation'=>'Soul PS','body_style'=>'Hatchback','compat_year_from'=>2014,'compat_year_to'=>2019,'shared_models'=>['Kia Soul (2014-2019) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'SOUL','year_from'=>2014,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // TOYOTA 4RUNNER — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === '4RUNNER') {
+            if ($year >= 2010) return array_merge($default, ['platform_code'=>'Gen5','generation'=>'4Runner Gen 5','body_style'=>'SUV','compat_year_from'=>2010,'compat_year_to'=>2024,'shared_models'=>['Toyota 4Runner (2010-2024) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'4RUNNER','year_from'=>2010,'year_to'=>2024,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2003) return array_merge($default, ['platform_code'=>'Gen4','generation'=>'4Runner Gen 4','body_style'=>'SUV','compat_year_from'=>2003,'compat_year_to'=>2009,'shared_models'=>['Toyota 4Runner (2003-2009) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'4RUNNER','year_from'=>2003,'year_to'=>2009,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen3','generation'=>'4Runner Gen 3','body_style'=>'SUV','compat_year_from'=>1996,'compat_year_to'=>2002,'shared_models'=>['Toyota 4Runner (1996-2002) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'4RUNNER','year_from'=>1996,'year_to'=>2002,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA SEQUOIA — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'SEQUOIA') {
+            if ($year >= 2008) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'Sequoia Gen 2','body_style'=>'SUV','compat_year_from'=>2008,'compat_year_to'=>2022,'shared_models'=>['Toyota Sequoia (2008-2022) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'SEQUOIA','year_from'=>2008,'year_to'=>2022,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Sequoia Gen 1','body_style'=>'SUV','compat_year_from'=>2001,'compat_year_to'=>2007,'shared_models'=>['Toyota Sequoia (2001-2007) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'SEQUOIA','year_from'=>2001,'year_to'=>2007,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA LAND CRUISER — general-knowledge boundaries
+        // (US-market J100/J200 body-on-frame Land Cruiser).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'LAND CRUISER') {
+            if ($year >= 2008) return array_merge($default, ['platform_code'=>'J200','generation'=>'Land Cruiser J200','body_style'=>'SUV','compat_year_from'=>2008,'compat_year_to'=>2021,'shared_models'=>['Toyota Land Cruiser (2008-2021) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'LAND CRUISER','year_from'=>2008,'year_to'=>2021,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'J100','generation'=>'Land Cruiser J100','body_style'=>'SUV','compat_year_from'=>1998,'compat_year_to'=>2007,'shared_models'=>['Toyota Land Cruiser (1998-2007) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'LAND CRUISER','year_from'=>1998,'year_to'=>2007,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA VENZA — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'VENZA' && $year <= 2015) {
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Venza Gen 1','body_style'=>'Crossover','compat_year_from'=>2009,'compat_year_to'=>2015,'shared_models'=>['Toyota Venza (2009-2015) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'VENZA','year_from'=>2009,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // LEXUS LX470/LX570 — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'LEXUS' && in_array($model, ['LX470','LX570','LX'])) {
+            if ($year >= 2008) return array_merge($default, ['platform_code'=>'J200','generation'=>'LX570 (J200-based)','body_style'=>'SUV','compat_year_from'=>2008,'compat_year_to'=>2021,'shared_models'=>['Lexus LX570 (2008-2021) - own generation'],'shared_vehicles'=>[['make'=>'LEXUS','model'=>$model,'year_from'=>2008,'year_to'=>2021,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'J100','generation'=>'LX470 (J100-based)','body_style'=>'SUV','compat_year_from'=>1998,'compat_year_to'=>2007,'shared_models'=>['Lexus LX470 (1998-2007) - own generation'],'shared_vehicles'=>[['make'=>'LEXUS','model'=>$model,'year_from'=>1998,'year_to'=>2007,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // LEXUS GX460/GX470 — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'LEXUS' && in_array($model, ['GX460','GX470','GX'])) {
+            if ($year >= 2010) return array_merge($default, ['platform_code'=>'J150','generation'=>'GX460 (J150-based)','body_style'=>'SUV','compat_year_from'=>2010,'compat_year_to'=>2023,'shared_models'=>['Lexus GX460 (2010-2023) - own generation'],'shared_vehicles'=>[['make'=>'LEXUS','model'=>$model,'year_from'=>2010,'year_to'=>2023,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'J120','generation'=>'GX470 (J120-based)','body_style'=>'SUV','compat_year_from'=>2003,'compat_year_to'=>2009,'shared_models'=>['Lexus GX470 (2003-2009) - own generation'],'shared_vehicles'=>[['make'=>'LEXUS','model'=>$model,'year_from'=>2003,'year_to'=>2009,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HONDA HR-V — search-referenced (US Gen 1).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HONDA' && $model === 'HR-V') {
+            if ($year >= 2023) return array_merge($default, ['platform_code'=>'Gen3','generation'=>'HR-V Gen 3 (US)','body_style'=>'SUV','compat_year_from'=>2023,'compat_year_to'=>2027,'shared_models'=>['Honda HR-V (2023-2027) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'HR-V','year_from'=>2023,'year_to'=>2027,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'HR-V Gen 1 (US)','body_style'=>'SUV','compat_year_from'=>2016,'compat_year_to'=>2022,'shared_models'=>['Honda HR-V (2016-2022) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'HR-V','year_from'=>2016,'year_to'=>2022,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // ACURA MDX — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'ACURA' && $model === 'MDX') {
+            if ($year >= 2014) return array_merge($default, ['platform_code'=>'Gen3','generation'=>'MDX Gen 3','body_style'=>'SUV','compat_year_from'=>2014,'compat_year_to'=>2020,'shared_models'=>['Acura MDX (2014-2020) - own generation'],'shared_vehicles'=>[['make'=>'ACURA','model'=>'MDX','year_from'=>2014,'year_to'=>2020,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2007) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'MDX Gen 2','body_style'=>'SUV','compat_year_from'=>2007,'compat_year_to'=>2013,'shared_models'=>['Acura MDX (2007-2013) - own generation'],'shared_vehicles'=>[['make'=>'ACURA','model'=>'MDX','year_from'=>2007,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'MDX Gen 1','body_style'=>'SUV','compat_year_from'=>2001,'compat_year_to'=>2006,'shared_models'=>['Acura MDX (2001-2006) - own generation'],'shared_vehicles'=>[['make'=>'ACURA','model'=>'MDX','year_from'=>2001,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // ACURA RDX — search-verified Gen 1 start (2007).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'ACURA' && $model === 'RDX') {
+            if ($year >= 2019) return array_merge($default, ['platform_code'=>'Gen3','generation'=>'RDX Gen 3','body_style'=>'SUV','compat_year_from'=>2019,'compat_year_to'=>2025,'shared_models'=>['Acura RDX (2019-2025) - own generation'],'shared_vehicles'=>[['make'=>'ACURA','model'=>'RDX','year_from'=>2019,'year_to'=>2025,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            if ($year >= 2013) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'RDX Gen 2','body_style'=>'SUV','compat_year_from'=>2013,'compat_year_to'=>2018,'shared_models'=>['Acura RDX (2013-2018) - own generation'],'shared_vehicles'=>[['make'=>'ACURA','model'=>'RDX','year_from'=>2013,'year_to'=>2018,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'RDX Gen 1','body_style'=>'SUV','compat_year_from'=>2007,'compat_year_to'=>2012,'shared_models'=>['Acura RDX (2007-2012) - own generation'],'shared_vehicles'=>[['make'=>'ACURA','model'=>'RDX','year_from'=>2007,'year_to'=>2012,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN ROGUE — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'ROGUE') {
+            if ($year >= 2014) return array_merge($default, ['platform_code'=>'T32','generation'=>'Rogue Gen 2','body_style'=>'SUV','compat_year_from'=>2014,'compat_year_to'=>2020,'shared_models'=>['Nissan Rogue (2014-2020) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ROGUE','year_from'=>2014,'year_to'=>2020,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'S35','generation'=>'Rogue Gen 1','body_style'=>'SUV','compat_year_from'=>2008,'compat_year_to'=>2013,'shared_models'=>['Nissan Rogue (2008-2013) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ROGUE','year_from'=>2008,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN FRONTIER — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'FRONTIER') {
+            return array_merge($default, ['platform_code'=>'D40','generation'=>'Frontier D40','body_style'=>'Pickup','compat_year_from'=>2005,'compat_year_to'=>2020,'shared_models'=>['Nissan Frontier (2005-2020) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'FRONTIER','year_from'=>2005,'year_to'=>2020,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN VERSA — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'VERSA') {
+            if ($year >= 2012) return array_merge($default, ['platform_code'=>'N17','generation'=>'Versa Gen 2','body_style'=>'Sedan/Hatchback','compat_year_from'=>2012,'compat_year_to'=>2019,'shared_models'=>['Nissan Versa (2012-2019) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'VERSA','year_from'=>2012,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'C11','generation'=>'Versa Gen 1','body_style'=>'Sedan/Hatchback','compat_year_from'=>2007,'compat_year_to'=>2011,'shared_models'=>['Nissan Versa (2007-2011) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'VERSA','year_from'=>2007,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN QUEST — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'QUEST' && $year >= 2011) {
+            return array_merge($default, ['platform_code'=>'RE52','generation'=>'Quest Gen 4','body_style'=>'Minivan','compat_year_from'=>2011,'compat_year_to'=>2017,'shared_models'=>['Nissan Quest (2011-2017) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'QUEST','year_from'=>2011,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN ARMADA — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'ARMADA' && $year <= 2015) {
+            return array_merge($default, ['platform_code'=>'TA60','generation'=>'Armada Gen 1','body_style'=>'SUV','compat_year_from'=>2004,'compat_year_to'=>2015,'shared_models'=>['Nissan Armada (2004-2015) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ARMADA','year_from'=>2004,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HYUNDAI AZERA — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HYUNDAI' && $model === 'AZERA') {
+            if ($year >= 2012) return array_merge($default, ['platform_code'=>'HG','generation'=>'Azera HG','body_style'=>'Sedan','compat_year_from'=>2012,'compat_year_to'=>2017,'shared_models'=>['Hyundai Azera (2012-2017) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'AZERA','year_from'=>2012,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'TG','generation'=>'Azera TG','body_style'=>'Sedan','compat_year_from'=>2006,'compat_year_to'=>2011,'shared_models'=>['Hyundai Azera (2006-2011) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'AZERA','year_from'=>2006,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // HYUNDAI VELOSTER — single US generation.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'HYUNDAI' && $model === 'VELOSTER' && $year <= 2017) {
+            return array_merge($default, ['platform_code'=>'FS','generation'=>'Veloster Gen 1','body_style'=>'Hatchback','compat_year_from'=>2012,'compat_year_to'=>2017,'shared_models'=>['Hyundai Veloster (2012-2017) - own generation'],'shared_vehicles'=>[['make'=>'HYUNDAI','model'=>'VELOSTER','year_from'=>2012,'year_to'=>2017,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // KIA CERATO — export name for the Forte; same platform data.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'KIA' && $model === 'CERATO') {
+            if ($year >= 2014) return array_merge($default, ['platform_code'=>'YD','generation'=>'Cerato/Forte YD','body_style'=>'Sedan','compat_year_from'=>2014,'compat_year_to'=>2018,'shared_models'=>['Kia Cerato/Forte (2014-2018) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'CERATO','year_from'=>2014,'year_to'=>2018,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'TD','generation'=>'Cerato/Forte TD','body_style'=>'Sedan','compat_year_from'=>2010,'compat_year_to'=>2013,'shared_models'=>['Kia Cerato/Forte (2010-2013) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'CERATO','year_from'=>2010,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // KIA RONDO — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'KIA' && $model === 'RONDO') {
+            return array_merge($default, ['platform_code'=>'UN','generation'=>'Rondo UN','body_style'=>'Minivan/Wagon','compat_year_from'=>2007,'compat_year_to'=>2012,'shared_models'=>['Kia Rondo (2007-2012) - own generation'],'shared_vehicles'=>[['make'=>'KIA','model'=>'RONDO','year_from'=>2007,'year_to'=>2012,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // FORD EDGE — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'FORD' && $model === 'EDGE') {
+            if ($year >= 2015) return array_merge($default, ['platform_code'=>'Gen2','generation'=>'Edge Gen 2','body_style'=>'SUV','compat_year_from'=>2015,'compat_year_to'=>2018,'shared_models'=>['Ford Edge (2015-2018) - own generation'],'shared_vehicles'=>[['make'=>'FORD','model'=>'EDGE','year_from'=>2015,'year_to'=>2018,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Edge Gen 1','body_style'=>'SUV','compat_year_from'=>2007,'compat_year_to'=>2014,'shared_models'=>['Ford Edge (2007-2014) - own generation'],'shared_vehicles'=>[['make'=>'FORD','model'=>'EDGE','year_from'=>2007,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // FORD TAURUS — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'FORD' && $model === 'TAURUS') {
+            if ($year >= 2010) return array_merge($default, ['platform_code'=>'Gen6','generation'=>'Taurus Gen 6','body_style'=>'Sedan','compat_year_from'=>2010,'compat_year_to'=>2019,'shared_models'=>['Ford Taurus (2010-2019) - own generation'],'shared_vehicles'=>[['make'=>'FORD','model'=>'TAURUS','year_from'=>2010,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen5','generation'=>'Taurus Gen 5 (DEW98)','body_style'=>'Sedan','compat_year_from'=>2000,'compat_year_to'=>2007,'shared_models'=>['Ford Taurus (2000-2007) - own generation'],'shared_vehicles'=>[['make'=>'FORD','model'=>'TAURUS','year_from'=>2000,'year_to'=>2007,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // MERCEDES-BENZ S-CLASS — general-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'MERCEDES-BENZ' && $model === 'S-CLASS') {
+            if ($year >= 2006) return array_merge($default, ['platform_code'=>'W221','generation'=>'S-Class W221','body_style'=>'Sedan','compat_year_from'=>2006,'compat_year_to'=>2013,'shared_models'=>['Mercedes-Benz S-Class (2006-2013) - own generation'],'shared_vehicles'=>[['make'=>'MERCEDES-BENZ','model'=>'S-CLASS','year_from'=>2006,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'W220','generation'=>'S-Class W220','body_style'=>'Sedan','compat_year_from'=>1999,'compat_year_to'=>2005,'shared_models'=>['Mercedes-Benz S-Class (1999-2005) - own generation'],'shared_vehicles'=>[['make'=>'MERCEDES-BENZ','model'=>'S-CLASS','year_from'=>1999,'year_to'=>2005,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // MERCEDES-BENZ ML-CLASS / GLE — GLE is the ML-Class's
+        // renamed successor (2016+); kept as separate lookups since
+        // they're stored as different model names in your inventory.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'MERCEDES-BENZ' && $model === 'ML-CLASS') {
+            if ($year >= 2012) return array_merge($default, ['platform_code'=>'W166','generation'=>'ML-Class W166','body_style'=>'SUV','compat_year_from'=>2012,'compat_year_to'=>2015,'shared_models'=>['Mercedes-Benz ML-Class (2012-2015) - own generation'],'shared_vehicles'=>[['make'=>'MERCEDES-BENZ','model'=>'ML-CLASS','year_from'=>2012,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'W164','generation'=>'ML-Class W164','body_style'=>'SUV','compat_year_from'=>2006,'compat_year_to'=>2011,'shared_models'=>['Mercedes-Benz ML-Class (2006-2011) - own generation'],'shared_vehicles'=>[['make'=>'MERCEDES-BENZ','model'=>'ML-CLASS','year_from'=>2006,'year_to'=>2011,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+        if ($make === 'MERCEDES-BENZ' && $model === 'GLE') {
+            return array_merge($default, ['platform_code'=>'W166.5/V167','generation'=>'GLE (2016+)','body_style'=>'SUV','compat_year_from'=>2016,'compat_year_to'=>2019,'shared_models'=>['Mercedes-Benz GLE (2016-2019) - own generation'],'shared_vehicles'=>[['make'=>'MERCEDES-BENZ','model'=>'GLE','year_from'=>2016,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
         return $default;
     }
 }
