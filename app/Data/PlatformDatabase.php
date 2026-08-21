@@ -1327,6 +1327,54 @@ class PlatformDatabase
             return array_merge($default, ['platform_code'=>'Gen1','generation'=>'Ridgeline Gen 1','body_style'=>'Pickup','compat_year_from'=>2006,'compat_year_to'=>2014,'shared_models'=>['Honda Ridgeline (2006-2014) - own generation'],'shared_vehicles'=>[['make'=>'HONDA','model'=>'RIDGELINE','year_from'=>2006,'year_to'=>2014,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
         }
 
+        // ══════════════════════════════════════════════════════
+        // TOYOTA HILUX — not sold in US; global-market pickup, very
+        // common in Nigerian/Ghanaian imports. General-knowledge
+        // boundaries, spot-check recommended (no US sales data to
+        // cross-reference against).
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'HILUX') {
+            if ($year >= 2005) return array_merge($default, ['platform_code'=>'AN10/20','generation'=>'Hilux Gen 7','body_style'=>'Pickup','compat_year_from'=>2005,'compat_year_to'=>2015,'shared_models'=>['Toyota Hilux (2005-2015) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'HILUX','year_from'=>2005,'year_to'=>2015,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'Gen6','generation'=>'Hilux Gen 6','body_style'=>'Pickup','compat_year_from'=>1997,'compat_year_to'=>2004,'shared_models'=>['Toyota Hilux (1997-2004) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'HILUX','year_from'=>1997,'year_to'=>2004,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA HIACE — not sold in US; global-market van, common
+        // Nigerian commercial import. General-knowledge boundary,
+        // spot-check recommended.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'HIACE') {
+            return array_merge($default, ['platform_code'=>'H200','generation'=>'HiAce H200','body_style'=>'Van','compat_year_from'=>2004,'compat_year_to'=>2019,'shared_models'=>['Toyota HiAce (2004-2019) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'HIACE','year_from'=>2004,'year_to'=>2019,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // TOYOTA LAND CRUISER PRADO — distinct, smaller model from
+        // the full-size Land Cruiser above; not sold in US but a
+        // very common Nigerian import. General-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'TOYOTA' && $model === 'LAND CRUISER PRADO') {
+            if ($year >= 2009) return array_merge($default, ['platform_code'=>'J150','generation'=>'Prado J150','body_style'=>'SUV','compat_year_from'=>2009,'compat_year_to'=>2023,'shared_models'=>['Toyota Land Cruiser Prado (2009-2023) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'LAND CRUISER PRADO','year_from'=>2009,'year_to'=>2023,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'J120','generation'=>'Prado J120','body_style'=>'SUV','compat_year_from'=>2002,'compat_year_to'=>2009,'shared_models'=>['Toyota Land Cruiser Prado (2002-2009) - own generation'],'shared_vehicles'=>[['make'=>'TOYOTA','model'=>'LAND CRUISER PRADO','year_from'=>2002,'year_to'=>2009,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN QASHQAI — not sold in US; common UK/Nigerian
+        // import crossover. General-knowledge boundaries.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'QASHQAI') {
+            if ($year >= 2014) return array_merge($default, ['platform_code'=>'J11','generation'=>'Qashqai J11','body_style'=>'Crossover','compat_year_from'=>2014,'compat_year_to'=>2021,'shared_models'=>['Nissan Qashqai (2014-2021) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'QASHQAI','year_from'=>2014,'year_to'=>2021,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+            return array_merge($default, ['platform_code'=>'J10','generation'=>'Qashqai J10','body_style'=>'Crossover','compat_year_from'=>2006,'compat_year_to'=>2013,'shared_models'=>['Nissan Qashqai (2006-2013) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'QASHQAI','year_from'=>2006,'year_to'=>2013,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
+        // ══════════════════════════════════════════════════════
+        // NISSAN ALMERA — not sold in US; common Nigerian import
+        // small sedan. General-knowledge boundary for the N16
+        // generation matching your stock's 2000 entry.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'NISSAN' && $model === 'ALMERA' && $year >= 2000 && $year <= 2006) {
+            return array_merge($default, ['platform_code'=>'N16','generation'=>'Almera N16','body_style'=>'Sedan/Hatchback','compat_year_from'=>2000,'compat_year_to'=>2006,'shared_models'=>['Nissan Almera (2000-2006) - own generation'],'shared_vehicles'=>[['make'=>'NISSAN','model'=>'ALMERA','year_from'=>2000,'year_to'=>2006,'categories'=>self::OWN_GENERATION_CATEGORIES]]]);
+        }
+
         return $default;
     }
 }
