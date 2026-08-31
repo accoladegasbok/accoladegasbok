@@ -621,17 +621,17 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                             {{ $item->part_name }}
                             @if(($item->discount_amount_local ?? 0) > 0 && $copyKey !== 'waybill')
                             <span style="display:inline-block; background:#fff3e0; color:#e65100; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">
-                                @if($item->discount_type === 'percent')
-                                    -{{ rtrim(rtrim(number_format((float) $item->discount_value, 2), '0'), '.') }}%
+                                @if(($item->discount_type ?? null) === 'percent')
+                                    -{{ rtrim(rtrim(number_format((float) ($item->discount_value ?? 0), 2), '0'), '.') }}%
                                 @else
-                                    -{{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($item->discount_amount_local) : number_format($item->discount_amount_local, 2) }}
+                                    -{{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($item->discount_amount_local ?? 0) : number_format($item->discount_amount_local ?? 0, 2) }}
                                 @endif
                             </span>
                             @endif
                             {{-- NEW: returned & refunded badge --}}
                             @if(!empty($item->returned) && $copyKey !== 'waybill')
                             <span style="display:inline-block; background:#fdecea; color:#a32d2d; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">
-                                ↩ RETURNED — REFUNDED{{ $item->return_refund_method ? ' VIA ' . strtoupper(str_replace('_',' ', $item->return_refund_method)) : '' }}
+                                ↩ RETURNED — REFUNDED{{ !empty($item->return_refund_method ?? null) ? ' VIA ' . strtoupper(str_replace('_',' ', $item->return_refund_method)) : '' }}
                             </span>
                             @endif
                         </div>
@@ -648,7 +648,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                                 @if(!empty($item->colour)){{ $item->colour }} · @endif
                                 @if(!empty($item->mileage)){{ number_format($item->mileage) }} miles @endif
                             @else
-                                @if(!empty($item->brand)){{ strtoupper($item->brand) }} {{ strtoupper($item->model) }} {{ $item->year_from }}@if($item->year_to && $item->year_to != $item->year_from)–{{ $item->year_to }}@endif · @endif
+                                @if(!empty($item->brand)){{ strtoupper($item->brand) }} {{ strtoupper($item->model ?? '') }} {{ $item->year_from ?? '' }}@if(($item->year_to ?? null) && ($item->year_to ?? null) != ($item->year_from ?? null))–{{ $item->year_to }}@endif · @endif
                                 @if(!empty($item->engine_code_oem))Engine: {{ $item->engine_code_oem }} · @endif
                                 @if(!empty($item->part_category)){{ $item->part_category }}@endif
                             @endif
@@ -659,12 +659,12 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
                         <div style="font-family:monospace;font-size:10px;">{{ $item->part_code }}</div>
                         @if(!empty($item->brand))
                         <div style="font-size:9px;color:#666;margin-top:2px;">
-                            Fits: {{ $item->brand }} {{ $item->model }}
-                            {{ $item->compat_year_from ?? $item->year_from }}@if(($item->compat_year_to ?? $item->year_to) != ($item->compat_year_from ?? $item->year_from))–{{ $item->compat_year_to ?? $item->year_to }}@endif
+                            Fits: {{ $item->brand }} {{ $item->model ?? '' }}
+                            {{ $item->compat_year_from ?? $item->year_from ?? '' }}@if(($item->compat_year_to ?? $item->year_to ?? null) != ($item->compat_year_from ?? $item->year_from ?? null))–{{ $item->compat_year_to ?? $item->year_to ?? '' }}@endif
                         </div>
                         @endif
                         @if(!empty($item->engine_code_oem))
-                        <div style="font-size:9px;color:#999;">OEM: {{ $item->engine_code_oem }}{{ $item->transmission_code_oem ? ' / '.$item->transmission_code_oem : '' }}</div>
+                        <div style="font-size:9px;color:#999;">OEM: {{ $item->engine_code_oem }}{{ !empty($item->transmission_code_oem ?? null) ? ' / '.$item->transmission_code_oem : '' }}</div>
                         @endif
                         @else
                         <div style="font-family:monospace;font-size:10px;">{{ $item->vin ?? 'N/A' }}</div>
