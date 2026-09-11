@@ -240,4 +240,36 @@ class PartNameManagerController extends Controller
         return redirect()->route('admin.part-names.index')
             ->with('success', "\"{$term->standard_name}\" removed.");
     }
+
+    // POST /admin/part-names/add-to-taxonomy — one-click "activate"
+    // for a name already used on real inventory but missing from the
+    // standardized taxonomy (shows "NO" in the dropdown column).
+    // Exact name, no retyping — avoids the typo risk of re-adding it
+    // manually through the Add form.
+    public function addToTaxonomy(Request $request)
+    {
+        $this->requireAdmin();
+
+        $request->validate([
+            'part_name' => 'required|string|max:150',
+            'category'  => 'nullable|string|max:60',
+        ]);
+
+        $category = $request->category ?: 'General';
+
+        if (DB::table('part_terminology')->where('standard_name', $request->part_name)->exists()) {
+            return back()->with('error', "\"{$request->part_name}\" is already in the dropdown list.");
+        }
+
+        DB::table('part_terminology')->insert([
+            'category'       => $category,
+            'standard_name'  => $request->part_name,
+            'aces_pies_note' => null,
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
+
+        return redirect()->route('admin.part-names.index')
+            ->with('success', "\"{$request->part_name}\" is now in the dropdown.");
+    }
 }

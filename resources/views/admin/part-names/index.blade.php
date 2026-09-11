@@ -83,7 +83,13 @@
             @if($n->in_taxonomy)
             <span class="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-700">✓ YES</span>
             @else
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-700">— NO</span>
+            <form method="POST" action="{{ route('admin.part-names.add-to-taxonomy') }}" class="inline">
+                @csrf
+                <input type="hidden" name="part_name" value="{{ $n->part_name }}">
+                <button type="submit" class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-700 hover:bg-gold hover:text-navy transition-colors" title="Click to add this to the dropdown">
+                    — NO (click to add)
+                </button>
+            </form>
             @endif
         </td>
         <td class="px-4 py-3 text-right">
