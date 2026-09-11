@@ -38,16 +38,43 @@ class PartNameManagerController extends Controller
 
         $q = trim($request->get('q', ''));
 
-        $query = DB::table('parts_inventory')
+        // FIXED: this used to query parts_inventory ONLY — meaning a
+        // name that existed in part_terminology (the standardized
+        // taxonomy that Add Parts Manually/Harvest actually read from)
+        // but had zero real inventory tagged with it yet was
+        // completely invisible on this page. Real unification means
+        // showing BOTH sources together, not just one.
+        $invQuery = DB::table('parts_inventory')
             ->select('part_name', DB::raw('COUNT(*) as part_count'), DB::raw('SUM(stock_qty) as total_stock'))
-            ->groupBy('part_name')
-            ->orderBy('part_name');
+            ->groupBy('part_name');
+        if ($q) $invQuery->where('part_name', 'like', "%{$q}%");
+        $invRows = $invQuery->get()->keyBy(fn($r) => strtolower(trim($r->part_name)));
 
-        if ($q) {
-            $query->where('part_name', 'like', "%{$q}%");
+        $termQuery = DB::table('part_terminology')->select('id', 'category', 'standard_name');
+        if ($q) $termQuery->where('standard_name', 'like', "%{$q}%");
+        $termRows = $termQuery->get()->keyBy(fn($r) => strtolower(trim($r->standard_name)));
+
+        $merged = [];
+        foreach ($invRows as $key => $row) {
+            $merged[$key] = (object) [
+                'part_name'      => $row->part_name,
+                'part_count'     => $row->part_count,
+                'total_stock'    => $row->total_stock,
+                'in_taxonomy'    => isset($termRows[$key]),
+            ];
+        }
+        foreach ($termRows as $key => $row) {
+            if (!isset($merged[$key])) {
+                $merged[$key] = (object) [
+                    'part_name'   => $row->standard_name,
+                    'part_count'  => 0,
+                    'total_stock' => 0,
+                    'in_taxonomy' => true,
+                ];
+            }
         }
 
-        $names = $query->get();
+        $names = collect($merged)->sortBy(fn($r) => strtolower($r->part_name))->values();
 
         return view('admin.part-names.index', compact('names', 'q'));
     }
@@ -72,7 +99,27 @@ class PartNameManagerController extends Controller
                 $affected += DB::table('parts_inventory')
                     ->where('part_name', $oldName)
                     ->update(['part_name' => $request->to_name, 'updated_at' => now()]);
+
+                // NEW: clear out the old name's taxonomy entry (if any)
+                // since it's been merged away — same unification fix
+                // as renameOne().
+                DB::table('part_terminology')->where('standard_name', $oldName)->delete();
             }
+
+            // Ensure the canonical target name exists in the taxonomy,
+            // so it's selectable on Add Parts Manually/Harvest even if
+            // none of the merged names happened to have a taxonomy
+            // entry already.
+            if (!DB::table('part_terminology')->where('standard_name', $request->to_name)->exists()) {
+                DB::table('part_terminology')->insert([
+                    'category'       => 'General',
+                    'standard_name'  => $request->to_name,
+                    'aces_pies_note' => null,
+                    'created_at'     => now(),
+                    'updated_at'     => now(),
+                ]);
+            }
+
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -80,7 +127,7 @@ class PartNameManagerController extends Controller
         }
 
         return redirect()->route('admin.part-names.index')
-            ->with('success', "Merged into \"{$request->to_name}\" — {$affected} part(s) updated.");
+            ->with('success', "Merged into \"{$request->to_name}\" — {$affected} part(s) updated, and the standardized name list is now in sync.");
     }
 
     // POST /admin/part-names/rename-one
@@ -99,8 +146,32 @@ class PartNameManagerController extends Controller
             ->where('part_name', $request->old_name)
             ->update(['part_name' => $request->new_name, 'updated_at' => now()]);
 
+        // NEW: propagate to part_terminology too — this is the actual
+        // unification fix. Previously a rename here never touched the
+        // standardized taxonomy at all, so Add Parts Manually/Harvest
+        // dropdowns kept showing the OLD name forever, permanently out
+        // of sync with what this tool just renamed.
+        $existingTerm = DB::table('part_terminology')->where('standard_name', $request->old_name)->first();
+        if ($existingTerm) {
+            DB::table('part_terminology')->where('id', $existingTerm->id)->update([
+                'standard_name' => $request->new_name,
+                'updated_at'    => now(),
+            ]);
+        } elseif (!DB::table('part_terminology')->where('standard_name', $request->new_name)->exists()) {
+            // No taxonomy entry existed for the old name at all — create
+            // one for the new name so it becomes selectable going
+            // forward too, not just retroactively relabeled on old parts.
+            DB::table('part_terminology')->insert([
+                'category'       => 'General',
+                'standard_name'  => $request->new_name,
+                'aces_pies_note' => null,
+                'created_at'     => now(),
+                'updated_at'     => now(),
+            ]);
+        }
+
         return redirect()->route('admin.part-names.index')
-            ->with('success', "Renamed \"{$request->old_name}\" → \"{$request->new_name}\" — {$affected} part(s) updated.");
+            ->with('success', "Renamed \"{$request->old_name}\" → \"{$request->new_name}\" — {$affected} part(s) updated, and the standardized name list is now in sync.");
     }
 
     // POST /admin/part-names/store — add a brand-new canonical name.

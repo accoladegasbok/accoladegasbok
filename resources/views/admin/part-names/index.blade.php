@@ -29,7 +29,7 @@
 </form>
 
 <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 text-sm font-body mb-5">
-  Tick 2 or more names below that mean the same thing, type the ONE canonical name you want them all to become, then click Merge. Every part currently tagged with the old names is instantly retagged — nothing is deleted, just renamed.
+  Tick 2 or more names below that mean the same thing, type the ONE canonical name you want them all to become, then click Merge. Every part currently tagged with the old names is instantly retagged — nothing is deleted, just renamed. Rename and Merge now also update the standardized name list used by Add Parts Manually/Harvest, so one change here applies everywhere.
 </div>
 
 {{-- ── Add New Part Name ─────────────────────────────────────── --}}
@@ -68,6 +68,7 @@
         <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Part Name</th>
         <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"># Parts</th>
         <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Total Stock</th>
+        <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">In Dropdown?</th>
         <th class="px-4 py-3"></th>
       </tr>
     </thead>
@@ -78,12 +79,19 @@
         <td class="px-4 py-3 font-700 text-navy">{{ $n->part_name }}</td>
         <td class="px-4 py-3 text-gray-500">{{ $n->part_count }}</td>
         <td class="px-4 py-3 text-gray-500">{{ $n->total_stock }}</td>
+        <td class="px-4 py-3">
+            @if($n->in_taxonomy)
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-700">✓ YES</span>
+            @else
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-700">— NO</span>
+            @endif
+        </td>
         <td class="px-4 py-3 text-right">
           <button type="button" onclick="quickRename('{{ $n->part_name }}')" class="text-xs font-body text-gold hover:text-yellow-600">Rename</button>
         </td>
       </tr>
       @empty
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400 text-sm">No part names found.</td></tr>
+      <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm">No part names found.</td></tr>
       @endforelse
     </tbody>
   </table>
