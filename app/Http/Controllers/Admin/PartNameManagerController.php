@@ -112,30 +112,39 @@ class PartNameManagerController extends Controller
     {
         $this->requireAdmin();
 
+        // FIXED: the real form (admin/part-names/index.blade.php)
+        // sends the field as `name`, not `standard_name` — this
+        // caused every submission to fail validation silently, with
+        // the page showing whatever the PREVIOUS action's flash
+        // message happened to be instead of a real error (this view
+        // has no @if($errors->any()) block at all, so a failed
+        // validation was completely invisible).
         $request->validate([
-            'category'      => 'required|string|max:60',
-            'standard_name' => 'required|string|max:150',
+            'category' => 'nullable|string|max:60',
+            'name'     => 'required|string|max:150',
         ]);
 
+        $category = $request->category ?: 'General';
+
         $exists = DB::table('part_terminology')
-            ->where('category', $request->category)
-            ->where('standard_name', $request->standard_name)
+            ->where('category', $category)
+            ->where('standard_name', $request->name)
             ->exists();
 
         if ($exists) {
-            return back()->with('error', "\"{$request->standard_name}\" already exists under {$request->category}.");
+            return back()->with('error', "\"{$request->name}\" already exists under {$category}.");
         }
 
         DB::table('part_terminology')->insert([
-            'category'       => $request->category,
-            'standard_name'  => $request->standard_name,
+            'category'       => $category,
+            'standard_name'  => $request->name,
             'aces_pies_note' => null,
             'created_at'     => now(),
             'updated_at'     => now(),
         ]);
 
         return redirect()->route('admin.part-names.index')
-            ->with('success', "\"{$request->standard_name}\" added under {$request->category}.");
+            ->with('success', "\"{$request->name}\" added under {$category}.");
     }
 
     // DELETE /admin/part-names/{id} — remove a canonical name. Blocked

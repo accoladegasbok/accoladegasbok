@@ -12,6 +12,16 @@
 @if(session('error'))
 <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm font-body">{{ session('error') }}</div>
 @endif
+{{-- NEW: this was missing entirely — a failed validation (e.g. the
+     field-name mismatch that caused "Add Part Name" to silently fail)
+     redirected back with $errors set but nothing on this page ever
+     displayed them, so the OLD flash message just kept showing
+     instead, making a real failure look like success. --}}
+@if($errors->any())
+<div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm font-body">
+    @foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach
+</div>
+@endif
 
 <form method="GET" class="mb-4">
   <input type="text" name="q" value="{{ $q }}" placeholder="Search part names..."
@@ -37,9 +47,8 @@
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
             <select name="category" class="border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:border-yellow-400">
-                <option value="">Select category</option>
-                @foreach(['Engine','Transmission','Electrical','Body','Suspension','Cooling','Brakes','Interior','Fuel','Exhaust','Wheels','Electronics','Computers','General'] as $cat)
-                <option value="{{ $cat }}">{{ $cat }}</option>
+                @foreach(['General','Engine','Transmission','Electrical','Body','Suspension','Cooling','Brakes','Interior','Fuel','Exhaust','Wheels','Electronics','Computers'] as $cat)
+                <option value="{{ $cat }}" {{ $cat === 'General' ? 'selected' : '' }}>{{ $cat }}</option>
                 @endforeach
             </select>
         </div>
