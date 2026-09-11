@@ -338,6 +338,22 @@ class PartNames
                 $flat[] = $name;
             }
         }
+
+        // NEW: merge in live additions from part_terminology (the
+        // standardized taxonomy, also editable via the admin Part
+        // Name Manager at /admin/part-names). Only this method pulls
+        // from the DB — all()/forCategory()/categories() stay purely
+        // static, since other consumers (e.g. ConsumableController's
+        // 'Generic / Consumable' category) rely on category names
+        // that don't exist in part_terminology by design.
+        try {
+            $dbNames = \Illuminate\Support\Facades\DB::table('part_terminology')->pluck('standard_name')->all();
+            $flat = array_values(array_unique(array_merge($flat, $dbNames)));
+        } catch (\Exception $e) {
+            // DB unavailable for some reason — fall back to the static
+            // list alone rather than breaking the whole form.
+        }
+
         return $flat;
     }
 
