@@ -210,8 +210,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // Part Names Manager (admin only) - merge/clean duplicate names
         Route::prefix('part-names')->name('part-names.')->group(function () {
             Route::get('/',             [\App\Http\Controllers\Admin\PartNameManagerController::class, 'index'])->name('index');
+            Route::post('/',            [\App\Http\Controllers\Admin\PartNameManagerController::class, 'store'])->name('store');
             Route::post('/merge',       [\App\Http\Controllers\Admin\PartNameManagerController::class, 'merge'])->name('merge');
             Route::post('/rename-one',  [\App\Http\Controllers\Admin\PartNameManagerController::class, 'renameOne'])->name('rename-one');
+            Route::delete('/{id}',      [\App\Http\Controllers\Admin\PartNameManagerController::class, 'destroy'])->name('destroy');
         });
 
         // Centralized Payments Ledger - all payments across Orders and Invoices
