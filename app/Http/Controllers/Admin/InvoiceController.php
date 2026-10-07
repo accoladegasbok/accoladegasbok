@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Services\LegalTraceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 use App\Support\Brands;
 
@@ -87,6 +88,75 @@ class InvoiceController extends Controller
         $balanceDue    = max(0, $subtotal - $confirmedPaid);
 
         return compact('payments', 'confirmedPaid', 'balanceDue');
+    }
+
+    // =========================================================
+    // DOCUMENT PAYMENT STATE — one rule for every invoice / receipt:
+    // an INVOICE while any balance remains, a RECEIPT once it is zero.
+    // Returns: summary, confirmed (paid so far), balance (still due),
+    //          status (PAID | PARTIAL | UNPAID), legacy / unknown flags.
+    // =========================================================
+    public static function documentPaymentState(?object $order, ?object $invoice, ?int $invoiceId = null): array
+    {
+        if (!$order && !$invoice && $invoiceId) {
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+        }
+
+        // Nothing to check against (e.g. a car-sale receipt shown straight after saving):
+        // treated as paid at the point of sale, exactly as these always were.
+        if (!$order && !$invoice) {
+            return ['summary' => null, 'confirmed' => 0.0, 'balance' => 0.0, 'status' => 'PAID', 'legacy' => false, 'unknown' => true];
+        }
+
+        $legacy = false;
+        $total  = 0.0;
+
+        if ($order) {
+            $summary = OrderAdminController::paymentSummary($order->id);
+            $total   = (float) ($order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0);
+            // Orders settled before payment records existed.
+            if ($summary['payments']->isEmpty()
+                && in_array(strtolower((string) ($order->payment_status ?? '')), ['confirmed', 'paid'], true)) {
+                $legacy = true;
+            }
+        } else {
+            $summary = self::invoicePaymentSummary($invoice->id);
+            $total   = (float) ($invoice->subtotal_local ?? $invoice->subtotal_usd ?? 0);
+            // Invoices created before payment tracking began have no payment rows at all.
+            // "Before tracking began" = older than the very first payment record ever saved.
+            if ($summary['payments']->isEmpty()) {
+                $firstPayment = DB::table('invoice_payments')->min('created_at');
+                $legacy = $firstPayment && $invoice->created_at < $firstPayment;
+            }
+        }
+
+        if ($legacy) {
+            return ['summary' => $summary, 'confirmed' => $total, 'balance' => 0.0, 'status' => 'PAID', 'legacy' => true, 'unknown' => false];
+        }
+
+        $confirmed = (float) $summary['payments']->where('status', 'confirmed')->sum('amount_local');
+        $balance   = (float) ($summary['balanceDue'] ?? 0);
+
+        if ($balance <= 0 && $confirmed > 0)      $status = 'PAID';
+        elseif ($confirmed > 0 && $balance > 0)   $status = 'PARTIAL';
+        else                                      $status = 'UNPAID';
+
+        return ['summary' => $summary, 'confirmed' => $confirmed, 'balance' => $balance, 'status' => $status, 'legacy' => false, 'unknown' => false];
+    }
+
+    // Shipping line (every receipt carries one) and the West Africa tax line.
+    // West Africa (NGN / GHS) shows Tax (0%) for now; USA is left exactly as it was.
+    private static function totalsExtras(?object $record, string $currencyCode): array
+    {
+        $shipping = (float) ($record->shipping_local ?? 0);
+        $africa   = in_array($currencyCode, ['NGN', 'GHS'], true);
+
+        return [
+            'shippingLocal' => $shipping,
+            'shippingFmt'   => self::formatLocal($shipping, $currencyCode),
+            'taxLabel'      => $africa ? 'Tax (0%):' : null,
+            'taxFmt'        => $africa ? self::formatLocal(0, $currencyCode) : null,
+        ];
     }
 
     // =========================================================
@@ -253,10 +323,18 @@ class InvoiceController extends Controller
     // =========================================================
     public function show(int $orderId)
     {
+        return view('admin.invoices.show', $this->orderDocumentData($orderId));
+    }
+
+    // The full set of variables the invoice/receipt template needs for an ORDER.
+    // Also used by the order PDF, so print and PDF are built from identical data.
+    public function orderDocumentData(int $orderId): array
+    {
         $order = DB::table('orders')->where('id', $orderId)->first();
         if (!$order) abort(404);
 
         $orderCurrency = $order->currency_code ?? self::currencyForLocation($order->location ?? 'Waxahachie TX')['code'];
+        $inclusions    = Schema::hasColumn('parts_inventory', 'inclusions') ? 'p.inclusions' : DB::raw('NULL as inclusions');
 
         $items = DB::table('order_items as oi')
             ->leftJoin('parts_inventory as p', 'p.id', '=', 'oi.part_id')
@@ -264,6 +342,7 @@ class InvoiceController extends Controller
             ->select(
                 'oi.id',
                 'oi.item_type',
+                'oi.quantity',
                 'oi.unit_price_local',
                 'oi.subtotal_local',
                 'oi.unit_price_ngn',
@@ -277,12 +356,19 @@ class InvoiceController extends Controller
                 'oi.year_to',
                 'oi.condition_grade',
                 'oi.location as part_location',
+                // Per-line discount: stored on every order line all along, but never selected,
+                // so it never reached the receipt.
+                'oi.discount_amount_local',
+                'oi.discount_type',
+                'oi.discount_value',
                 'p.engine_code_oem',
                 'p.transmission_code_oem',
                 'p.compat_year_from',
                 'p.compat_year_to',
                 'p.part_category',
-                'p.donor_vin'
+                'p.donor_vin',
+                'p.source_ref',   // our reference, printed under the description
+                $inclusions
             )->get()
             ->map(function ($item) use ($orderCurrency) {
                 if (empty($item->unit_price_local)) {
@@ -290,12 +376,14 @@ class InvoiceController extends Controller
                         ? ($item->unit_price_ngn ?? 0)
                         : ($item->unit_price_usd ?? 0);
                 }
-                if (empty($item->subtotal_local)) {
-                    $item->subtotal_local = $orderCurrency === 'NGN' ? ($item->subtotal_ngn ?? null) : null;
+                // Real quantity column; the old subtotal/price guess is only a fallback.
+                $qty = (int) ($item->quantity ?? 0);
+                if ($qty < 1) {
+                    $qty = ($item->subtotal_local && $item->unit_price_local)
+                        ? max(1, (int) round($item->subtotal_local / $item->unit_price_local))
+                        : 1;
                 }
-                $item->qty = ($item->subtotal_local && $item->unit_price_local)
-                    ? max(1, round($item->subtotal_local / $item->unit_price_local))
-                    : 1;
+                $item->qty = $qty;
                 return $item;
             });
 
@@ -304,24 +392,17 @@ class InvoiceController extends Controller
         $businessInfo  = $this->getBusinessInfo($saleLocation);
         $subtotalLocal = $order->total_amount_local ?? $items->sum('subtotal_local');
 
+        // Line amount = unit price x quantity (gross); the line's own discount shows in its own column,
+        // and the totals block reconciles: Subtotal - Discount = Total.
         $lineItems = $items->map(function ($item) use ($currencyCode) {
-            $lineLocal = $item->subtotal_local ?? (($item->unit_price_local ?? 0) * $item->qty);
+            $lineLocal = ($item->unit_price_local ?? 0) * $item->qty;
             return (object) array_merge((array) $item, [
                 'unit_price_fmt' => self::formatLocal($item->unit_price_local ?? 0, $currencyCode),
                 'total_fmt'      => self::formatLocal($lineLocal, $currencyCode),
             ]);
         });
 
-        // NEW: donor VIN — already available via the leftJoin to
-        // parts_inventory above, just needed adding to the select.
-        // Only shown when actually present (harvested parts have it;
-        // services and non-harvested items won't).
-
-        // NEW: show "Returned & Refunded" on the original receipt for
-        // any line item that has a resolved return on file — so staff
-        // (and the customer, on their copy) can see at a glance that
-        // this specific item was returned, without having to cross-
-        // reference the Returns section separately.
+        // "Returned & Refunded" marker per line
         $returnsByOrderItem = DB::table('returns')
             ->where('order_id', $orderId)
             ->where('status', 'resolved')
@@ -330,12 +411,11 @@ class InvoiceController extends Controller
 
         $lineItems = $lineItems->map(function ($item) use ($returnsByOrderItem) {
             $return = $returnsByOrderItem->get($item->id);
-            $item->returned            = (bool) $return;
+            $item->returned             = (bool) $return;
             $item->return_refund_method = $return->refund_method ?? null;
             return $item;
         });
 
-        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
         $invoiceNo     = 'AZP-' . date('Y') . '-' . str_pad($orderId, 5, '0', STR_PAD_LEFT);
         $customerInfo  = (object)[
             'name'    => $order->customer_name ?? '',
@@ -352,33 +432,27 @@ class InvoiceController extends Controller
         $subtotalUsd   = $subtotalLocal;
         $invoiceType   = 'order';
 
-        // NEW: orders now have real discount columns (added alongside
-        // fixing AdminOrderController::store(), which previously
-        // computed a discount in the browser preview but never saved
-        // it anywhere). Same gross-subtotal reconstruction and
-        // percentage-label approach as showManual(), so orders and
-        // manual invoices display discounts identically.
-        $discountLocal = (float) ($order->discount_amount_local ?? 0);
-        $totalLocal    = $subtotalLocal; // the actual net/charged amount already stored
+        // Discount: the stored order total is already NET; add the discount back for the gross Subtotal line.
+        $discountLocal      = (float) ($order->discount_amount_local ?? 0);
+        $totalLocal         = $subtotalLocal;
         $grossSubtotalLocal = $subtotalLocal + $discountLocal;
-        $subtotalFmt   = self::formatLocal($grossSubtotalLocal, $currencyCode); // overwrite with the correct GROSS figure
-        $totalFmt      = self::formatLocal($totalLocal, $currencyCode);
-        $discountFmt   = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
-        $discountLabel = null;
+        $subtotalFmt        = self::formatLocal($grossSubtotalLocal, $currencyCode);
+        $totalFmt           = self::formatLocal($totalLocal, $currencyCode);
+        $discountFmt        = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
+        $discountLabel      = null;
         if ($discountLocal > 0) {
             $pct = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
             $discountLabel = "Discount (" . rtrim(rtrim(number_format($pct, 1), '0'), '.') . "%):";
         }
 
-        // Footer addresses — same logic as showManual().
         $footerAddresses = self::footerAddressesForLocation($saleLocation);
 
-        return view('admin.invoices.show', compact(
+        return array_merge(compact(
             'order', 'lineItems', 'currency', 'subtotalFmt',
             'subtotalUsd', 'invoiceNo', 'businessInfo', 'saleLocation',
             'location', 'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
             'footerAddresses', 'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt'
-        ));
+        ), self::totalsExtras($order, $currencyCode));
     }
 
     // =========================================================
@@ -1014,11 +1088,9 @@ class InvoiceController extends Controller
             );
         }
 
-        return view('admin.invoices.show', compact(
-            'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
-            'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
-            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
-        ));
+        // Open the saved invoice through the normal reprint route so what staff see right after saving
+        // is exactly what they will see when they reopen it (stock number, reference, payment state, edit button).
+        return redirect()->route('admin.invoices.show.manual', $invoiceId);
     }
 
     // =========================================================
@@ -1235,11 +1307,9 @@ class InvoiceController extends Controller
         $location    = $saleLocation;
         $invoiceType = 'service';
 
-        return view('admin.invoices.show', compact(
-            'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd', 'totalFmt', 'discountLocal',
-            'invoiceNo', 'invoiceId', 'businessInfo', 'saleLocation', 'location',
-            'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType'
-        ));
+        // Open the saved invoice through the normal reprint route so what staff see right after saving
+        // is exactly what they will see when they reopen it (stock number, reference, payment state, edit button).
+        return redirect()->route('admin.invoices.show.manual', $invoiceId);
     }
 
     // =========================================================
@@ -1526,13 +1596,39 @@ class InvoiceController extends Controller
     // =========================================================
     public function showManual(int $id)
     {
+        return view('admin.invoices.show', $this->manualDocumentData($id));
+    }
+
+    // The full set of variables the invoice/receipt template needs for a saved INVOICE
+    // (manual, service, car sale). Also feeds the PDF, so print and PDF always agree.
+    public function manualDocumentData(int $id): array
+    {
         $invoice = DB::table('invoices')->where('id', $id)->first();
         if (!$invoice) abort(404);
 
-        $items        = DB::table('invoice_items')->where('invoice_id', $id)->get();
         $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
         $currency     = self::currencyMeta($currencyCode);
         $businessInfo = $this->getBusinessInfo($invoice->location);
+        $inclusions   = Schema::hasColumn('parts_inventory', 'inclusions') ? 'p.inclusions' : DB::raw('NULL as inclusions');
+
+        // Join the part so every line can show its stock number, OUR reference, donor VIN and fitment
+        // (the old query read invoice_items alone, so none of that was available).
+        $items = DB::table('invoice_items as ii')
+            ->leftJoin('parts_inventory as p', 'p.id', '=', 'ii.part_id')
+            ->where('ii.invoice_id', $id)
+            ->select(
+                'ii.*',
+                'p.source_ref',
+                'p.donor_vin',
+                'p.engine_code_oem',
+                'p.transmission_code_oem',
+                'p.compat_year_from',
+                'p.compat_year_to',
+                'p.part_category',
+                'p.year_from as part_year_from',
+                'p.year_to as part_year_to',
+                $inclusions
+            )->get();
 
         $lineItems = $items->map(function ($item) use ($currencyCode) {
             $priceLocal = $item->unit_price_local ?? $item->unit_price_usd;
@@ -1540,23 +1636,24 @@ class InvoiceController extends Controller
             return (object)[
                 'part_name'             => $item->part_name,
                 'part_code'             => $item->part_code,
+                'source_ref'            => $item->source_ref ?? null,
                 'brand'                 => $item->brand,
                 'model'                 => $item->model,
-                'year_from'             => '',
-                'year_to'               => '',
+                'year_from'             => $item->part_year_from ?? '',
+                'year_to'               => $item->part_year_to ?? '',
+                'compat_year_from'      => $item->compat_year_from ?? null,
+                'compat_year_to'        => $item->compat_year_to ?? null,
                 'condition_grade'       => $item->condition_grade,
-                'engine_code_oem'       => '',
-                'transmission_code_oem' => '',
-                'transmission_code_oem' => '',
+                'engine_code_oem'       => $item->engine_code_oem ?? '',
+                'transmission_code_oem' => $item->transmission_code_oem ?? '',
+                'part_category'         => $item->part_category ?? null,
+                'donor_vin'             => $item->donor_vin ?? null,
+                'inclusions'            => $item->inclusions ?? null,
                 'qty'                   => $item->qty,
                 'unit_price_usd'        => $priceLocal,
                 'unit_price_fmt'        => self::formatLocal($priceLocal, $currencyCode),
                 'total_fmt'             => self::formatLocal($lineLocal, $currencyCode),
-                // Per-line discount — was stored on invoice_items all
-                // along but never surfaced to the view, so a line that
-                // had its own discount (separate from the invoice-wide
-                // one shown in the totals box) was invisible on the
-                // printed invoice.
+                // Per-line discount, shown in its own column on the document.
                 'discount_type'         => $item->discount_type ?? null,
                 'discount_value'        => $item->discount_value ?? null,
                 'discount_amount_local' => $item->discount_amount_local ?? 0,
@@ -1575,77 +1672,42 @@ class InvoiceController extends Controller
         $paymentMethod = $invoice->payment_method;
         $copyKey       = 'customer';
         $invoiceNo     = $invoice->invoice_no;
+        $invoiceId     = $id;
         $subtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
         $subtotalUsd   = $subtotalLocal;
-        $subtotalFmt   = self::formatLocal($subtotalLocal, $currencyCode);
         $invoiceType   = $invoice->invoice_type ?? 'parts';
 
-        // FIXED: discount was computed and saved correctly on create/edit
-        // (invoices.discount_amount_local) but never read back out here —
-        // the totals block always showed TOTAL == Subtotal with no
-        // discount line at all, regardless of what was actually charged.
-        //
-        // IMPORTANT: invoices.subtotal_local is stored ALREADY NET of
-        // discount (see updateManual()/storeManual() — it's the final
-        // charged amount despite the column name). So for display:
-        //   - the actual charged TOTAL = subtotal_local (as stored)
-        //   - the GROSS "Subtotal" line (before discount) = subtotal_local + discount_amount_local
-        // Showing stored subtotal_local as both "Subtotal" AND deriving
-        // TOTAL from it while also subtracting the discount again would
-        // silently short the total by double-counting the discount.
-        $discountLocal   = (float) ($invoice->discount_amount_local ?? 0);
-        $totalLocal      = $subtotalLocal;                    // the actual stored/charged amount
-        $grossSubtotalLocal = $subtotalLocal + $discountLocal + (float) ($invoice->return_credit_applied_local ?? 0); // add both discount AND return credit back for the pre-deduction display line, so Subtotal - Discount - Return Credit = Total exactly
-        $subtotalFmt     = self::formatLocal($grossSubtotalLocal, $currencyCode); // overwrite the earlier subtotalFmt with the correct GROSS figure
-        $totalFmt        = self::formatLocal($totalLocal, $currencyCode);
-        $discountFmt     = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
-        $discountLabel   = null;
-        if ($discountLocal > 0) {
-            // FIXED: previously only showed a percentage for discounts
-            // originally entered AS a percentage — a fixed-amount
-            // discount just said "Discount:" with no indication of what
-            // share of the sale that amount actually represents. Now
-            // always computes and shows the effective percentage
-            // either way, so the math "makes up the sum" transparently
-            // regardless of how the discount was entered.
-            $effectivePercent = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
-            $percentStr = rtrim(rtrim(number_format($effectivePercent, 1), '0'), '.');
-            $discountLabel = "Discount ({$percentStr}%):";
-        }
-
-        // NEW: return credit applied to this invoice, if any — shown
-        // as its own line, separate from an ordinary discount, so
-        // staff and the customer can both see clearly that part of
-        // the total came from a return rather than a promotional
-        // discount.
+        // invoices.subtotal_local is stored ALREADY NET of discount and return credit, so:
+        // total = stored figure; gross Subtotal = stored + discount + return credit.
+        $discountLocal      = (float) ($invoice->discount_amount_local ?? 0);
         $returnCreditApplied = (float) ($invoice->return_credit_applied_local ?? 0);
+        $totalLocal         = $subtotalLocal;
+        $grossSubtotalLocal = $subtotalLocal + $discountLocal + $returnCreditApplied;
+        $subtotalFmt        = self::formatLocal($grossSubtotalLocal, $currencyCode);
+        $totalFmt           = self::formatLocal($totalLocal, $currencyCode);
+        $discountFmt        = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
+        $discountLabel      = null;
+        if ($discountLocal > 0) {
+            $effectivePercent = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
+            $discountLabel = "Discount (" . rtrim(rtrim(number_format($effectivePercent, 1), '0'), '.') . "%):";
+        }
         $returnCreditFmt = $returnCreditApplied > 0 ? self::formatLocal($returnCreditApplied, $currencyCode) : null;
 
-        // Footer business-registration addresses — Nigeria transactions
-        // show BOTH the Ile-Ife and Lagos Oshodi addresses regardless of
-        // which specific location made the sale; USA transactions show
-        // the Waxahachie address. This is separate from $businessInfo
-        // above, which still shows the SPECIFIC transacting location's
-        // bank/contact details in the header as before.
         $footerAddresses = self::footerAddressesForLocation($saleLocation);
 
-        // NEW: revision number + who last edited/approved it — only
-        // meaningful once an invoice has actually been edited at
-        // least once (revision_number > 1). A never-edited invoice
-        // shows nothing extra on the receipt, preserving the existing
-        // look for the common case.
+        // Revision number + last editor — only once an invoice has actually been edited.
         $revisionNumber = $invoice->revision_number ?? 1;
         $lastEditLog = $revisionNumber > 1
             ? DB::table('invoice_edit_log')->where('invoice_id', $id)->orderByDesc('created_at')->first()
             : null;
 
-        return view('admin.invoices.show', compact(
-            'invoice', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
+        return array_merge(compact(
+            'invoice', 'invoiceId', 'lineItems', 'currency', 'subtotalFmt', 'subtotalUsd',
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
             'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt', 'footerAddresses',
             'returnCreditApplied', 'returnCreditFmt', 'revisionNumber', 'lastEditLog'
-        ));
+        ), self::totalsExtras($invoice, $currencyCode));
     }
 
     // =========================================================
@@ -1806,77 +1868,10 @@ class InvoiceController extends Controller
     // =========================================================
     private function buildInvoicePdfData(int $invoiceId): ?array
     {
-        $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
-        if (!$invoice) return null;
+        if (!DB::table('invoices')->where('id', $invoiceId)->exists()) return null;
 
-        $items = DB::table('invoice_items')->where('invoice_id', $invoiceId)->get();
-        $currencyCode = $invoice->currency_code ?? self::currencyForLocation($invoice->location)['code'];
-
-        // FIXED: DomPDF's default font can't render the ₦ Unicode glyph
-        // — it silently prints as a literal "?" instead of the Naira
-        // symbol, confirmed on a real downloaded receipt. Uses plain
-        // "NGN"/"GHS" text prefixes for the PDF specifically (guaranteed
-        // correct regardless of font Unicode coverage), while every
-        // browser-rendered view elsewhere keeps the pretty ₦ symbol via
-        // the shared currencyMeta()/formatLocal() — this override only
-        // affects this one PDF data builder.
-        $pdfSyms = ['NGN' => 'NGN ', 'GHS' => 'GHS ', 'USD' => '$'];
-        $pdfSym  = $pdfSyms[$currencyCode] ?? '$';
-        $pdfFmt  = fn($n) => $pdfSym . number_format((float) $n, $currencyCode === 'NGN' ? 0 : 2);
-        $currency     = ['code' => $currencyCode, 'symbol' => $pdfSym];
-        $businessInfo = $this->getBusinessInfo($invoice->location);
-
-        $lineItems = $items->map(function ($item) use ($currencyCode, $pdfFmt) {
-            $priceLocal = $item->unit_price_local ?? $item->unit_price_usd;
-            $lineLocal  = $priceLocal * $item->qty;
-            return (object)[
-                'part_name'       => $item->part_name,
-                'part_code'       => $item->part_code,
-                'brand'           => $item->brand,
-                'model'           => $item->model,
-                'condition_grade' => $item->condition_grade,
-                'qty'             => $item->qty,
-                'unit_price_fmt'  => $pdfFmt($priceLocal),
-                'total_fmt'       => $pdfFmt($lineLocal),
-            ];
-        });
-
-        $customerInfo = (object)[
-            'name' => $invoice->customer_name, 'phone' => $invoice->customer_phone,
-            'email' => $invoice->customer_email, 'address' => $invoice->customer_address,
-        ];
-
-        $subtotalLocal = $invoice->subtotal_local ?? $invoice->subtotal_usd;
-        $discountLocal = (float) ($invoice->discount_amount_local ?? 0);
-        $returnCreditApplied = (float) ($invoice->return_credit_applied_local ?? 0);
-        $grossSubtotalLocal = $subtotalLocal + $discountLocal + $returnCreditApplied;
-
-        $discountLabel = null;
-        if ($discountLocal > 0) {
-            $pct = $grossSubtotalLocal > 0 ? ($discountLocal / $grossSubtotalLocal) * 100 : 0;
-            $discountLabel = "Discount (" . rtrim(rtrim(number_format($pct, 1), '0'), '.') . "%):";
-        }
-
-        return [
-            'invoiceNo'    => $invoice->invoice_no,
-            'invoice'      => $invoice,
-            'lineItems'    => $lineItems,
-            'currency'     => $currency,
-            'businessInfo' => $businessInfo,
-            'saleLocation' => $invoice->location,
-            'createdAt'    => $invoice->created_at,
-            'customerInfo' => $customerInfo,
-            'paymentMethod'=> $invoice->payment_method,
-            'isVehicleSale'=> ($invoice->invoice_type ?? 'parts') === 'vehicle',
-            'subtotalFmt'  => $pdfFmt($grossSubtotalLocal),
-            'totalFmt'     => $pdfFmt($subtotalLocal),
-            'discountLocal'=> $discountLocal,
-            'discountFmt'  => $discountLocal > 0 ? $pdfFmt($discountLocal) : null,
-            'discountLabel'=> $discountLabel,
-            'returnCreditApplied' => $returnCreditApplied,
-            'returnCreditFmt'     => $returnCreditApplied > 0 ? $pdfFmt($returnCreditApplied) : null,
-            'footerAddresses'     => self::footerAddressesForLocation($invoice->location),
-        ];
+        // Exactly the data the printed document uses — same figures, same lines, same symbol.
+        return $this->manualDocumentData($invoiceId);
     }
 
     // =========================================================

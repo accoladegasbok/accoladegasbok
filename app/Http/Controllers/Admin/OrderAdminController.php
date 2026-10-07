@@ -65,119 +65,24 @@ class OrderAdminController extends Controller
     }
 
     // =========================================================
-    // Shared data builder for the PDF letterhead template — mirrors
-    // InvoiceController::buildInvoicePdfData() exactly, sourced from
-    // orders/order_items instead of invoices/invoice_items, reusing
-    // the SAME PDF Blade view so orders and invoices produce
-    // identically-formatted PDFs. Orders have no discount or return-
-    // credit columns at all (confirmed earlier this session), so
-    // those fields are simply left at 0/null — the template already
-    // guards on them being empty.
+    // Data for the order PDF. It is the SAME data the printed receipt
+    // uses (InvoiceController::orderDocumentData), rendered through the
+    // same shared document template — so the downloaded PDF and the
+    // printed copy can no longer disagree on lines, discounts, stock
+    // numbers, totals or payment state.
     // =========================================================
     private function buildOrderPdfData(int $orderId): ?array
     {
         $order = DB::table('orders')->where('id', $orderId)->first();
         if (!$order) return null;
 
-        $items = DB::table('order_items')->where('order_id', $orderId)->get();
+        $data = app(\App\Http\Controllers\Admin\InvoiceController::class)->orderDocumentData($orderId);
 
-        // FIXED: location previously fell straight through to a
-        // hardcoded 'Waxahachie TX' default whenever orders.location
-        // was empty, with no fallback at all — meaning an Ile-Ife order
-        // with a blank location column would print with the WRONG
-        // business identity entirely (Accolade Autos/USA instead of
-        // Gasbok Engineering/Nigeria). InvoiceController::show()
-        // already had a more reliable fallback chain (check the
-        // order's actual items for a real location) — matching that
-        // here.
-        // FIXED: crashed with "Undefined property: stdClass::$location" —
-        // order_items doesn't actually have a column by that exact
-        // FIXED (for real this time): the crash persisted because I'd
-        // used ?: (short ternary) for the very first check —
-        // "$order->location ?: ..." — and unlike ?? (null coalescing),
-        // ?: does NOT suppress an undefined-property warning; it still
-        // has to evaluate $order->location to check truthiness, and
-        // THAT evaluation is what threw. The data_get() calls further
-        // down were already safe — only the first link in the chain
-        // wasn't. Using data_get() consistently for every step now.
-        $firstItem = $items->first();
-        $resolvedLocation = data_get($order, 'location')
-            ?: data_get($firstItem, 'location')
-            ?: data_get($firstItem, 'part_location')
-            ?: 'Waxahachie TX';
+        // sendCustomerCopy() reads the order row from the 'invoice' key (same name the invoice builder uses).
+        $data['invoice'] = $order;
+        $data['isVehicleSale'] = false;
 
-        $currencyCode = data_get($order, 'currency_code')
-            ?? \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($resolvedLocation)['code'];
-
-        // FIXED: DomPDF's default font can't render the ₦ Unicode
-        // glyph — it silently prints as a literal "?" instead, which
-        // is exactly what showed up on a real downloaded receipt. Use
-        // the plain "NGN" text prefix for the PDF specifically
-        // (guaranteed correct regardless of font Unicode coverage)
-        // rather than the pretty symbol used everywhere else in the
-        // browser-rendered views, where it renders fine.
-        $syms = ['NGN' => 'NGN ', 'GHS' => 'GHS ', 'USD' => '$'];
-        $sym  = $syms[$currencyCode] ?? '$';
-        $fmt  = fn($n) => $sym . number_format((float) $n, $currencyCode === 'NGN' ? 0 : 2);
-
-        $lineItems = $items->map(function ($item) use ($fmt) {
-            $priceLocal = $item->unit_price_local ?? $item->unit_price_ngn ?? $item->unit_price_usd ?? 0;
-            // CORRECTED: order_items' real column is `quantity`, not
-            // `qty` — read from the right one. The local variable/object
-            // property below stays named `qty` since invoice-pdf.blade.php
-            // and show.blade.php already expect ->qty for display.
-            $qty = $item->quantity ?? 1;
-            return (object)[
-                'part_name'       => $item->part_name,
-                'part_code'       => $item->part_code,
-                'brand'           => $item->brand ?? null,
-                'model'           => $item->model ?? null,
-                'condition_grade' => $item->condition_grade ?? null,
-                'qty'             => $qty,
-                'unit_price_fmt'  => $fmt($priceLocal),
-                'total_fmt'       => $fmt($priceLocal * $qty),
-            ];
-        });
-
-        $customerInfo = (object)[
-            'name' => $order->customer_name, 'phone' => $order->customer_phone,
-            'email' => $order->customer_email, 'address' => $order->customer_address ?? null,
-        ];
-
-        $totalLocal = $order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0;
-        $businessInfo = app(\App\Http\Controllers\Admin\InvoiceController::class)->getBusinessInfo($resolvedLocation);
-
-        // NEW: orders now have real discount columns (store() was
-        // fixed to actually save them) — read them the same way
-        // InvoiceController::show() does for consistency.
-        $discountLocal = (float) ($order->discount_amount_local ?? 0);
-        $grossTotalLocal = $totalLocal + $discountLocal;
-        $discountLabel = null;
-        if ($discountLocal > 0) {
-            $pct = $grossTotalLocal > 0 ? ($discountLocal / $grossTotalLocal) * 100 : 0;
-            $discountLabel = "Discount (" . rtrim(rtrim(number_format($pct, 1), '0'), '.') . "%):";
-        }
-
-        return [
-            'invoiceNo'    => $order->order_ref,
-            'invoice'      => $order,
-            'lineItems'    => $lineItems,
-            'currency'     => ['code' => $currencyCode, 'symbol' => $sym],
-            'businessInfo' => $businessInfo,
-            'saleLocation' => $resolvedLocation,
-            'createdAt'    => $order->created_at,
-            'customerInfo' => $customerInfo,
-            'paymentMethod'=> $order->payment_method ?? 'Online',
-            'isVehicleSale'=> false,
-            'subtotalFmt'  => $fmt($grossTotalLocal),
-            'totalFmt'     => $fmt($totalLocal),
-            'discountLocal'=> $discountLocal,
-            'discountFmt'  => $discountLocal > 0 ? $fmt($discountLocal) : null,
-            'discountLabel'=> $discountLabel,
-            'returnCreditApplied' => 0,
-            'returnCreditFmt'     => null,
-            'footerAddresses'     => \App\Http\Controllers\Admin\InvoiceController::footerAddressesForLocation($resolvedLocation),
-        ];
+        return $data;
     }
 
     // =========================================================

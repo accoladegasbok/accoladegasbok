@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Invoice {{ $invoiceNo }} — Auto Zenith Parts</title>
+<title>{{ $invoiceNo }} — Auto Zenith Parts</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; background: #f0f2f5; }
@@ -286,15 +286,21 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
        which the black override above already handles. */
 }
 </style>
+<style>
+@include('admin.invoices._document-styles')
+</style>
 </head>
 <body>
 
+@php
+    // Computed once for the whole page. An INVOICE while any balance remains, a RECEIPT once it is zero.
+    $docPay  = \App\Http\Controllers\Admin\InvoiceController::documentPaymentState($order ?? null, $invoice ?? null, $invoiceId ?? null);
+    $docMode = 'screen';
+@endphp
+
 <div class="print-controls" id="printControls">
-    {{-- FIXED: every invoice rendered here is created only at the point
-         of full payment (no partial-payment path exists for manual/
-         service/car-sale invoices) — so it's always actually a receipt,
-         not just for vehicle sales. --}}
-    <h2>RECEIPT {{ $invoiceNo }}</h2>
+    {{-- Title follows the payment state: INVOICE until fully paid, then RECEIPT. --}}
+    <h2>{{ $docPay['status'] === 'PAID' ? 'RECEIPT' : 'INVOICE' }} {{ $invoiceNo }}</h2>
     @if(isset($invoice) && in_array(session('staff_role'), ['admin', 'manager']))
     <a href="{{ route('admin.invoices.manual.edit', $invoice->id) }}" style="background:#c9a84c;color:#0d1b2a;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:0.5px;">
         ✎ Edit Invoice
@@ -311,17 +317,17 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
     @endif
     <span class="sep">|</span>
     <span style="font-size:12px;color:#aaa;">Select copy to print:</span>
-    <button class="copy-btn active" onclick="showCopy('default')" id="btn-default" style="border-color:#c9a84c;color:#c9a84c;">📄📦 Customer + Waybill (default)</button>
+    <button class="copy-btn active" onclick="showCopy('default')" id="btn-default" style="border-color:#c9a84c;color:#c9a84c;">Customer + Gate Pass (default)</button>
     <span class="sep">|</span>
     <span style="font-size:11px;color:#777;">Optional:</span>
-    <button class="copy-btn" onclick="showCopy('customer')" id="btn-customer">📄 Customer Only</button>
-    <button class="copy-btn" onclick="showCopy('waybill')" id="btn-waybill">📦 Waybill Only</button>
-    <button class="copy-btn" onclick="showCopy('warehouse')" id="btn-warehouse">🏭 Warehouse Copy</button>
-    <button class="copy-btn" onclick="showCopy('accounts')" id="btn-accounts">📊 Accounts Copy</button>
-    <button class="copy-btn" onclick="showCopy('gate')" id="btn-gate">🚧 Gate Pass</button>
-    <button class="copy-btn" onclick="showCopy('all')" id="btn-all">📋 All 5 Copies</button>
+    <button class="copy-btn" onclick="showCopy('customer')" id="btn-customer">Customer Only</button>
+    <button class="copy-btn" onclick="showCopy('gate')" id="btn-gate">Gate Pass Only</button>
+    <button class="copy-btn" onclick="showCopy('waybill')" id="btn-waybill">Waybill / Packing List</button>
+    <button class="copy-btn" onclick="showCopy('warehouse')" id="btn-warehouse">Warehouse Copy</button>
+    <button class="copy-btn" onclick="showCopy('accounts')" id="btn-accounts">Accounts Copy</button>
+    <button class="copy-btn" onclick="showCopy('all')" id="btn-all">All 5 Copies</button>
     <span class="sep">|</span>
-    <span style="font-size:10px;color:#666;">(Warehouse/Accounts/Gate — the physical tag's tear-away stubs now carry this audit trail; print these only if you specifically need a paper copy too)</span>
+    <span style="font-size:10px;color:#666;">(Waybill, Warehouse and Accounts copies are optional - print them only when needed)</span>
     <span class="sep">|</span>
     <button class="print-single-btn" onclick="window.print()">🖨 Print</button>
     <a href="{{ url()->previous() }}" style="color:#aaa;font-size:12px;text-decoration:none;">← Back</a>
@@ -469,8 +475,9 @@ $copies = [
     'gate'      => ['label' => 'SECURITY / GATE PASS',    'color' => '#b71c1c'],
     'waybill'   => ['label' => 'WAYBILL / PACKING LIST — NO PRICES', 'color' => '#8a6d1f'],
 ];
-$createdAt = $order->created_at ?? now();
-$paymentMethod = $order->payment_method ?? 'Cash';
+// Keep what the controller supplied; only fall back to the order, then to defaults.
+$createdAt = $createdAt ?? ($order->created_at ?? now());
+$paymentMethod = $paymentMethod ?? ($order->payment_method ?? 'Cash');
 $qrUrl = isset($invoice)
     ? route('admin.invoices.show.manual', $invoice->id)
     : (isset($order) ? route('admin.invoices.show', $order->id) : url()->current());
@@ -484,326 +491,7 @@ $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
     <div class="page-number-fallback"></div>
     <div class="copy-banner">{{ $copyInfo['label'] }}</div>
     <div class="invoice-content">
-
-        <div class="inv-header">
-            <div class="brand-block">
-                <div class="brand-name">AUTO <span>ZENITH</span> PARTS</div>
-                <div class="tagline">{{ $isVehicleSale ? 'Quality Used Vehicles · Sold As-Is' : 'Quality Used Auto Parts · Engine · Gearbox · Body' }}</div>
-                <div class="company">{{ $businessInfo['company'] }}{{ $businessInfo['rc'] ? ' · ' . $businessInfo['rc'] : '' }}</div>
-                <div class="address">{{ $businessInfo['address'] }}</div>
-                <div class="contact">📞 {{ $businessInfo['phone'] }} · 🌐 autozenithparts.com</div>
-            </div>
-            <div class="inv-meta">
-                <div class="inv-title">
-                    {{ $isVehicleSale ? 'VEHICLE SALE RECEIPT' : 'RECEIPT' }}
-                    @if(isset($revisionNumber) && $revisionNumber > 1)
-                        <span style="background:#a32d2d;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;letter-spacing:0.5px;margin-left:6px;vertical-align:middle;">REV {{ $revisionNumber }}</span>
-                    @endif
-                </div>
-                <table>
-                    <tr><td>Receipt No:</td><td>{{ $invoiceNo }}</td></tr>
-                    <tr><td>Date:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('d M Y') }}</td></tr>
-                    <tr><td>Time:</td><td>{{ \Carbon\Carbon::parse($createdAt)->format('h:i A') }}</td></tr>
-                    <tr><td>Location:</td><td>{{ $location }}</td></tr>
-                    <tr><td>Currency:</td><td>{{ $currency['code'] }}</td></tr>
-                    {{-- NEW: who originally issued this receipt — works for
-                         both order-based ($order->created_by) and manual/
-                         service/car-sale invoices ($invoice->created_by),
-                         since both tables already store this. --}}
-                    @php $issuedBy = ($invoice->created_by ?? $order->created_by ?? null); @endphp
-                    @if($issuedBy)
-                    <tr><td>Issued By:</td><td>{{ $issuedBy }}</td></tr>
-                    @endif
-                    {{-- NEW: last edit attribution — only appears once an
-                         invoice has actually been revised. Shows who made
-                         the edit and, if a supervisor edit required
-                         override approval, who approved it (override_by
-                         already stores a readable "Name (role)" string
-                         from the PIN modal, not a raw token). --}}
-                    @if(isset($lastEditLog) && $lastEditLog)
-                    <tr><td>Last Edited By:</td><td>{{ $lastEditLog->edited_by }} ({{ $lastEditLog->staff_role }})</td></tr>
-                    @if($lastEditLog->override_by)
-                    <tr><td>Approved By:</td><td>{{ $lastEditLog->override_by }}</td></tr>
-                    @endif
-                    @endif
-                </table>
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=65x65&data={{ urlencode($qrUrl) }}" alt="QR" style="margin-top:6px;">
-            </div>
-        </div>
-
-        @php
-            $resolvedInvoiceId2 = $invoice->id ?? $invoiceId ?? null;
-            if (isset($order) && $order) {
-                $printPaySummary = \App\Http\Controllers\Admin\OrderAdminController::paymentSummary($order->id);
-                $printPaySummary['payments'] = $printPaySummary['payments']->map(function ($p) {
-                    $p->amount_local = $p->amount_local ?? $p->amount_ngn;
-                    return $p;
-                });
-            } else {
-                $printPaySummary = $resolvedInvoiceId2 ? \App\Http\Controllers\Admin\InvoiceController::invoicePaymentSummary($resolvedInvoiceId2) : null;
-            }
-
-            // Real 3-state payment status — was hardcoded to always show
-            // 'PAID' for every manual invoice (since $order is never set
-            // for those, the old fallback silently defaulted to PAID
-            // regardless of actual payment state). Now derived from the
-            // real confirmed-payments total vs balance due.
-            $confirmedPaidAmt = $printPaySummary
-                ? $printPaySummary['payments']->where('status', 'confirmed')->sum('amount_local')
-                : 0;
-            $balanceDueAmt = $printPaySummary['balanceDue'] ?? 0;
-            if ($balanceDueAmt <= 0 && $confirmedPaidAmt > 0) {
-                $paymentStatusLabel = 'PAID';
-            } elseif ($confirmedPaidAmt > 0 && $balanceDueAmt > 0) {
-                $paymentStatusLabel = 'PARTIAL';
-            } else {
-                $paymentStatusLabel = 'UNPAID';
-            }
-        @endphp
-
-        <div class="inv-parties">
-            <div class="info-box">
-                <h4>{{ $isVehicleSale ? 'Buyer' : 'Bill To' }}</h4>
-                <p>
-                    <strong>{{ $customerInfo->name ?? $order->customer_name ?? 'Walk-in Customer' }}</strong><br>
-                    @if(!empty($customerInfo->phone ?? $order->customer_phone ?? null)) 📞 {{ $customerInfo->phone ?? $order->customer_phone }}<br>@endif
-                    @if(!empty($customerInfo->email ?? $order->customer_email ?? null)) ✉ {{ $customerInfo->email ?? $order->customer_email }}<br>@endif
-                    @if(!empty($customerInfo->address ?? $order->customer_address ?? null)) {{ $customerInfo->address ?? $order->customer_address }}@endif
-                </p>
-            </div>
-            <div class="info-box">
-                <h4>Payment Details</h4>
-                <p>
-                    <strong>Method:</strong> {{ $paymentMethod }}<br>
-                    <strong>Status:</strong> <span style="color: {{ $paymentStatusLabel === 'PAID' ? '#1b9e5c' : ($paymentStatusLabel === 'PARTIAL' ? '#e65100' : '#c0392b') }}; font-weight:700;">{{ $paymentStatusLabel }}</span><br>
-                    @if(!empty($businessInfo['bank']))
-                    <strong>{{ $businessInfo['bank'] }}:</strong> {{ $businessInfo['account'] }}<br>
-                    <strong>Name:</strong> {{ $businessInfo['acct_name'] }}
-                    @endif
-                </p>
-            </div>
-        </div>
-
-        @if($copyKey === 'gate')
-        <div class="gate-pass-section">
-            <h3>🚧 SECURITY / GATE PASS</h3>
-            <div class="gate-pass-grid">
-                <div class="gate-field"><label>Customer Name</label><strong style="font-size:11px;">{{ $order->customer_name ?? '________________' }}</strong></div>
-                <div class="gate-field"><label>Phone Number</label><strong style="font-size:11px;">{{ $order->customer_phone ?? '________________' }}</strong></div>
-                <div class="gate-field"><label>Vehicle / Plate No.</label>&nbsp;</div>
-                <div class="gate-field"><label>No. of Items</label><strong style="font-size:11px;">{{ $lineItems->count() }} item(s)</strong></div>
-                <div class="gate-field"><label>Receipt No.</label><strong style="font-size:11px;">{{ $invoiceNo }}</strong></div>
-                <div class="gate-field"><label>Exit Time</label>&nbsp;</div>
-            </div>
-        </div>
-        @endif
-
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th style="width:30px">#</th>
-                    <th>{{ $isVehicleSale ? 'Vehicle Description' : 'Part Description' }}</th>
-                    <th style="width:95px">{{ $isVehicleSale ? 'VIN' : 'Part Code' }}</th>
-                    @if(!$isVehicleSale)<th style="width:44px">Grade</th>@endif
-                    <th style="width:32px">Qty</th>
-                    @if($copyKey !== 'waybill')
-                    <th style="width:88px">Unit Price</th>
-                    <th style="width:88px">Total</th>
-                    @endif
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($lineItems as $i => $item)
-                <tr>
-                    <td>{{ $i + 1 }}</td>
-                    <td>
-                        <div class="part-name">
-                            {{ $item->part_name }}
-                            @if(($item->discount_amount_local ?? 0) > 0 && $copyKey !== 'waybill')
-                            <span style="display:inline-block; background:#fff3e0; color:#e65100; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">
-                                @if(($item->discount_type ?? null) === 'percent')
-                                    -{{ rtrim(rtrim(number_format((float) ($item->discount_value ?? 0), 2), '0'), '.') }}%
-                                @else
-                                    -{{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($item->discount_amount_local ?? 0) : number_format($item->discount_amount_local ?? 0, 2) }}
-                                @endif
-                            </span>
-                            @endif
-                            {{-- NEW: returned & refunded badge --}}
-                            @if(!empty($item->returned) && $copyKey !== 'waybill')
-                            <span style="display:inline-block; background:#fdecea; color:#a32d2d; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">
-                                ↩ RETURNED — REFUNDED{{ !empty($item->return_refund_method ?? null) ? ' VIA ' . strtoupper(str_replace('_',' ', $item->return_refund_method)) : '' }}
-                            </span>
-                            @endif
-                        </div>
-                        {{-- NEW: donor VIN — shown whenever the sold
-                             part actually has one on file (harvested
-                             parts do). --}}
-                        @if(!empty($item->donor_vin) && $copyKey !== 'waybill')
-                        <div style="font-size:10px; color:#888; margin-top:1px;">
-                            Harvested from VIN: <span style="font-family:monospace; color:#555;">{{ $item->donor_vin }}</span>
-                        </div>
-                        @endif
-                        <div class="part-sub">
-                            @if($isVehicleSale)
-                                @if(!empty($item->colour)){{ $item->colour }} · @endif
-                                @if(!empty($item->mileage)){{ number_format($item->mileage) }} miles @endif
-                            @else
-                                @if(!empty($item->brand)){{ strtoupper($item->brand) }} {{ strtoupper($item->model ?? '') }} {{ $item->year_from ?? '' }}@if(($item->year_to ?? null) && ($item->year_to ?? null) != ($item->year_from ?? null))–{{ $item->year_to }}@endif · @endif
-                                @if(!empty($item->engine_code_oem))Engine: {{ $item->engine_code_oem }} · @endif
-                                @if(!empty($item->part_category)){{ $item->part_category }}@endif
-                            @endif
-                        </div>
-                    </td>
-                    <td>
-                        @if(!$isVehicleSale)
-                        <div style="font-family:monospace;font-size:10px;">{{ $item->part_code }}</div>
-                        @if(!empty($item->brand))
-                        <div style="font-size:9px;color:#666;margin-top:2px;">
-                            Fits: {{ $item->brand }} {{ $item->model ?? '' }}
-                            {{ $item->compat_year_from ?? $item->year_from ?? '' }}@if(($item->compat_year_to ?? $item->year_to ?? null) != ($item->compat_year_from ?? $item->year_from ?? null))–{{ $item->compat_year_to ?? $item->year_to ?? '' }}@endif
-                        </div>
-                        @endif
-                        @if(!empty($item->engine_code_oem))
-                        <div style="font-size:9px;color:#999;">OEM: {{ $item->engine_code_oem }}{{ !empty($item->transmission_code_oem ?? null) ? ' / '.$item->transmission_code_oem : '' }}</div>
-                        @endif
-                        @else
-                        <div style="font-family:monospace;font-size:10px;">{{ $item->vin ?? 'N/A' }}</div>
-                        @endif
-                    </td>
-                    @if(!$isVehicleSale)
-                    <td><span class="grade-badge grade-{{ $item->condition_grade }}">{{ $item->condition_grade }}</span></td>
-                    @endif
-                    <td style="text-align:center;">{{ $item->qty }}</td>
-                    @if($copyKey !== 'waybill')
-                    <td style="text-align:right;">{{ $item->unit_price_fmt }}</td>
-                    <td>{{ $item->total_fmt }}</td>
-                    @endif
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-
-        @if($copyKey === 'waybill')
-        <div style="border: 2px dashed #8a6d1f; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: #fffbf0;">
-            <p style="font-size: 11px; color: #5d4e1f; line-height: 1.6;">
-                <strong>⚠ WAYBILL / PACKING LIST — NOT A PRICED DOCUMENT.</strong>
-                This document lists the full description and quantity of goods being moved from
-                <strong>{{ $saleLocation }}</strong> to their destination. It serves as evidence of
-                lawful possession of these goods in transit and should be presented if requested by
-                police or other authorities during movement between locations. No prices are shown
-                on this copy — see Customer or Accounts Copy for pricing.
-            </p>
-        </div>
-        @endif
-
-        @if($copyKey !== 'waybill')
-        <div class="inv-totals">
-            <div class="totals-box">
-                <table>
-                    <tr><td>Subtotal:</td><td>{{ $subtotalFmt }}</td></tr>
-                    @if(($discountLocal ?? 0) > 0)
-                    <tr><td>{{ $discountLabel }}</td><td>-{{ $discountFmt }}</td></tr>
-                    @endif
-                    @if(($returnCreditApplied ?? 0) > 0)
-                    <tr style="color:#1a6b3c;"><td>Return Credit Applied:</td><td>-{{ $returnCreditFmt }}</td></tr>
-                    @endif
-                    <tr class="total-row"><td><strong>TOTAL:</strong></td><td><strong>{{ $totalFmt ?? $subtotalFmt }}</strong></td></tr>
-                </table>
-            </div>
-        </div>
-
-        <div class="inv-totals" style="margin-top: -6px;">
-            <div class="totals-box" style="border-top: 1px dashed #ccc; padding-top: 8px;">
-                <table>
-                    @if($printPaySummary && $printPaySummary['payments']->where('status', 'confirmed')->count())
-                    @foreach($printPaySummary['payments']->where('status', 'confirmed') as $p)
-                    <tr style="font-size: 12px; color: #555;">
-                        <td>Less: Payment ({{ $p->payment_method }}, {{ \Carbon\Carbon::parse($p->created_at)->format('d M Y') }})</td>
-                        <td>– {{ $currency['symbol'] }}{{ $currency['code'] === 'NGN' ? number_format($p->amount_local) : number_format($p->amount_local, 2) }}</td>
-                    </tr>
-                    @endforeach
-                    @else
-                    <tr style="font-size: 12px; color: #555;">
-                        <td>Payment Applied (Paid at point of sale)</td>
-                        <td>– {{ $totalFmt ?? $subtotalFmt }}</td>
-                    </tr>
-                    @endif
-                    <tr class="total-row" style="{{ ($printPaySummary['balanceDue'] ?? 0) > 0 ? 'color:#c0392b;' : 'color:#1b9e5c;' }}">
-                        <td><strong>{{ ($printPaySummary['balanceDue'] ?? 0) > 0 ? 'BALANCE DUE:' : 'BALANCE:' }}</strong></td>
-                        <td><strong>
-                            {{ ($printPaySummary['balanceDue'] ?? 0) > 0
-                                ? $currency['symbol'] . ($currency['code'] === 'NGN' ? number_format($printPaySummary['balanceDue']) : number_format($printPaySummary['balanceDue'], 2))
-                                : $currency['symbol'] . '0' }}
-                        </strong></td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-        @endif
-
-        @if($isVehicleSale)
-        <div class="inv-warranty" style="background:#fdecea; border-color:#f5b3ab;">
-            <p><strong style="color:#a32d2d;">⚠ SOLD AS-IS — NO WARRANTY:</strong> This vehicle is sold as-is, with no warranty implied or expressed, either written or verbal, covering mechanical, electrical, or any other condition. Buyer accepts full responsibility for the vehicle's condition from the point of sale. This receipt does not constitute a warranty of any kind.</p>
-            @if(!empty($order->notes))<p style="margin-top:4px;"><strong>Notes:</strong> {{ $order->notes }}</p>@endif
-        </div>
-        @else
-        <div class="inv-warranty">
-            <p><strong>⚠ Warranty:</strong> {{ $businessInfo['warranty'] }}. Warranty is void if part is disassembled, modified, or damaged after installation. No returns on any electrical parts (brain box/PCM, alternators, starters, fuel pumps, sensors, etc.) — buyer must fully test before leaving our facility. The warranty period applies only to engines and mechanical parts that cannot be tested unless installed. No warranty on automatic transmissions. Proof of purchase (this invoice) required for all warranty claims.</p>
-            @if(!empty($order->notes))<p style="margin-top:4px;"><strong>Notes:</strong> {{ $order->notes }}</p>@endif
-        </div>
-        @endif
-
-        <div class="inv-signatures">
-            <div class="sig-box">
-                <div class="sig-line"></div>
-                <div class="sig-label">Issued By (Staff)</div>
-            </div>
-            <div class="sig-box">
-                <div class="sig-line"></div>
-                <div class="sig-label">
-                    @if($copyKey === 'gate') Security Officer
-                    @elseif($copyKey === 'accounts') Accounts Officer
-                    @elseif($copyKey === 'warehouse') Warehouse Officer
-                    @else {{ $isVehicleSale ? 'Buyer Signature' : 'Customer Signature' }}
-                    @endif
-                </div>
-            </div>
-            <div class="sig-box">
-                <div class="sig-line"></div>
-                <div class="sig-label">
-                    @if($copyKey === 'gate') Gate Stamp / Time Out
-                    @else Authorised Stamp
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        <div class="inv-footer">
-            @if(!empty($footerAddresses))
-            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; text-align:left; max-width: 480px; margin: 0 auto 8px; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 6px 0;">
-                @foreach($footerAddresses as $addr)
-                    @php
-                        // Split "Label — Address details" into a bold
-                        // label line and a normal address line, for a
-                        // cleaner, easier-to-scan layout than one long
-                        // run-on line.
-                        $parts = explode(' — ', $addr, 2);
-                    @endphp
-                    <div style="font-size: 10px; line-height: 1.5;">
-                        <div style="font-weight: 700; color:#000;">📍 {{ $parts[0] }}</div>
-                        <div style="color:#000;">{{ $parts[1] ?? '' }}</div>
-                    </div>
-                @endforeach
-            </div>
-            @endif
-            <p>
-                Thank you for your business! · <span class="website">autozenithparts.com</span>
-                · WhatsApp: {{ $businessInfo['phone'] }}<br>
-                This is a computer-generated receipt. No physical signature required unless specified.
-                @if($copyKey === 'gate') · <strong style="color:#b71c1c;">GATE PASS — Present to security on exit</strong>@endif
-            </p>
-        </div>
-
+        @include('admin.invoices._document', ['copyKey' => $copyKey])
     </div>
 </div>
 @endforeach
@@ -820,13 +508,8 @@ function showCopy(which) {
         const el = document.getElementById('copy-' + c);
         if (!el) return;
         if (which === 'all') { el.classList.remove('hidden'); }
-        // NEW: default view — Customer Copy + Waybill only. Warehouse/
-        // Accounts/Gate become optional, on-demand copies now that the
-        // physical tag's tear-away stubs carry the audit trail
-        // (pull confirmation, warehouse scan, security/gate record)
-        // instead of needing separate paper copies of the invoice
-        // itself for that purpose.
-        else if (which === 'default') { el.classList.toggle('hidden', !(c === 'customer' || c === 'waybill')); }
+        // Default view: Customer Copy + Gate Pass. Waybill, Warehouse and Accounts are optional.
+        else if (which === 'default') { el.classList.toggle('hidden', !(c === 'customer' || c === 'gate')); }
         else { el.classList.toggle('hidden', c !== which); }
     });
 }
