@@ -218,6 +218,25 @@
                 </div>
                 @endif
 
+                {{-- Add-ons that come with "Complete Engine (With Add-ons)" --}}
+                @if($part['key'] === 'engine_addons')
+                <div class="basis-full pl-7">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 mb-1">Includes — tick what comes with this engine</div>
+                    <div class="flex flex-wrap gap-x-5 gap-y-1">
+                        @foreach(\App\Data\EngineAddons::OPTIONS as $addonKey => $addonLabel)
+                        <label class="flex items-center gap-1.5 text-xs text-slate-300">
+                            <input type="checkbox"
+                                   name="addons[{{ $part['key'] }}][]"
+                                   value="{{ $addonKey }}"
+                                   class="w-3.5 h-3.5 rounded accent-[#C8960C]"
+                                   {{ $alreadyHarvested ? 'disabled' : '' }}>
+                            {{ $addonLabel }}
+                        </label>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+
                 @if($part['category'] === 'Transmission')
                 <div class="flex gap-2 min-w-[220px]">
                     <input type="text"

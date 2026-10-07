@@ -10,8 +10,13 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Data\OemDatabase;
+use App\Data\PartNames;
+use App\Data\EngineAddons;
 use App\Services\InterchangeService;
+use App\Services\PartCodeService;
+use App\Support\StaffRole;
 
 class HarvestController extends Controller
 {
@@ -326,8 +331,10 @@ class HarvestController extends Controller
         $dvId = DB::table('donor_vehicles')->insertGetId([
             'vin'                   => $vin,
             'year'                  => $request->year,
-            'make'                  => $request->make,
-            'model'                 => $request->model,
+            // One casing everywhere (UPPERCASE) so make/model never fragment
+            // across screens, searches and printed documents.
+            'make'                  => strtoupper(trim($request->make)),
+            'model'                 => strtoupper(trim($request->model)),
             'trim'                  => $request->trim,
             'colour'                => $request->colour,
             'engine'                => $request->engine,
@@ -465,8 +472,8 @@ class HarvestController extends Controller
 
         // ── Custom parts are admin-only, to keep naming uniform ──────────
         $customPartsInput = $request->input('custom_parts', []);
-        if (!empty($customPartsInput) && !in_array(Session::get('staff_role'), ['admin', 'manager'])) {
-            return back()->with('error', 'Only admin or manager can add custom part names. Please select a part from the standard list, or ask them to add it.');
+        if (!empty($customPartsInput) && !StaffRole::isSupervisorOrAbove()) {
+            return back()->with('error', 'Only supervisor and above can add custom part names. Please select a part from the standard list, or ask a supervisor to add it.');
         }
         // Custom parts also each need their own bin (#A) — photo is
         // optional here too now, same reasoning as the ticked-parts
@@ -639,20 +646,17 @@ class HarvestController extends Controller
                     $compatTo   = min(2027, $compatTo   + 2);
                 }
 
+                // Next number comes from the highest in use for this prefix,
+                // so numbers can never repeat even after a part was re-numbered.
                 $prefix   = self::CODE_PREFIX[$tpl['category']] ?? 'PRT';
-                $lastCode = DB::table('parts_inventory')
-                    ->where('part_code', 'like', $prefix . '-%')
-                    ->orderByDesc('id')
-                    ->value('part_code');
-                $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix) + 1) + 1 : 1;
-                $partCode = $prefix . '-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+                $partCode = PartCodeService::next($prefix);
 
                 // NEW: this template's own label/category IS the
                 // standardized taxonomy now (see the migration that
                 // folded getPartsList() into part_terminology) — so
                 // every harvest-templated part automatically links to
                 // its terminology entry, no staff action needed.
-                $terminologyId = DB::table('part_terminology')
+                $terminologyId = $tpl['term_id'] ?? DB::table('part_terminology')
                     ->where('category', $tpl['category'])
                     ->where('standard_name', $tpl['label'])
                     ->value('id');
@@ -710,6 +714,14 @@ class HarvestController extends Controller
                     'updated_at'              => now(),
                 ]);
 
+                // ── Add-ons that come with "Complete Engine (With Add-ons)" ──
+                if ($key === 'engine_addons' && Schema::hasColumn('parts_inventory', 'inclusions')) {
+                    $picked = EngineAddons::clean((array) $request->input("addons.{$key}", []));
+                    DB::table('parts_inventory')->where('id', $newPartId)->update([
+                        'inclusions' => $picked ? json_encode($picked) : null,
+                    ]);
+                }
+
                 // ── Auto-join an existing interchange group if this part's
                 // vehicle/year already falls within one for this part name.
                 // Doesn't create a NEW group automatically — only joins one
@@ -758,7 +770,12 @@ class HarvestController extends Controller
                 $cpPrefix = strtoupper(substr(
                     preg_replace('/[^A-Z0-9]/', '', strtoupper($cp['category'] ?? 'OTH')), 0, 3
                 ));
-                $cpCode = $cpPrefix . '-' . str_pad(DB::table('parts_inventory')->count() + 1, 5, '0', STR_PAD_LEFT);
+                // (was row-count + 1, which could repeat a number already in use)
+                $cpCode = PartCodeService::next($cpPrefix);
+
+                // A supervisor-typed custom name joins the shared list, so it
+                // is available on Manual Add and Consumables next time.
+                PartNames::ensureTerm($cp['name'], $cp['category'] ?? 'General');
 
                 // NEW: custom parts are free-typed (this is the
                 // escape hatch for anything not on the standard
@@ -897,12 +914,73 @@ class HarvestController extends Controller
     // =========================================================
     // PARTS LIST
     // =========================================================
+    /**
+     * Labels (lower-case) of the rows that are ALWAYS on the checklist —
+     * used by the Part Names Manager to mark them "built-in".
+     */
+    public static function builtInLabels(): array
+    {
+        return collect((new self)->basePartsList())
+            ->flatten(1)
+            ->map(fn($r) => mb_strtolower($r['label']))
+            ->values()->all();
+    }
+
+    /** Harvest categories the checklist/stock-number code understands. */
+    private function checklistCategory(?string $category): string
+    {
+        return array_key_exists((string) $category, self::CODE_PREFIX) ? $category : 'Other';
+    }
+
+    /**
+     * The checklist = the built-in rows PLUS any name from the shared list
+     * (part_terminology) that has "show on harvest checklist" switched on.
+     * That is what makes one addition in the Part Names Manager reach Harvest
+     * without anyone editing this file.
+     */
     private function getPartsList(): array
+    {
+        $list = $this->basePartsList();
+
+        try {
+            if (!Schema::hasColumn('part_terminology', 'harvest_checklist')) return $list;
+
+            $known = collect($list)->flatten(1)->map(fn($r) => mb_strtolower($r['label']))->all();
+
+            $added = [];
+            $extra = DB::table('part_terminology')
+                ->where('harvest_checklist', 1)
+                ->whereNotIn('category', PartCodeService::CONSUMABLE_CATEGORIES)
+                ->orderBy('category')->orderBy('standard_name')
+                ->get(['id', 'category', 'standard_name']);
+
+            foreach ($extra as $t) {
+                if (in_array(mb_strtolower($t->standard_name), $known, true)) continue;
+                $added[] = [
+                    'key'      => 'term_' . $t->id,
+                    'label'    => $t->standard_name,
+                    'category' => $this->checklistCategory($t->category),
+                    'term_id'  => $t->id,
+                ];
+            }
+
+            if ($added) $list['Added Names'] = $added;
+        } catch (\Throwable $e) {
+            // Never let the shared list break the checklist itself.
+        }
+
+        return $list;
+    }
+
+    private function basePartsList(): array
     {
         return [
             'Engine & Powertrain' => [
                 ['key'=>'engine',              'label'=>'Complete Engine Assembly',         'category'=>'Engine'],
                 ['key'=>'engine_gear_complete','label'=>'Complete Engine And Gear With Accessories', 'category'=>'Engine'],
+                ['key'=>'engine_bare',         'label'=>'Complete Engine (Bare / Borale)',  'category'=>'Engine'],
+                ['key'=>'engine_addons',       'label'=>'Complete Engine (With Add-ons)',   'category'=>'Engine'],
+                ['key'=>'engine_cover',        'label'=>'Engine Cover',                     'category'=>'Engine'],
                 ['key'=>'engine_block',        'label'=>'Engine Block',                     'category'=>'Engine'],
                 ['key'=>'cylinder_head',       'label'=>'Cylinder Head',                    'category'=>'Engine'],
                 ['key'=>'intake_manifold',     'label'=>'Intake Manifold',                  'category'=>'Engine'],

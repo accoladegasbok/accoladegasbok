@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use App\Data\PartNames;
+use App\Services\PartCodeService;
+use App\Support\StaffRole;
 
 /**
  * Manages non-automotive inventory: Consumables (oils, filters, brake
@@ -91,7 +94,9 @@ class ConsumableController extends Controller
     // =========================================================
     public function create()
     {
-        $partNames = \App\Data\PartNames::forCategory('Generic / Consumable');
+        // Built-in consumable names PLUS anything added through the Part Names
+        // Manager (or typed by a supervisor) for consumables/electronics/etc.
+        $partNames = PartNames::consumableNames();
         $locations = [
             'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
             'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria',
@@ -128,14 +133,20 @@ class ConsumableController extends Controller
         $category = $request->part_category ?: 'Consumable';
         $currency = InvoiceController::currencyForLocation($request->location);
 
+        // Part name guard — same rule as every other entry point. Before
+        // this, any text was accepted here, so consumables could drift away
+        // from the shared list. Supervisor and above may add new names;
+        // everyone else picks from the list.
+        if (!StaffRole::isSupervisorOrAbove() && !in_array($request->part_name, PartNames::flat(), true)) {
+            return back()->withInput()->withErrors([
+                'part_name' => 'Pick a name from the list, or ask a supervisor to add a new one.',
+            ]);
+        }
+
         // Generate part code — kept as a single CON- sequence across
         // all four categories (they're grouped together on the public
         // side too, so one shared numbering scheme is simplest).
-        $lastCode = DB::table('parts_inventory')
-            ->where('part_code', 'like', 'CON-%')
-            ->orderByDesc('id')->value('part_code');
-        $nextNum  = $lastCode ? (int) substr($lastCode, 4) + 1 : 1;
-        $partCode = 'CON-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+        $partCode = PartCodeService::next('CON');
 
         $photoPaths = [];
         if ($request->hasFile('photos')) {
@@ -173,6 +184,11 @@ class ConsumableController extends Controller
             'updated_at'       => now(),
         ]);
 
+        // A supervisor-typed new name joins the shared list.
+        if (StaffRole::isSupervisorOrAbove()) {
+            PartNames::ensureTerm($request->part_name, $category);
+        }
+
         return redirect()->route('admin.inventory.consumable.index')
             ->with('success', "\"{$request->part_name}\" ({$category}) added to inventory.");
     }
@@ -194,7 +210,8 @@ class ConsumableController extends Controller
         $currency = InvoiceController::currencyForLocation($item->location ?? 'Waxahachie TX');
 
         return view('admin.consumables.edit', compact('item', 'locations', 'currency'))
-            ->with('categories', self::CATEGORIES);
+            ->with('categories', self::CATEGORIES)
+            ->with('partNames', PartNames::consumableNames());
     }
 
     // =========================================================
@@ -216,6 +233,17 @@ class ConsumableController extends Controller
         ]);
 
         $item = DB::table('parts_inventory')->where('id', $id)->first();
+
+        // Only check the name when it was actually changed, so editing price
+        // or stock on an older item with a custom name is never blocked.
+        if ($item && $request->part_name !== $item->part_name
+            && !StaffRole::isSupervisorOrAbove()
+            && !in_array($request->part_name, PartNames::flat(), true)) {
+            return back()->withInput()->withErrors([
+                'part_name' => 'Pick a name from the list, or ask a supervisor to add a new one.',
+            ]);
+        }
+
         $existingPhotos = json_decode($item->photos ?? '[]', true) ?: [];
 
         if (!empty($request->remove_photos)) {
@@ -251,6 +279,10 @@ class ConsumableController extends Controller
             'photos'          => json_encode($existingPhotos),
             'updated_at'      => now(),
         ]);
+
+        if ($item && $request->part_name !== $item->part_name && StaffRole::isSupervisorOrAbove()) {
+            PartNames::ensureTerm($request->part_name, $request->part_category ?: ($item->part_category ?? 'Consumable'));
+        }
 
         return redirect()->route('admin.inventory.consumable.index')
             ->with('success', 'Item updated successfully.');

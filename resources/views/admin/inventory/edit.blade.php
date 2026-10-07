@@ -95,7 +95,7 @@
         <div class="sm:col-span-2">
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
           <input type="text" name="part_name" value="{{ old('part_name', $part->part_name) }}" required
-            list="partNameDatalist" placeholder="Select a standard name, or type a new one"
+            list="partNameDatalist" placeholder="Select a standard name{{ \App\Support\StaffRole::isSupervisorOrAbove() ? ', or type a new one' : '' }}"
             class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
           <datalist id="partNameDatalist">
             @foreach(\App\Data\PartNames::flat() as $pn)
@@ -115,11 +115,23 @@
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
             Category <span class="font-normal text-amber-600">(change carefully — affects fields shown below, after saving)</span>
           </label>
-          <select name="part_category" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
-            @foreach(['Engine','Transmission','Body','Suspension','Electrical','Interior','Cooling','Brakes','Airbag','Fuel','Exhaust','Seat','Wheels','Consumable'] as $cat)
+          {{-- FIXED: this list was hard-coded and stopped at "Consumable", so
+               Electronics, Computers and Other could not be chosen here at all
+               (and an Electronics item showed the wrong category). It now uses
+               the same list as the controller. --}}
+          @php $canReassign = \App\Support\StaffRole::isSupervisorOrAbove(); @endphp
+          <select name="part_category" {{ $canReassign ? '' : 'disabled' }} class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400 {{ $canReassign ? '' : 'bg-gray-50 text-gray-500' }}">
+            @foreach($categories as $cat)
             <option value="{{ $cat }}" {{ old('part_category', $part->part_category) === $cat ? 'selected' : '' }}>{{ $cat }}</option>
             @endforeach
           </select>
+          <p class="text-[11px] text-gray-400 font-body mt-1">
+            @if($canReassign)
+              Changing the category gives this part a new stock number in that category's series. The old number ({{ $part->part_code }}) keeps working in search, and a new tag should be printed.
+            @else
+              Only supervisor and above can change a part's category (it also changes the stock number).
+            @endif
+          </p>
         </div>
 
         <div>
@@ -252,6 +264,25 @@
 
       </div>
     </div>
+
+    {{-- ── Add-ons that come with a "Complete Engine (With Add-ons)" ───── --}}
+    @php $selectedAddons = json_decode($part->inclusions ?? '[]', true) ?: []; @endphp
+    @if($part->part_category === 'Engine' && (str_contains((string) $part->part_name, 'With Add-ons') || !empty($selectedAddons)))
+    <div class="stat-card mb-4">
+      <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Engine Add-ons — what comes with this engine</h2>
+      <p class="text-xs text-gray-400 font-body mb-3">Tick everything included. Anything left unticked is treated as NOT included.</p>
+      <input type="hidden" name="addons_present" value="1">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        @foreach(\App\Data\EngineAddons::OPTIONS as $addonKey => $addonLabel)
+        <label class="flex items-center gap-2 text-sm font-body text-gray-700">
+          <input type="checkbox" name="addons[]" value="{{ $addonKey }}" class="accent-yellow-500"
+                 {{ in_array($addonKey, old('addons', $selectedAddons)) ? 'checked' : '' }}>
+          {{ $addonLabel }}
+        </label>
+        @endforeach
+      </div>
+    </div>
+    @endif
 
     {{-- ── OEM Engine / Transmission Codes (items 6 & 7) ──────────── --}}
     @if(in_array($part->part_category, ['Engine','Transmission']))

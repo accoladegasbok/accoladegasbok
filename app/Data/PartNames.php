@@ -13,6 +13,9 @@ class PartNames
             'Engine & Drivetrain' => [
                 'Complete Engine Assembly',
                 'Complete Engine And Gear With Accessories',
+                'Complete Engine (Bare / Borale)',
+                'Complete Engine (With Add-ons)',
+                'Engine Cover',
                 'Engine Long Block',
                 'Engine Short Block',
                 'Engine Block',
@@ -366,5 +369,65 @@ class PartNames
     public static function categories(): array
     {
         return array_keys(self::all());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Shared-list helpers (Step 1 name unification)
+    // ─────────────────────────────────────────────────────────────
+
+    /** Terminology categories that belong to non-vehicle items. */
+    public const NON_VEHICLE_CATEGORIES = ['Consumable', 'Electronics', 'Computers', 'Other', 'General'];
+
+    /**
+     * Names for the consumables / electronics / computers / other screens:
+     * the built-in consumable list PLUS anything added through the Part Names
+     * Manager (or typed by a supervisor) under those categories.
+     */
+    public static function consumableNames(): array
+    {
+        $names = self::forCategory('Generic / Consumable');
+
+        try {
+            $db = \Illuminate\Support\Facades\DB::table('part_terminology')
+                ->whereIn('category', self::NON_VEHICLE_CATEGORIES)
+                ->pluck('standard_name')->all();
+            $names = array_merge($names, $db);
+        } catch (\Throwable $e) {
+            // DB unavailable — fall back to the built-in list alone.
+        }
+
+        $names = array_values(array_unique($names));
+        sort($names, SORT_NATURAL | SORT_FLAG_CASE);
+        return $names;
+    }
+
+    /**
+     * Register a brand-new name in the shared list (part_terminology) so one
+     * addition serves Manual Add, Harvest and Consumables. Does nothing if
+     * the name already exists (case-insensitive). Safe to call repeatedly.
+     */
+    public static function ensureTerm(string $name, string $category = 'General', bool $harvestChecklist = false): void
+    {
+        $name = trim($name);
+        if ($name === '') return;
+
+        try {
+            $db = \Illuminate\Support\Facades\DB::table('part_terminology');
+            if ((clone $db)->whereRaw('LOWER(standard_name) = ?', [mb_strtolower($name)])->exists()) return;
+
+            $row = [
+                'category'       => $category !== '' ? $category : 'General',
+                'standard_name'  => $name,
+                'aces_pies_note' => null,
+                'created_at'     => now(),
+                'updated_at'     => now(),
+            ];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('part_terminology', 'harvest_checklist')) {
+                $row['harvest_checklist'] = $harvestChecklist ? 1 : 0;
+            }
+            $db->insert($row);
+        } catch (\Throwable $e) {
+            // Never let list bookkeeping block a real save.
+        }
     }
 }

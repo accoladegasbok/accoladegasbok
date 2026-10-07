@@ -311,7 +311,11 @@ class PartsSearchController extends Controller
         if ($filters['sort'] === 'price_desc') $q->reorder('price_local', 'desc');
         if ($filters['sort'] === 'mileage')    $q->reorder('mileage',   'asc');
 
-        return $q->paginate(24);
+        // FIXED (B2): page 2, 3, 4 links used to carry only ?page=N, so every
+        // filter (make, model, year, category, search text, sort...) was lost
+        // the moment a customer went to the next page. withQueryString() adds
+        // the current filters to every pagination link.
+        return $q->paginate(24)->withQueryString();
     }
 
     private function formatPart(object $p): array

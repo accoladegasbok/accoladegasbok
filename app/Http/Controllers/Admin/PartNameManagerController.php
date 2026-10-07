@@ -1,40 +1,53 @@
 <?php
 // FILE: app/Http/Controllers/Admin/PartNameManagerController.php
 //
-// Admin-only tool to fix part-name inconsistencies in REAL inventory
-// data (e.g. "Headlamp" vs "Headlight" used interchangeably across
-// different harvest sessions). Merges multiple names into one
-// canonical name, re-tagging every affected parts_inventory row.
+// Part Names Manager.
 //
-// NOTE: the master "allowed names" whitelist that non-admin staff
-// are restricted to (App\Data\PartNames::flat()) is a static PHP
-// class, not a database table — so this tool cleans up actual
-// inventory data, but adding/removing an entry from that whitelist
-// itself still requires editing app/Data/PartNames.php directly and
-// redeploying. If you want that whitelist itself to be admin-editable
-// without a code deploy, that's a small follow-up (move it into a
-// database table) — let me know if you want that built too.
+//  - Supervisor and above: see the list, ADD new names, switch a name on or
+//    off for the harvest checklist.
+//  - Admin only: MERGE, RENAME and DELETE — these retag every matching part,
+//    so they stay with admin.
+//
+// New names go into part_terminology, which is the shared list read by
+// Manual Add, Consumables and (when "show on harvest checklist" is on) the
+// harvest checklist. One addition here serves all of them.
 
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
+use App\Support\StaffRole;
 
 class PartNameManagerController extends Controller
 {
+    /** Categories offered when adding a name (vehicle + non-vehicle). */
+    public const CATEGORY_OPTIONS = [
+        'General', 'Engine', 'Transmission', 'Electrical', 'Body', 'Suspension',
+        'Cooling', 'Brakes', 'Interior', 'Airbag', 'Seat', 'Fuel', 'Exhaust', 'Wheels',
+        'Consumable', 'Electronics', 'Computers', 'Other',
+    ];
+
     private function requireAdmin()
     {
-        if (Session::get('staff_role') !== 'admin') {
+        if (!StaffRole::isAdmin()) {
             abort(403, 'Admin only.');
+        }
+    }
+
+    private function requireSupervisor()
+    {
+        if (!StaffRole::isSupervisorOrAbove()) {
+            abort(403, 'Supervisor or above only.');
         }
     }
 
     // GET /admin/part-names — list distinct part names in use, with counts
     public function index(Request $request)
     {
-        $this->requireAdmin();
+        $this->requireSupervisor();
 
         $q = trim($request->get('q', ''));
 
@@ -50,9 +63,23 @@ class PartNameManagerController extends Controller
         if ($q) $invQuery->where('part_name', 'like', "%{$q}%");
         $invRows = $invQuery->get()->keyBy(fn($r) => strtolower(trim($r->part_name)));
 
-        $termQuery = DB::table('part_terminology')->select('id', 'category', 'standard_name');
+        $hasFlag = Schema::hasColumn('part_terminology', 'harvest_checklist');
+        $termQuery = DB::table('part_terminology')->select(
+            'id', 'category', 'standard_name',
+            $hasFlag ? 'harvest_checklist' : DB::raw('0 as harvest_checklist')
+        );
         if ($q) $termQuery->where('standard_name', 'like', "%{$q}%");
         $termRows = $termQuery->get()->keyBy(fn($r) => strtolower(trim($r->standard_name)));
+
+        // Names that are always rows on the harvest checklist (built in).
+        $builtIn = HarvestController::builtInLabels();
+
+        // none = not in the shared list | built-in | on | off
+        $harvestState = function (string $key, $termRow) use ($builtIn) {
+            if (in_array($key, $builtIn, true)) return 'built-in';
+            if (!$termRow) return 'none';
+            return $termRow->harvest_checklist ? 'on' : 'off';
+        };
 
         $merged = [];
         foreach ($invRows as $key => $row) {
@@ -61,22 +88,29 @@ class PartNameManagerController extends Controller
                 'part_count'     => $row->part_count,
                 'total_stock'    => $row->total_stock,
                 'in_taxonomy'    => isset($termRows[$key]),
+                'harvest_state'  => $harvestState($key, $termRows[$key] ?? null),
             ];
         }
         foreach ($termRows as $key => $row) {
             if (!isset($merged[$key])) {
                 $merged[$key] = (object) [
-                    'part_name'   => $row->standard_name,
-                    'part_count'  => 0,
-                    'total_stock' => 0,
-                    'in_taxonomy' => true,
+                    'part_name'     => $row->standard_name,
+                    'part_count'    => 0,
+                    'total_stock'   => 0,
+                    'in_taxonomy'   => true,
+                    'harvest_state' => $harvestState($key, $row),
                 ];
             }
         }
 
         $names = collect($merged)->sortBy(fn($r) => strtolower($r->part_name))->values();
 
-        return view('admin.part-names.index', compact('names', 'q'));
+        return view('admin.part-names.index', [
+            'names'           => $names,
+            'q'               => $q,
+            'isAdmin'         => StaffRole::isAdmin(),
+            'categoryOptions' => self::CATEGORY_OPTIONS,
+        ]);
     }
 
     // POST /admin/part-names/merge
@@ -181,7 +215,7 @@ class PartNameManagerController extends Controller
     // shows up on the manual-add datalist immediately — no redeploy.
     public function store(Request $request)
     {
-        $this->requireAdmin();
+        $this->requireSupervisor();
 
         // FIXED: the real form (admin/part-names/index.blade.php)
         // sends the field as `name`, not `standard_name` — this
@@ -196,26 +230,37 @@ class PartNameManagerController extends Controller
         ]);
 
         $category = $request->category ?: 'General';
+        $name     = trim($request->name);
 
-        $exists = DB::table('part_terminology')
-            ->where('category', $category)
-            ->where('standard_name', $request->name)
-            ->exists();
+        // Case-insensitive, across ALL categories — "alternator" and
+        // "Alternator" must not become two entries.
+        $existing = DB::table('part_terminology')
+            ->whereRaw('LOWER(standard_name) = ?', [mb_strtolower($name)])
+            ->first();
 
-        if ($exists) {
-            return back()->with('error', "\"{$request->name}\" already exists under {$category}.");
+        if ($existing) {
+            return back()->with('error', "\"{$name}\" already exists (under {$existing->category}).");
         }
 
-        DB::table('part_terminology')->insert([
+        $row = [
             'category'       => $category,
-            'standard_name'  => $request->name,
+            'standard_name'  => $name,
             'aces_pies_note' => null,
             'created_at'     => now(),
             'updated_at'     => now(),
-        ]);
+        ];
+        // Show on the harvest checklist too? (ticked by default on the form)
+        if (Schema::hasColumn('part_terminology', 'harvest_checklist')) {
+            $row['harvest_checklist'] = $request->boolean('harvest_checklist') ? 1 : 0;
+        }
+        DB::table('part_terminology')->insert($row);
+
+        $where = ($row['harvest_checklist'] ?? 0)
+            ? 'Manual Add, Consumables and the harvest checklist'
+            : 'Manual Add and Consumables';
 
         return redirect()->route('admin.part-names.index')
-            ->with('success', "\"{$request->name}\" added under {$category}.");
+            ->with('success', "\"{$name}\" added under {$category} — now available on {$where}.");
     }
 
     // DELETE /admin/part-names/{id} — remove a canonical name. Blocked
@@ -248,7 +293,7 @@ class PartNameManagerController extends Controller
     // manually through the Add form.
     public function addToTaxonomy(Request $request)
     {
-        $this->requireAdmin();
+        $this->requireSupervisor();
 
         $request->validate([
             'part_name' => 'required|string|max:150',
@@ -257,19 +302,51 @@ class PartNameManagerController extends Controller
 
         $category = $request->category ?: 'General';
 
-        if (DB::table('part_terminology')->where('standard_name', $request->part_name)->exists()) {
+        if (DB::table('part_terminology')->whereRaw('LOWER(standard_name) = ?', [mb_strtolower($request->part_name)])->exists()) {
             return back()->with('error', "\"{$request->part_name}\" is already in the dropdown list.");
         }
 
-        DB::table('part_terminology')->insert([
+        $row = [
             'category'       => $category,
             'standard_name'  => $request->part_name,
             'aces_pies_note' => null,
             'created_at'     => now(),
             'updated_at'     => now(),
-        ]);
+        ];
+        if (Schema::hasColumn('part_terminology', 'harvest_checklist')) {
+            $row['harvest_checklist'] = 0;
+        }
+        DB::table('part_terminology')->insert($row);
 
         return redirect()->route('admin.part-names.index')
             ->with('success', "\"{$request->part_name}\" is now in the dropdown.");
+    }
+
+    // POST /admin/part-names/toggle-harvest — switch an extra name on/off the
+    // harvest checklist. Built-in checklist rows can't be switched off here.
+    public function toggleHarvest(Request $request)
+    {
+        $this->requireSupervisor();
+
+        $request->validate(['part_name' => 'required|string|max:150']);
+
+        if (!Schema::hasColumn('part_terminology', 'harvest_checklist')) {
+            return back()->with('error', 'Run the latest migrations first (harvest_checklist column is missing).');
+        }
+
+        if (in_array(mb_strtolower($request->part_name), HarvestController::builtInLabels(), true)) {
+            return back()->with('error', "\"{$request->part_name}\" is a built-in checklist row and always shows.");
+        }
+
+        $term = DB::table('part_terminology')->whereRaw('LOWER(standard_name) = ?', [mb_strtolower($request->part_name)])->first();
+        if (!$term) {
+            return back()->with('error', 'Add the name to the dropdown list first.');
+        }
+
+        $new = $term->harvest_checklist ? 0 : 1;
+        DB::table('part_terminology')->where('id', $term->id)->update(['harvest_checklist' => $new, 'updated_at' => now()]);
+
+        return redirect()->route('admin.part-names.index')
+            ->with('success', "\"{$term->standard_name}\" " . ($new ? 'now shows' : 'no longer shows') . ' on the harvest checklist.');
     }
 }

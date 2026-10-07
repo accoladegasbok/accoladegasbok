@@ -214,6 +214,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/merge',           [\App\Http\Controllers\Admin\PartNameManagerController::class, 'merge'])->name('merge');
             Route::post('/rename-one',      [\App\Http\Controllers\Admin\PartNameManagerController::class, 'renameOne'])->name('rename-one');
             Route::post('/add-to-taxonomy', [\App\Http\Controllers\Admin\PartNameManagerController::class, 'addToTaxonomy'])->name('add-to-taxonomy');
+            Route::post('/toggle-harvest',  [\App\Http\Controllers\Admin\PartNameManagerController::class, 'toggleHarvest'])->name('toggle-harvest');
             Route::delete('/{id}',          [\App\Http\Controllers\Admin\PartNameManagerController::class, 'destroy'])->name('destroy');
         });
 

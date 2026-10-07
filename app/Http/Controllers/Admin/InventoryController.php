@@ -19,8 +19,12 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Schema;
 use App\Data\PartNames;
+use App\Data\EngineAddons;
+use App\Services\PartCodeService;
 use App\Support\Locations;
+use App\Support\StaffRole;
 
 class InventoryController extends Controller
 {
@@ -41,21 +45,32 @@ class InventoryController extends Controller
         return range(1986, 2027);
     }
 
-    // ── Part name guard — only admin/manager may submit a name not on the
-// ── standard list, to keep nomenclature uniform across staff.
+    // ── Part name guard — only supervisor and above may submit a name not on
+    // ── the standard list, to keep nomenclature uniform across staff. A new
+    // ── name typed by a supervisor is added to the shared list AFTER the part
+    // ── saves successfully (see registerNewName), so it reaches Manual Add,
+    // ── Consumables and the Part Names Manager without a second step.
     private function assertAllowedPartName(?string $partName): ?string
     {
         if (!$partName) return 'Part name is required.';
 
-        if (in_array(Session::get('staff_role'), ['admin', 'manager'], true)) {
-    return null; // admins and managers may use any name
-}
+        if (StaffRole::isSupervisorOrAbove()) {
+            return null; // supervisor, manager and admin may use any name
+        }
 
         if (!in_array($partName, PartNames::flat(), true)) {
-            return 'Only admin can add a part name that is not on the standard list. Please select a name from the list, or ask an admin to add it.';
+            return 'Only supervisor and above can add a part name that is not on the standard list. Please select a name from the list, or ask a supervisor to add it.';
         }
 
         return null;
+    }
+
+    /** Put a supervisor-typed new name into the shared list (no-op if it exists). */
+    private function registerNewName(?string $name, ?string $category): void
+    {
+        if ($name && StaffRole::isSupervisorOrAbove()) {
+            PartNames::ensureTerm($name, $category ?: 'General');
+        }
     }
 
     // ── List ──────────────────────────────────────────────────────
@@ -82,6 +97,7 @@ class InventoryController extends Controller
             $query->where(function($q) use ($f) {
                 $q->where('p.part_name',            'like', "%$f%")
                   ->orWhere('p.part_code',           'like', "%$f%")
+                  ->orWhereIn('p.id', PartCodeService::idsMatchingOldCode($f))
                   ->orWhere('p.model',                'like', "%$f%")
                   ->orWhere('p.oem_part_number',      'like', "%$f%")
                   ->orWhere('p.engine_code_oem',      'like', "%$f%")  // item 6
@@ -359,7 +375,34 @@ class InventoryController extends Controller
             if ($term) $resolvedPartName = $term->standard_name;
         }
 
+        // ── Category change = new stock number in the NEW category's series.
+        // Supervisor and above only. The old number is remembered (see
+        // part_code_history) so printed tags and old searches still find it.
+        $newCode = null;
+        $categoryChanged = $currentPart
+            && $request->filled('part_category')
+            && $request->part_category !== $currentPart->part_category;
+
+        if ($categoryChanged) {
+            if (!StaffRole::isSupervisorOrAbove()) {
+                return back()->withInput()->withErrors([
+                    'part_category' => "Only supervisor and above can change a part's category — it also changes the stock number.",
+                ]);
+            }
+            $newPrefix = PartCodeService::prefixForCategory($request->part_category);
+            $oldPrefix = strtok((string) $currentPart->part_code, '-');
+            if ($newPrefix !== $oldPrefix) {
+                $newCode = PartCodeService::next($newPrefix);
+            }
+        }
+
         DB::table('parts_inventory')->where('id', $id)->update([
+            ...($newCode ? ['part_code' => $newCode] : []),
+            // Add-ons for "Complete Engine (With Add-ons)" — only touched when
+            // the edit form actually showed the add-on boxes.
+            ...($request->has('addons_present') && Schema::hasColumn('parts_inventory', 'inclusions')
+                ? ['inclusions' => ($picked = EngineAddons::clean((array) $request->input('addons', []))) ? json_encode($picked) : null]
+                : []),
             'part_name'              => $resolvedPartName,
             'part_terminology_id'    => $request->part_terminology_id,
             // NEW: category can now actually be corrected on edit — was
@@ -422,8 +465,24 @@ class InventoryController extends Controller
             }
         }
 
-        return redirect()->route('admin.inventory.index')
-            ->with('success', 'Part updated successfully.');
+        if ($newCode) {
+            PartCodeService::recordChange(
+                $id, $currentPart->part_code, $newCode,
+                $currentPart->part_category, $request->part_category,
+                Session::get('staff_id')
+            );
+        }
+
+        if ($request->part_name !== $existingPartName) {
+            $this->registerNewName($resolvedPartName, $request->part_category ?: ($currentPart->part_category ?? null));
+        }
+
+        $msg = 'Part updated successfully.';
+        if ($newCode) {
+            $msg .= " Stock number changed from {$currentPart->part_code} to {$newCode} — the old number still finds this part. Print a new tag for it.";
+        }
+
+        return redirect()->route('admin.inventory.index')->with('success', $msg);
     }
 
     // =========================================================
@@ -827,12 +886,7 @@ class InventoryController extends Controller
                 ->with('success', "Added {$qtyToAdd} more unit(s) to existing stock {$existing->part_code} — now {$newQty} in stock.");
         }
 
-        $prefix   = 'CON';
-        $lastCode = DB::table('parts_inventory')
-            ->where('part_code', 'like', $prefix.'-%')
-            ->orderByDesc('id')->value('part_code');
-        $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix)+1) + 1 : 1;
-        $partCode = $prefix.'-'.str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+        $partCode = PartCodeService::next('CON');
 
         $priceUsdSnapshot = $priceLocal / $currency['rate'];
         // ──────────────────────────────────────────────────────────────
@@ -863,6 +917,10 @@ class InventoryController extends Controller
             'created_at'           => now(),
             'updated_at'           => now(),
         ]);
+
+        // A supervisor-typed new name joins the shared list.
+        // (the base name, not the brand-prefixed display name built above)
+        $this->registerNewName($request->part_name, $request->part_category ?? 'Consumable');
 
         return redirect()->route('admin.inventory.index')
             ->with('success', "Consumable item {$partCode} added to inventory.");
@@ -952,11 +1010,17 @@ class InventoryController extends Controller
         // ──────────────────────────────────────────────────────────────
 
         $prefix   = $isConsumable ? 'CON' : substr(strtoupper($request->part_category), 0, 3);
-        $lastCode = DB::table('parts_inventory')
-            ->where('part_code','like',$prefix.'-%')
-            ->orderByDesc('id')->value('part_code');
-        $nextNum  = $lastCode ? (int) substr($lastCode, strlen($prefix)+1) + 1 : 1;
-        $partCode = $prefix.'-'.str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+        // Highest number in use + 1 (not "last row inserted"), so a number
+        // can never repeat after a part has been re-numbered.
+        $partCode = PartCodeService::next($prefix);
+
+        // Vehicle make/model are stored UPPERCASE everywhere. Electronics,
+        // computers and other items keep their product brand as typed.
+        $isVehiclePart = !PartCodeService::isConsumableCategory($request->part_category);
+        $brandValue    = $isVehiclePart ? strtoupper(trim($request->brand)) : $request->brand;
+        $modelValue    = $isConsumable
+            ? ($request->model ?: 'Universal')
+            : ($isVehiclePart ? strtoupper(trim((string) $request->model)) : $request->model);
 
         // Consumables don't have a real vehicle year — use a wide placeholder
         // range since year_from/year_to are NOT NULL columns.
@@ -982,8 +1046,8 @@ class InventoryController extends Controller
 
         $partId = DB::table('parts_inventory')->insertGetId([
             'part_code'              => $partCode,
-            'brand'                  => $request->brand,
-            'model'                  => $isConsumable ? ($request->model ?: 'Universal') : $request->model,
+            'brand'                  => $brandValue,
+            'model'                  => $modelValue,
             'year_from'              => $yearFrom,
             'year_to'                => $yearTo,
             'compat_year_from'       => $isConsumable ? null : ($request->compat_year_from ?? $actualYear),
@@ -1040,6 +1104,17 @@ class InventoryController extends Controller
             $videoPath = $request->file('video')->store("parts/{$partId}/video", 'public');
             DB::table('parts_inventory')->where('id', $partId)->update(['video_path' => $videoPath]);
         }
+
+        // Add-ons for a "Complete Engine (With Add-ons)" created by hand.
+        if ($request->has('addons') && Schema::hasColumn('parts_inventory', 'inclusions')) {
+            $picked = EngineAddons::clean((array) $request->input('addons', []));
+            if ($picked) {
+                DB::table('parts_inventory')->where('id', $partId)->update(['inclusions' => json_encode($picked)]);
+            }
+        }
+
+        // A supervisor-typed new name joins the shared list.
+        $this->registerNewName($resolvedPartName, $request->part_category);
 
         // NEW: additional OEM numbers submitted alongside creation —
         // e.g. this alternator is known to match both a Denso AND an
