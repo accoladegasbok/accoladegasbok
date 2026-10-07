@@ -411,42 +411,12 @@ class OrderAdminController extends Controller
     // =========================================================
     public function printAdmin(int $id)
     {
-        $order = DB::table('orders')->where('id', $id)->first();
-        if (!$order) abort(404);
+        // Same data, same document as the invoice/receipt page (InvoiceController::orderDocumentData),
+        // so the order print can never differ from it: stock number + our reference, line discounts,
+        // shipping/tax, PAID / NOT YET PAID, the order's own currency, returned/refunded markers and donor VIN.
+        $data = app(\App\Http\Controllers\Admin\InvoiceController::class)->orderDocumentData($id);
 
-        $items = DB::table('order_items')->where('order_id', $id)->get();
-
-        // NEW: donor VIN — not snapshotted on order_items at sale time,
-        // so joined live from parts_inventory. Only ever shows when a
-        // part actually has one recorded (harvested parts do; services
-        // and non-harvested items won't).
-        $donorVins = DB::table('parts_inventory')
-            ->whereIn('id', $items->pluck('part_id')->filter())
-            ->pluck('donor_vin', 'id');
-
-        $items = $items->map(function ($item) use ($donorVins) {
-            $item->donor_vin = $donorVins->get($item->part_id) ?: null;
-            return $item;
-        });
-
-        // NEW: same "Returned & Refunded" badge data as
-        // InvoiceController::show() — this is a SEPARATE receipt
-        // template from admin.invoices.show, so it needs its own copy
-        // of this lookup rather than inheriting the earlier fix.
-        $returnsByOrderItem = DB::table('returns')
-            ->where('order_id', $id)
-            ->where('status', 'resolved')
-            ->get()
-            ->keyBy('order_item_id');
-
-        $items = $items->map(function ($item) use ($returnsByOrderItem) {
-            $return = $returnsByOrderItem->get($item->id);
-            $item->returned             = (bool) $return;
-            $item->return_refund_method = $return->refund_method ?? null;
-            return $item;
-        });
-
-        return view('admin.orders.print', compact('order', 'items'));
+        return view('admin.orders.print', $data);
     }
 
     // =========================================================

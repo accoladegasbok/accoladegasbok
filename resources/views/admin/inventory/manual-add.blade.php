@@ -129,6 +129,22 @@
                 <option value="{{ $pn }}">
                 @endforeach
             </datalist>
+            @unless(\App\Support\StaffRole::isSupervisorOrAbove())
+            <p class="text-[11px] text-gray-400 mt-1">Pick a name from the list. Only supervisor and above can add a name that is not on it.</p>
+            @endunless
+        </div>
+
+        {{-- Add-ons that come with "Complete Engine (With Add-ons)" — shown only for that part name --}}
+        <div class="col-span-2 hidden" id="addonsBox">
+            <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Includes — tick what comes with this engine</label>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                @foreach(\App\Data\EngineAddons::OPTIONS as $addonKey => $addonLabel)
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" name="addons[]" value="{{ $addonKey }}" class="accent-yellow-500" {{ in_array($addonKey, old('addons', [])) ? 'checked' : '' }}>
+                    {{ $addonLabel }}
+                </label>
+                @endforeach
+            </div>
         </div>
         <div>
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Category *</label>
@@ -173,8 +189,9 @@
             <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">Side</label>
             <select name="side"
                     class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-gold">
-                @foreach(['N/A','Left','Right','Front','Rear','Front Left','Front Right','Rear Left','Rear Right'] as $s)
-                <option value="{{ $s }}" {{ old('side')===$s?'selected':'' }}>{{ $s }}</option>
+                {{-- Same list as every other add-part form (App\Data\PartSides) --}}
+                @foreach(\App\Data\PartSides::OPTIONS as $s)
+                <option value="{{ $s }}" {{ old('side', 'N/A')===$s?'selected':'' }}>{{ $s }}</option>
                 @endforeach
             </select>
         </div>
@@ -507,6 +524,14 @@ async function runOemLookup(){
 // ── AUTO-DETECT FLAGS ───────────────────────────────────────────
 function autoDetectFlags(){
     const n=(document.querySelector('[name="part_name"]')?.value||'').toLowerCase();
+    // Add-on tick boxes only for "Complete Engine (With Add-ons)". Hiding them clears the ticks,
+    // so a part saved under a different name never carries add-ons by accident.
+    const addonsBox=document.getElementById('addonsBox');
+    if(addonsBox){
+        const show=n.includes('with add-ons');
+        addonsBox.classList.toggle('hidden',!show);
+        if(!show) addonsBox.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);
+    }
     if(['engine','gearbox','transmission','airbag','catalytic','cat converter'].some(k=>n.includes(k))){
         document.getElementById('majorCheck').checked=true;
         document.getElementById('legalCheck').checked=true;
