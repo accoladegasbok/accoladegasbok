@@ -6,6 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>@yield('title', 'Admin') — Auto Zenith Parts</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/az-favicon-64.png') }}">
+  <link rel="apple-touch-icon" href="{{ asset('images/az-icon-192.png') }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -49,9 +51,11 @@
   {{-- ── Sidebar ────────────────────────────────────────────────────────── --}}
   <aside class="w-56 bg-navy flex-shrink-0 flex flex-col overflow-y-auto">
     {{-- Logo --}}
-    <div class="px-4 py-5 border-b border-white border-opacity-10">
-      <div class="font-display font-700 text-white text-lg tracking-wide leading-none">AUTO ZENITH</div>
-      <div class="text-gold text-xs font-body font-500 tracking-widest mt-0.5">Admin Panel</div>
+    <div class="px-4 py-4 border-b border-white border-opacity-10">
+      <a href="{{ route('admin.dashboard') }}" class="block bg-white rounded-lg px-3 py-2" aria-label="Auto Zenith Parts — dashboard">
+        <img src="{{ asset('images/az-logo-doc.jpg') }}" alt="Auto Zenith Parts" width="105" height="64" class="block h-16 w-auto mx-auto">
+      </a>
+      <div class="text-gold text-xs font-body font-500 tracking-widest mt-2 text-center uppercase">Admin Panel</div>
     </div>
 
     {{-- Nav --}}
@@ -158,10 +162,10 @@
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l3 3m0 0l-3 3m3-3h-7.5M6 7.5h3v3H6v-3z"/></svg>
         Assets & Equipment
       </a>
-      @if(session('staff_role') === 'admin')
+      @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
       <a href="{{ route('admin.part-names.index') }}" class="sidebar-link {{ request()->routeIs('admin.part-names*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"/></svg>
-        Part Names Manager
+        Part Names
       </a>
       @endif
       <a href="{{ route('admin.transfers.index') }}" class="sidebar-link {{ request()->routeIs('admin.transfers*') ? 'active' : '' }}">
