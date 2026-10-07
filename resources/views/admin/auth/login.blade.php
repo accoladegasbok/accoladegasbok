@@ -5,6 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Staff Login — Auto Zenith Parts</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/az-favicon-64.png') }}">
+  <link rel="apple-touch-icon" href="{{ asset('images/az-icon-192.png') }}">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
@@ -18,8 +20,11 @@
 <body>
   <div class="login-card shadow-2xl">
     <div class="login-header">
-      <div class="font-family:Barlow Condensed" style="font-family:'Barlow Condensed',sans-serif; font-weight:800; font-size:26px; color:#fff; letter-spacing:.05em;">AUTO ZENITH PARTS</div>
-      <div style="color:#C8960C; font-size:11px; font-weight:500; letter-spacing:.15em; text-transform:uppercase; margin-top:4px;">Staff Portal</div>
+      <a href="{{ route('home') }}" aria-label="Auto Zenith Parts — home page"
+         style="display:inline-block; background:#fff; border-radius:12px; padding:10px 18px;">
+        <img src="{{ asset('images/az-logo-doc.jpg') }}" alt="Auto Zenith Parts" width="118" height="72" style="display:block; height:72px; width:auto;">
+      </a>
+      <div style="color:#C8960C; font-size:11px; font-weight:500; letter-spacing:.15em; text-transform:uppercase; margin-top:10px;">Staff Portal</div>
     </div>
 
     <div class="login-body">
@@ -66,7 +71,10 @@
       </form>
 
       <p class="text-center text-xs text-gray-400 font-body mt-5">
-        Auto Zenith Parts · RC: 1135830
+        <a href="{{ route('home') }}" class="hover:text-navy transition-colors">← Back to the website</a>
+      </p>
+      <p class="text-center text-xs text-gray-400 font-body mt-2">
+        Auto Zenith Parts · RC: 1135830 · info@autozenithparts.com
       </p>
     </div>
   </div>
