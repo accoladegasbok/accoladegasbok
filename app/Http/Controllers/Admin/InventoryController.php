@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Schema;
 use App\Data\PartNames;
 use App\Data\EngineAddons;
+use App\Data\PartSides;
 use App\Services\PartCodeService;
 use App\Support\Locations;
 use App\Support\StaffRole;
@@ -1057,7 +1058,8 @@ class InventoryController extends Controller
             'unit_size'              => $request->unit_size,
             'compatibility_note'     => $request->compatibility_note,
             'part_category'          => $request->part_category,
-            'side'                   => $request->side ?? 'N/A',
+            // One standard list for every form (D/S -> Left, P/S -> Right, ...)
+            'side'                   => PartSides::normalize($request->side),
             'condition_grade'        => $request->condition_grade,
             'price_usd'              => $priceUsdSnapshot,
             'price_local'            => $priceLocal,

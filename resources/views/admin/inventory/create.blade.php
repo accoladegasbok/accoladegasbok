@@ -76,10 +76,12 @@
         </div>
         <div>
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Side</label>
+          {{-- Same list as every other add-part form (App\Data\PartSides). Left = driver
+               side, Right = passenger side on the left-hand-drive vehicles we stock. --}}
           <select name="side" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none">
-            <option value="N/A">N/A</option>
-            <option value="D/S">D/S (Driver Side)</option>
-            <option value="P/S">P/S (Passenger Side)</option>
+            @foreach(\App\Data\PartSides::OPTIONS as $sideOption)
+            <option value="{{ $sideOption }}" {{ old('side', 'N/A') === $sideOption ? 'selected' : '' }}>{{ $sideOption }}{{ $sideOption === 'Left' ? ' (driver side)' : ($sideOption === 'Right' ? ' (passenger side)' : '') }}</option>
+            @endforeach
           </select>
         </div>
         <div>
