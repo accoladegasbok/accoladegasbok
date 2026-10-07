@@ -43,6 +43,12 @@
     $cEmail = $customerInfo->email   ?? ($order->customer_email ?? null);
     $cAddr  = $customerInfo->address ?? ($order->customer_address ?? null);
 
+    // Company contact email, printed on every document (header and footer)
+    $docEmail = $businessInfo['email'] ?? 'info@autozenithparts.com';
+
+    // Company logo (Nigeria documents show the registration line inside the logo, so it is not repeated as text)
+    $logoUri = \App\Http\Controllers\Admin\InvoiceController::logoDataUri(!empty($businessInfo['rc']));
+
     // Short warranty text for the document footer (full terms: autozenithparts.com/warranty)
     $docWarranty = 'Limited Warranty: Engines 90 days (USA) / 30 days (West Africa). Transmissions 90 days (USA); in West Africa 30 days only when installed by our recommended technician with our recommended oil. No warranty on transmissions bought and taken away; inspect properly before purchase. Mechanical parts 30 days. Electrical 14 days, exchange or credit only. Labor not covered. Void if the Auto Zenith tag or mark is removed or the part is disassembled. Returns within 7 days, uninstalled, 20% restocking fee. Full terms: autozenithparts.com/warranty';
 @endphp
@@ -53,11 +59,16 @@
     <table>
         <tr>
             <td style="width:58%;">
+                @if($logoUri)
+                <img src="{{ $logoUri }}" alt="Auto Zenith Parts" style="width:200px;">
+                @else
                 <div class="doc-brand">AUTO <span>ZENITH</span> PARTS</div>
+                @endif
                 <div class="doc-tagline">{{ $isVehicleSale ? 'Quality Used Vehicles · Sold As-Is' : 'Quality Used Auto Parts · Engine · Gearbox · Body' }}</div>
-                <div class="doc-company">{{ $businessInfo['company'] ?? 'Auto Zenith Parts' }}{{ !empty($businessInfo['rc']) ? ' · ' . $businessInfo['rc'] : '' }}</div>
+                <div class="doc-company">{{ $businessInfo['company'] ?? 'Auto Zenith Parts' }}{{ (!$logoUri && !empty($businessInfo['rc'])) ? ' · ' . $businessInfo['rc'] : '' }}</div>
                 <div class="doc-small">{{ $businessInfo['address'] ?? '' }}</div>
-                <div class="doc-small">Tel: {{ $businessInfo['phone'] ?? '' }} · autozenithparts.com</div>
+                <div class="doc-small">Tel: {{ $businessInfo['phone'] ?? '' }}</div>
+                <div class="doc-small">{{ $docEmail }} · autozenithparts.com</div>
             </td>
             <td style="width:42%; text-align:right;">
                 <div class="doc-title">
@@ -313,7 +324,7 @@
             @endforeach
         </table>
         @endif
-        <div style="margin-top:6px;">Thank you for your business! · autozenithparts.com · WhatsApp: {{ $businessInfo['phone'] ?? '' }}</div>
+        <div style="margin-top:6px;">Thank you for your business! · autozenithparts.com · {{ $docEmail }} · WhatsApp: {{ $businessInfo['phone'] ?? '' }}</div>
         <div>This is a computer-generated {{ $isWaybill ? 'packing list' : ($docIsReceipt ? 'receipt' : 'invoice') }}. No physical signature required unless specified.@if($copyKey === 'gate') · GATE PASS - present to security on exit.@endif</div>
     </div>
 

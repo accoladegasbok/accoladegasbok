@@ -144,6 +144,24 @@ class InvoiceController extends Controller
         return ['summary' => $summary, 'confirmed' => $confirmed, 'balance' => $balance, 'status' => $status, 'legacy' => false, 'unknown' => false];
     }
 
+    // The company logo as an inline image, so it prints on screen AND in the PDF with no extra
+    // file request or path problems. Nigeria documents use the version that carries the
+    // company registration line (Rc: 1135830); USA documents use the version without it.
+    // Returns null if the file is missing — the document then falls back to the text name.
+    public static function logoDataUri(bool $withRegistration): ?string
+    {
+        static $cache = [];
+        $file = $withRegistration ? 'az-logo-doc-rc.jpg' : 'az-logo-doc.jpg';
+
+        if (!array_key_exists($file, $cache)) {
+            $path = public_path('images/' . $file);
+            $cache[$file] = is_file($path)
+                ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($path))
+                : null;
+        }
+        return $cache[$file];
+    }
+
     // Shipping line (every receipt carries one) and the West Africa tax line.
     // West Africa (NGN / GHS) shows Tax (0%) for now; USA is left exactly as it was.
     private static function totalsExtras(?object $record, string $currencyCode): array
