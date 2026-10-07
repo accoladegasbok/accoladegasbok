@@ -239,6 +239,7 @@
       <a href="#locations">Locations</a>
       <a href="#warranty">Warranty</a>
       <a href="/account/login" style="font-size:13px;">👤 My Account</a>
+      <a href="/admin/login" style="font-size:13px;">🔐 Staff Login</a>
     </nav>
     <a href="/parts" class="nav-cta">Browse Inventory</a>
   </div>
@@ -462,6 +463,11 @@
           <a href="#what-we-do">How It Works</a>
           <a href="#warranty">Warranty Policy</a>
           <a href="mailto:info@autozenithparts.com">Contact</a>
+        </div>
+        <div class="footer-col">
+          <h5>Staff</h5>
+          <a href="/admin/login">Staff / Admin Login</a>
+          <a href="/admin/forgot-password">Forgot Password?</a>
         </div>
       </div>
     </div>

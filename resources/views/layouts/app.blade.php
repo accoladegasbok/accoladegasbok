@@ -250,6 +250,7 @@
         </div>
         <div class="border-t border-navy-light mt-8 pt-6 text-xs text-gray-500 flex flex-col sm:flex-row justify-between gap-2">
             <span>© {{ date('Y') }} Auto Zenith LLC. All rights reserved.</span>
+            <span><a href="{{ route('admin.login') }}" class="hover:text-white transition-colors">Staff Login</a> · <a href="{{ route('admin.password.request') }}" class="hover:text-white transition-colors">Forgot Password?</a></span>
             <span>Quality Cars · Trusted Deals · Smooth Delivery</span>
         </div>
     </div>
