@@ -79,6 +79,7 @@ class PartsSearchController extends Controller
             'makes','years','categories','parts','rates','currency',
             'filters','totalAvailable','totalOrdersEver','totalCustomersServed'
         ))->with([
+            'chips'     => $this->buildChips($request, $filters),
             'total'     => $parts->total(),
             'locations' => [
                 'Waxahachie TX'   => 'Waxahachie TX 🇺🇸',
@@ -130,6 +131,11 @@ class PartsSearchController extends Controller
 
     public function modelsByMake(Request $request): \Illuminate\Http\JsonResponse
     {
+        // mode=parts -> part-name suggestions for the parts box (see partSuggestions()).
+        if ($request->get('mode') === 'parts') {
+            return $this->partSuggestions($request);
+        }
+
         $make   = strtoupper(trim($request->get('make', '')));
         $models = VehicleDatabase::modelsForMake($make);
 
@@ -232,6 +238,10 @@ class PartsSearchController extends Controller
             'make'      => trim($request->get('make', '')),
             'model'     => trim($request->get('model', '')),
             'year'      => trim($request->get('year', '')),
+            // Callahan-style search: up to 10 vehicles and up to 10 part names at once.
+            // v[] = "year|make|model", part[] = a part name.
+            'vehicles'  => $scope === 'auto' ? $this->parseVehicles($request->input('v', [])) : [],
+            'parts'     => $scope === 'auto' ? $this->parseParts($request->input('part', [])) : [],
             'category'  => trim($request->get('category', '')),
             'q'         => trim($request->get('q', '')),
             'location'  => trim($request->get('location', '')),
@@ -263,8 +273,20 @@ class PartsSearchController extends Controller
             $q->whereIn('part_category', $scopeCategories);
         }
 
-        if ($filters['make'])     $q->where('brand', 'like', '%'.$filters['make'].'%');
-        if ($filters['model'])    $q->where('model', 'like', '%'.$filters['model'].'%');
+        // Vehicles: the chips (v[]) when present; otherwise the single make/model/year dropdowns.
+        $vehicles = $filters['vehicles'];
+        if (!$vehicles && ($filters['make'] || $filters['model'] || $filters['year'])) {
+            $vehicles = [['year' => $filters['year'], 'make' => $filters['make'], 'model' => $filters['model']]];
+        }
+        $this->applyVehicleFilter($q, $vehicles);
+
+        // Parts: a result matches if its name contains ANY of the chosen part names.
+        if ($filters['parts']) {
+            $names = $filters['parts'];
+            $q->where(function ($pq) use ($names) {
+                foreach ($names as $n) $pq->orWhere('part_name', 'like', '%' . $n . '%');
+            });
+        }
         if ($filters['location']) {
             // Customer-facing filter is now grouped by COUNTRY (USA /
             // Nigeria / Ghana) rather than individual city locations —
@@ -286,11 +308,6 @@ class PartsSearchController extends Controller
         // Location filter for a meaningful result (flagged to user in UI).
         if ($filters['price_min']) $q->where('price_local', '>=', $filters['price_min']);
         if ($filters['price_max']) $q->where('price_local', '<=', $filters['price_max']);
-
-        if ($filters['year']) {
-            $q->where('year_from', '<=', $filters['year'])
-              ->where('year_to',   '>=', $filters['year']);
-        }
 
         if ($filters['q']) {
             $kw = $filters['q'];
@@ -316,6 +333,119 @@ class PartsSearchController extends Controller
         // the moment a customer went to the next page. withQueryString() adds
         // the current filters to every pagination link.
         return $q->paginate(24)->withQueryString();
+    }
+
+    // ── Callahan-style search helpers ────────────────────────────────
+
+    /** "year|make|model" strings -> up to 10 clean vehicle entries. */
+    private function parseVehicles($raw): array
+    {
+        $out = [];
+        foreach ((array) $raw as $item) {
+            if (!is_string($item)) continue;
+            [$year, $make, $model] = array_pad(explode('|', $item, 3), 3, '');
+            $year  = preg_match('/^\d{4}$/', trim($year)) ? trim($year) : '';
+            $make  = mb_substr(trim($make), 0, 40);
+            $model = mb_substr(trim($model), 0, 60);
+            if ($year === '' && $make === '' && $model === '') continue;
+
+            $key = strtolower("$year|$make|$model");
+            foreach ($out as $existing) {
+                if (strtolower("{$existing['year']}|{$existing['make']}|{$existing['model']}") === $key) continue 2;
+            }
+            $out[] = ['year' => $year, 'make' => $make, 'model' => $model];
+            if (count($out) >= 10) break;
+        }
+        return $out;
+    }
+
+    /** Part names -> up to 10 unique, trimmed names. */
+    private function parseParts($raw): array
+    {
+        $out = [];
+        foreach ((array) $raw as $item) {
+            if (!is_string($item)) continue;
+            $name = mb_substr(trim($item), 0, 80);
+            if ($name === '' || in_array(strtolower($name), array_map('strtolower', $out), true)) continue;
+            $out[] = $name;
+            if (count($out) >= 10) break;
+        }
+        return $out;
+    }
+
+    /** Match ANY of the given vehicles (each vehicle = make AND model AND year range). */
+    private function applyVehicleFilter($q, array $vehicles): void
+    {
+        if (!$vehicles) return;
+
+        $q->where(function ($vq) use ($vehicles) {
+            foreach ($vehicles as $v) {
+                $vq->orWhere(function ($one) use ($v) {
+                    if (!empty($v['make']))  $one->where('brand', 'like', '%' . $v['make'] . '%');
+                    if (!empty($v['model'])) $one->where('model', 'like', '%' . $v['model'] . '%');
+                    if (!empty($v['year']))  $one->where('year_from', '<=', $v['year'])->where('year_to', '>=', $v['year']);
+                });
+            }
+        });
+    }
+
+    /**
+     * Typeahead for the parts box: part names that really exist for the chosen vehicle(s),
+     * with how many are in stock. Served by the existing /parts/models endpoint (mode=parts).
+     */
+    private function partSuggestions(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $vehicles = $this->parseVehicles($request->input('v', []));
+
+        // The vehicle currently picked in the dropdowns (not yet added as a chip) narrows the list too.
+        $make  = trim((string) $request->get('make', ''));
+        $model = trim((string) $request->get('model', ''));
+        $year  = trim((string) $request->get('year', ''));
+        if ($make !== '' || $model !== '' || $year !== '') {
+            $vehicles[] = ['year' => preg_match('/^\d{4}$/', $year) ? $year : '', 'make' => $make, 'model' => $model];
+        }
+
+        $term = trim((string) $request->get('q', ''));
+
+        $q = DB::table('parts_inventory')
+            ->where('status', 'Available')
+            ->whereIn('part_category', self::AUTO_CATEGORIES);
+        $this->applyVehicleFilter($q, $vehicles);
+        if ($term !== '') $q->where('part_name', 'like', '%' . $term . '%');
+
+        $rows = $q->select('part_name', DB::raw('COUNT(*) as n'))
+            ->groupBy('part_name')->orderByDesc('n')->orderBy('part_name')->limit(25)->get();
+
+        return response()->json([
+            'parts' => $rows->map(fn($r) => ['name' => $r->part_name, 'count' => (int) $r->n])->values(),
+        ]);
+    }
+
+    /** The active vehicle/part chips, each with a link that removes just that one. */
+    private function buildChips(Request $request, array $filters): array
+    {
+        $base = $request->query();
+        unset($base['page']);
+
+        $vehicleKey = fn($v) => $v['year'] . '|' . $v['make'] . '|' . $v['model'];
+        $chips = ['vehicles' => [], 'parts' => []];
+
+        foreach ($filters['vehicles'] as $i => $v) {
+            $rest  = $filters['vehicles']; unset($rest[$i]);
+            $query = $base; unset($query['v']);
+            if ($rest) $query['v'] = array_map($vehicleKey, array_values($rest));
+            $chips['vehicles'][] = [
+                'label' => trim(($v['year'] ?: '') . ' ' . ($v['make'] ?: '') . ' ' . ($v['model'] ?: '')),
+                'url'   => route('parts.search', $query),
+            ];
+        }
+        foreach ($filters['parts'] as $i => $name) {
+            $rest  = $filters['parts']; unset($rest[$i]);
+            $query = $base; unset($query['part']);
+            if ($rest) $query['part'] = array_values($rest);
+            $chips['parts'][] = ['label' => $name, 'url' => route('parts.search', $query)];
+        }
+        return $chips;
     }
 
     private function formatPart(object $p): array

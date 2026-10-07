@@ -427,9 +427,11 @@ class OrderAdminController extends Controller
         $order = DB::table('orders')->where('order_ref', $orderRef)->first();
         if (!$order) abort(404, 'Receipt not found.');
 
-        $items = DB::table('order_items')->where('order_id', $order->id)->get();
+        // The customer's own receipt link: same shared document as the staff print and the PDF,
+        // in public mode (no email, address or staff name on the page).
+        $data = app(\App\Http\Controllers\Admin\InvoiceController::class)->orderDocumentData($order->id);
 
-        return view('orders.receipt', compact('order', 'items'));
+        return view('orders.receipt', $data);
     }
 
     // =========================================================

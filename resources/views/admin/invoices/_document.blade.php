@@ -10,6 +10,8 @@
      once the balance is zero. The reference number never changes. --}}
 @php
     $docMode      = $docMode ?? 'screen';
+    // Public pages (customer receipt link): hide email, address and the staff name.
+    $docPublic    = $docPublic ?? false;
     $isVehicleSale = ($invoiceType ?? null) === 'vehicle';
     $money        = fn ($n) => \App\Http\Controllers\Admin\InvoiceController::formatLocal((float) $n, $currency['code']);
 
@@ -34,9 +36,9 @@
     $docLocation  = $location ?? $saleLocation ?? '';
     $issuedBy     = ($invoice->created_by ?? $order->created_by ?? null);
     $docNotes     = ($invoice->notes ?? $order->notes ?? null);
-    $docQrUrl     = isset($order) && $order
+    $docQrUrl     = $docQrUrlOverride ?? (isset($order) && $order
         ? route('admin.invoices.show', $order->id)
-        : (isset($invoice) && $invoice ? route('admin.invoices.show.manual', $invoice->id) : url()->current());
+        : (isset($invoice) && $invoice ? route('admin.invoices.show.manual', $invoice->id) : url()->current()));
 
     $cName  = $customerInfo->name    ?? ($order->customer_name ?? null)    ?: 'Walk-in Customer';
     $cPhone = $customerInfo->phone   ?? ($order->customer_phone ?? null);
@@ -84,7 +86,7 @@
                     <tr><td class="k">Time:</td><td class="v">{{ \Carbon\Carbon::parse($docCreatedAt)->format('h:i A') }}</td></tr>
                     <tr><td class="k">Location:</td><td class="v">{{ $docLocation }}</td></tr>
                     <tr><td class="k">Currency:</td><td class="v">{{ $currency['code'] }}</td></tr>
-                    @if($issuedBy)<tr><td class="k">Issued By:</td><td class="v">{{ $issuedBy }}</td></tr>@endif
+                    @if($issuedBy && !$docPublic)<tr><td class="k">Issued By:</td><td class="v">{{ $issuedBy }}</td></tr>@endif
                     @if(isset($lastEditLog) && $lastEditLog)
                     <tr><td class="k">Last Edited By:</td><td class="v">{{ $lastEditLog->edited_by }} ({{ $lastEditLog->staff_role }})</td></tr>
                     @if(!empty($lastEditLog->override_by))<tr><td class="k">Approved By:</td><td class="v">{{ $lastEditLog->override_by }}</td></tr>@endif
@@ -104,8 +106,8 @@
                 <h4>{{ $isVehicleSale ? 'Buyer' : 'Bill To' }}</h4>
                 <div class="nm">{{ $cName }}</div>
                 @if(!empty($cPhone))<div class="doc-small">Tel: {{ $cPhone }}</div>@endif
-                @if(!empty($cEmail))<div class="doc-small">{{ $cEmail }}</div>@endif
-                @if(!empty($cAddr))<div class="doc-small">{{ $cAddr }}</div>@endif
+                @if(!empty($cEmail) && !$docPublic)<div class="doc-small">{{ $cEmail }}</div>@endif
+                @if(!empty($cAddr) && !$docPublic)<div class="doc-small">{{ $cAddr }}</div>@endif
             </td>
             <td style="width:2%;"></td>
             <td class="doc-box" style="width:49%;">

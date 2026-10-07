@@ -110,9 +110,16 @@
 {{-- ═══════════════════════════════════════════════════════════════════════════
      BROWSE DROPDOWNS (hidden by default, shown when Browse tab active)
 ═══════════════════════════════════════════════════════════════════════════ --}}
+@php
+    // What is already chosen (so the chips are rebuilt after a search / page change)
+    $initVehicles = array_map(fn($v) => $v['year'] . '|' . $v['make'] . '|' . $v['model'], $filters['vehicles'] ?? []);
+    $initParts    = $filters['parts'] ?? [];
+@endphp
 <div id="browsePanel" class="bg-white border-b border-gray-200 shadow-sm hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
         <form method="GET" action="{{ route('parts.search') }}" id="browseForm">
+
+            {{-- Row 1 — pick a vehicle, then ADD VEHICLE (up to 10 vehicles in one search) --}}
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
 
                 {{-- Make --}}
@@ -159,13 +166,43 @@
                     </select>
                 </div>
 
-                {{-- Search button --}}
+                {{-- Add vehicle --}}
                 <div class="flex items-end">
-                    <button type="submit" class="w-full bg-navy hover:bg-navy-light text-white font-display font-700 text-sm px-4 py-2.5 rounded-lg tracking-wide transition-colors">
-                        SEARCH PARTS
+                    <button type="button" id="addVehicleBtn" class="w-full border-2 border-navy text-navy hover:bg-navy hover:text-white font-display font-700 text-sm px-4 py-2.5 rounded-lg tracking-wide transition-colors">
+                        + ADD VEHICLE
                     </button>
                 </div>
             </div>
+
+            {{-- Chosen vehicles --}}
+            <div id="vehicleChips" class="flex flex-wrap gap-2 mt-3"></div>
+
+            {{-- Row 2 — type part names (suggestions show how many are in stock), then search --}}
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mt-3 items-end">
+                <div class="md:col-span-3 relative">
+                    <label class="block text-xs font-body font-500 text-gray-500 mb-1 uppercase tracking-wider">Parts <span class="normal-case text-gray-400">(up to 10)</span></label>
+                    <input type="text" id="partInput" autocomplete="off" placeholder="Hood, fender, alternator, transmission..."
+                           class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold bg-white">
+                    <div id="partSuggest" class="hidden absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto"></div>
+                </div>
+                <div class="md:col-span-2 flex gap-2">
+                    <button type="submit" class="flex-1 bg-navy hover:bg-navy-light text-white font-display font-700 text-sm px-4 py-2.5 rounded-lg tracking-wide transition-colors">
+                        SEARCH PARTS
+                    </button>
+                    {{-- Reset: back to an empty search (clears vehicles, parts, category and every filter) --}}
+                    <a href="{{ route('parts.search') }}" class="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-600 hover:border-navy hover:text-navy text-sm font-display font-700 tracking-wide transition-colors">
+                        RESET
+                    </a>
+                </div>
+            </div>
+
+            {{-- Chosen parts --}}
+            <div id="partChips" class="flex flex-wrap gap-2 mt-3"></div>
+
+            {{-- The chips travel with the search as v[] and part[] --}}
+            <div id="chipInputs"></div>
+
+            <p class="text-[11px] text-gray-400 font-body mt-3">Add up to 10 vehicles and 10 parts, then search once. Pick a make, model and year, press ADD VEHICLE, and repeat for the next one.</p>
         </form>
     </div>
 </div>
@@ -187,6 +224,12 @@
                 <input type="hidden" name="model"    value="{{ $filters['model'] }}">
                 <input type="hidden" name="year"     value="{{ $filters['year'] }}">
                 <input type="hidden" name="category" value="{{ $filters['category'] }}">
+                @foreach($filters['vehicles'] ?? [] as $vv)
+                <input type="hidden" name="v[]" value="{{ $vv['year'] }}|{{ $vv['make'] }}|{{ $vv['model'] }}">
+                @endforeach
+                @foreach($filters['parts'] ?? [] as $pp)
+                <input type="hidden" name="part[]" value="{{ $pp }}">
+                @endforeach
                 
 
                 {{-- Keyword search --}}
@@ -281,6 +324,11 @@
         ══════════════════════════════════════════════════════════════════ --}}
         <main class="flex-1 min-w-0">
 
+            {{-- Availability notice --}}
+            <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-body px-4 py-2.5">
+                Used parts inventory changes throughout the day. We confirm availability before finalising your order.
+            </div>
+
             {{-- Results header --}}
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
@@ -300,13 +348,33 @@
                             @if(!empty($filters['q'] ?? '' ?? '' ?? '' ?? '' ?? '' ?? '')) "<strong class="text-navy">{{ $filters['q'] ?? '' ?? '' ?? '' ?? '' ?? '' ?? '' }}</strong>" @endif
                         </p>
                     @endif
+                    @if(!empty($chips['vehicles']) || !empty($chips['parts']))
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        @foreach($chips['vehicles'] as $chip)
+                        <a href="{{ $chip['url'] }}" class="inline-flex items-center gap-1.5 bg-navy text-white text-xs font-body font-600 px-3 py-1 rounded-full hover:bg-navy-light" title="Remove this vehicle">
+                            {{ $chip['label'] }} <span aria-hidden="true">&times;</span>
+                        </a>
+                        @endforeach
+                        @foreach($chips['parts'] as $chip)
+                        <a href="{{ $chip['url'] }}" class="inline-flex items-center gap-1.5 bg-gold text-navy text-xs font-body font-600 px-3 py-1 rounded-full hover:bg-yellow-500" title="Remove this part">
+                            {{ $chip['label'] }} <span aria-hidden="true">&times;</span>
+                        </a>
+                        @endforeach
+                    </div>
+                    @endif
                 </div>
 
                 {{-- Sort + View toggle --}}
                 <div class="flex items-center gap-3">
                     <form method="GET" action="{{ route('parts.search') }}" id="sortForm">
-                        @foreach(Arr::except($filters, ['sort']) as $k => $v)
+                        @foreach(Arr::except($filters, ['sort', 'vehicles', 'parts']) as $k => $v)
                             @if($v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endif
+                        @endforeach
+                        @foreach($filters['vehicles'] ?? [] as $vv)
+                            <input type="hidden" name="v[]" value="{{ $vv['year'] }}|{{ $vv['make'] }}|{{ $vv['model'] }}">
+                        @endforeach
+                        @foreach($filters['parts'] ?? [] as $pp)
+                            <input type="hidden" name="part[]" value="{{ $pp }}">
                         @endforeach
                         <select name="sort" onchange="this.form.submit()"
                             class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-gold bg-white">
@@ -829,7 +897,7 @@ tabBrowse.addEventListener('click', () => {
 });
 
 // Show browse panel if filters already active
-@if(!empty($filters['make']) || !empty($filters['model']))
+@if(!empty($filters['make']) || !empty($filters['model']) || !empty($filters['vehicles']) || !empty($filters['parts']))
     browsePanel.classList.remove('hidden');
     tabBrowse.className = 'tab-btn bg-gold text-navy font-display font-700 text-xs px-5 py-2 rounded-full tracking-wide';
     tabVin.className    = 'tab-btn bg-white bg-opacity-10 text-white hover:bg-opacity-20 font-display font-700 text-xs px-5 py-2 rounded-full tracking-wide transition-colors';
@@ -840,9 +908,8 @@ document.getElementById('makeSelect').addEventListener('change', async function(
     await loadModels(this.value.toUpperCase());
 });
 
-document.getElementById('modelSelect').addEventListener('change', function() {
-    if (this.value) document.getElementById('browseForm').submit();
-});
+// (Picking a model no longer reloads the page by itself — press ADD VEHICLE or SEARCH PARTS,
+//  so several vehicles can be added to one search.)
 
 async function loadModels(make) {
     const sel = document.getElementById('modelSelect');
@@ -860,14 +927,10 @@ async function loadModels(make) {
     }
 }
 
-document.getElementById('yearSelect').addEventListener('change', function() {
-    if (document.getElementById('makeSelect').value) {
-        document.getElementById('browseForm').submit();
-    }
-});
 
 document.getElementById('categorySelect').addEventListener('change', () => {
-    document.getElementById('browseForm').submit();
+    const f = document.getElementById('browseForm');
+    if (f.requestSubmit) f.requestSubmit(); else f.submit();
 });
 
 // ── Grid / List toggle ────────────────────────────────────────────────────────
@@ -906,5 +969,120 @@ document.querySelectorAll('.filter-toggle').forEach(btn => {
         chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
     });
 });
+
+// ── Callahan-style search: vehicle chips, part chips and the parts typeahead ──────
+(() => {
+    const MAX = 10;
+    const form      = document.getElementById('browseForm');
+    const makeSel   = document.getElementById('makeSelect');
+    const modelSel  = document.getElementById('modelSelect');
+    const yearSel   = document.getElementById('yearSelect');
+    const vBox      = document.getElementById('vehicleChips');
+    const pBox      = document.getElementById('partChips');
+    const inputs    = document.getElementById('chipInputs');
+    const partInput = document.getElementById('partInput');
+    const suggest   = document.getElementById('partSuggest');
+    if (!form || !partInput) return;
+
+    const state = { vehicles: @json($initVehicles), parts: @json($initParts) };
+
+    const vehicleLabel = v => v.split('|').filter(x => x).join(' ');
+
+    function chip(text, cls, onRemove) {
+        const el = document.createElement('span');
+        el.className = 'inline-flex items-center gap-1.5 text-xs font-body font-600 px-3 py-1.5 rounded-full ' + cls;
+        const label = document.createElement('span'); label.textContent = text;
+        const x = document.createElement('button'); x.type = 'button'; x.textContent = '\u00d7';
+        x.className = 'text-base leading-none opacity-80 hover:opacity-100'; x.setAttribute('aria-label', 'Remove ' + text);
+        x.addEventListener('click', onRemove);
+        el.append(label, x);
+        return el;
+    }
+    function hidden(name, value) {
+        const i = document.createElement('input'); i.type = 'hidden'; i.name = name; i.value = value; return i;
+    }
+    function render() {
+        vBox.replaceChildren(); pBox.replaceChildren(); inputs.replaceChildren();
+        state.vehicles.forEach((v, i) => {
+            vBox.append(chip(vehicleLabel(v), 'bg-navy text-white', () => { state.vehicles.splice(i, 1); render(); }));
+            inputs.append(hidden('v[]', v));
+        });
+        state.parts.forEach((p, i) => {
+            pBox.append(chip(p, 'bg-gold text-navy', () => { state.parts.splice(i, 1); render(); }));
+            inputs.append(hidden('part[]', p));
+        });
+    }
+
+    function addVehicle() {
+        const make = makeSel.value.trim(), model = modelSel.value.trim(), year = yearSel.value.trim();
+        if (!make && !model && !year) return false;
+        if (state.vehicles.length >= MAX) { alert('You can search up to ' + MAX + ' vehicles at once.'); return false; }
+        const v = year + '|' + make + '|' + model;
+        if (!state.vehicles.some(x => x.toLowerCase() === v.toLowerCase())) state.vehicles.push(v);
+        makeSel.value = ''; yearSel.value = ''; modelSel.innerHTML = '<option value="">All Models</option>';
+        render();
+        return true;
+    }
+    function addPart(name) {
+        name = (name || '').trim();
+        if (!name) return;
+        if (state.parts.length >= MAX) { alert('You can search up to ' + MAX + ' parts at once.'); return; }
+        if (!state.parts.some(x => x.toLowerCase() === name.toLowerCase())) state.parts.push(name);
+        partInput.value = ''; suggest.classList.add('hidden');
+        render();
+    }
+
+    document.getElementById('addVehicleBtn').addEventListener('click', () => { if (!addVehicle()) makeSel.focus(); });
+
+    // Searching with a vehicle still selected, or part text still typed, counts them too.
+    form.addEventListener('submit', () => { addVehicle(); if (partInput.value.trim()) addPart(partInput.value); });
+
+    // ── Typeahead: part names that exist for the chosen vehicle(s), with how many are in stock ──
+    let timer = null;
+    async function fetchSuggestions() {
+        const params = new URLSearchParams({ mode: 'parts', q: partInput.value.trim(), make: makeSel.value, model: modelSel.value, year: yearSel.value });
+        state.vehicles.forEach(v => params.append('v[]', v));
+        try {
+            const res  = await fetch(`{{ route('parts.models') }}?` + params.toString());
+            const data = await res.json();
+            showSuggestions(data.parts || []);
+        } catch (e) { suggest.classList.add('hidden'); }
+    }
+    function showSuggestions(list) {
+        const taken = state.parts.map(x => x.toLowerCase());
+        list = list.filter(p => !taken.includes(p.name.toLowerCase()));
+        suggest.replaceChildren();
+        const typed = partInput.value.trim();
+
+        list.forEach(p => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'w-full flex items-center justify-between gap-3 px-3.5 py-2 text-sm font-body text-left hover:bg-gray-50';
+            const n = document.createElement('span'); n.className = 'font-600 text-navy'; n.textContent = p.name;
+            const c = document.createElement('span'); c.className = 'text-xs text-gray-400 whitespace-nowrap'; c.textContent = p.count + (p.count === 1 ? ' in stock' : ' in stock');
+            b.append(n, c);
+            b.addEventListener('mousedown', e => { e.preventDefault(); addPart(p.name); });
+            suggest.append(b);
+        });
+        if (!list.length && typed) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'w-full px-3.5 py-2 text-sm font-body text-left text-gray-500 hover:bg-gray-50';
+            b.textContent = 'No match in stock for this vehicle — press Enter to search "' + typed + '" anyway';
+            b.addEventListener('mousedown', e => { e.preventDefault(); addPart(typed); });
+            suggest.append(b);
+        }
+        suggest.classList.toggle('hidden', !suggest.childElementCount);
+    }
+    partInput.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(fetchSuggestions, 200); });
+    partInput.addEventListener('focus', fetchSuggestions);
+    partInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addPart(partInput.value); }
+        if (e.key === 'Escape') suggest.classList.add('hidden');
+    });
+    document.addEventListener('click', e => { if (!suggest.contains(e.target) && e.target !== partInput) suggest.classList.add('hidden'); });
+
+    render();
+})();
 </script>
 @endpush
