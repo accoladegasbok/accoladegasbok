@@ -10,15 +10,19 @@
 <meta name="description" content="Auto Zenith Parts supplies graded, warranty-backed used engines, transmissions, body and electrical parts across Nigeria, Ghana and the USA. Free VIN decoding and parts compatibility checker, plus AutoMatch AI premium matching. Every part condition-graded A/B/C, legal-trace documented.">
 <meta name="keywords" content="used auto parts, used engine for sale, used transmission, VIN decoder, parts compatibility checker, AutoMatch AI, Tokunbo parts, Ladipo parts, auto parts Nigeria, auto parts Ghana, auto parts Texas, salvage engine, gearbox for sale, AutoZenith">
 <link rel="canonical" href="https://autozenithparts.com/home">
+<link rel="icon" type="image/png" sizes="64x64" href="/images/az-favicon-64.png">
+<link rel="apple-touch-icon" href="/images/az-icon-192.png">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Auto Zenith Parts">
 <meta property="og:title" content="Auto Zenith Parts — Quality Used Auto Parts | Engine, Gearbox & Body">
 <meta property="og:description" content="Graded, warranty-backed used auto parts across Nigeria, Ghana and the USA. Engines, transmissions, body, electrical — sourced, tested, documented.">
 <meta property="og:url" content="https://autozenithparts.com/home">
+<meta property="og:image" content="https://autozenithparts.com/images/az-logo.png">
 <meta property="og:locale" content="en_US">
 
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://autozenithparts.com/images/az-logo.png">
 <meta name="twitter:title" content="Auto Zenith Parts — Quality Used Auto Parts">
 <meta name="twitter:description" content="Graded, warranty-backed used auto parts across Nigeria, Ghana and the USA.">
 
@@ -29,6 +33,9 @@
   "name": "Auto Zenith Parts",
   "description": "Multi-location supplier of quality-graded used auto parts — engines, transmissions, body and electrical components — serving Nigeria, Ghana and the United States.",
   "url": "https://autozenithparts.com",
+  "logo": "https://autozenithparts.com/images/az-logo.png",
+  "image": "https://autozenithparts.com/images/az-logo.png",
+  "email": "info@autozenithparts.com",
   "telephone": "",
   "priceRange": "$$",
   "areaServed": ["Nigeria", "Ghana", "United States"],
@@ -92,6 +99,9 @@
   .logo{ display:flex; align-items:baseline; gap:6px; }
   .logo .display{ font-size:22px; font-weight:800; color:var(--navy); letter-spacing:0.02em; }
   .logo .display span{ color:var(--gold); }
+  .logo-img{ display:block; height:56px; width:auto; }
+  .footer-logo-plate{ display:inline-block; background:#fff; border-radius:10px; padding:8px 12px; }
+  .footer-logo-plate img{ display:block; height:54px; width:auto; }
   .nav-links{ display:flex; align-items:center; gap:28px; font-size:14px; font-weight:500; color:var(--steel); }
   .nav-links a:hover{ color:var(--navy); }
   .nav-cta{ background:var(--navy); color:#fff !important; padding:10px 20px; border-radius:6px; font-weight:600; font-size:13px; letter-spacing:0.02em; }
@@ -220,9 +230,8 @@
 
 <header>
   <div class="wrap nav">
-    <a href="/home" class="logo">
-      <span class="display">AUTO <span>ZENITH</span></span>
-      <span class="mono" style="font-size:10px;color:var(--steel);letter-spacing:0.1em;">PARTS</span>
+    <a href="/home" class="logo" aria-label="Auto Zenith Parts — home">
+      <img src="/images/az-logo-header.png" alt="Auto Zenith Parts" class="logo-img" width="92" height="56">
     </a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#what-we-do">What We Do</a>
@@ -438,7 +447,7 @@
   <div class="wrap">
     <div class="footer-grid">
       <div class="footer-brand">
-        <div class="display">AUTO ZENITH PARTS</div>
+        <a href="/home" class="footer-logo-plate" aria-label="Auto Zenith Parts — home"><img src="/images/az-logo-doc.jpg" alt="Auto Zenith Parts" width="89" height="54"></a>
         <p>Quality used auto parts — engine, gearbox &amp; body — graded, warrantied, and documented across Nigeria, Ghana &amp; the USA.</p>
       </div>
       <div class="footer-links">
