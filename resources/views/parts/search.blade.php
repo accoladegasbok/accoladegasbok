@@ -262,14 +262,13 @@
                                     class="accent-gold" onchange="this.form.submit()">
                                 <span class="text-sm font-body text-gray-600 group-hover:text-navy">All Locations</span>
                             </label>
-                            @foreach(['USA' => '🇺🇸', 'Nigeria' => '🇳🇬', 'Ghana' => '🇬🇭'] as $country => $flag)
-                                <label class="flex items-center gap-2 cursor-pointer group">
-                                    <input type="radio" name="location" value="{{ $country }}" {{ ($filters['location'] ?? '') === $country ? 'checked' : '' }}
-                                        class="accent-gold" onchange="this.form.submit()">
-                                    <span class="text-sm font-body text-gray-600 group-hover:text-navy">
-                                        {{ $country }} <span class="text-xs ml-1">{{ $flag }}</span>
-                                    </span>
-                                </label>
+                            {{-- Lagos hub: "Lagos" = all West Africa stock; the others are the yards (shown to customers as Lagos / Ibadan ...) --}}
+                            @foreach($locations as $locValue => $locLabel)
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                            <input type="radio" name="location" value="{{ $locValue }}" {{ ($filters['location'] ?? '') === $locValue ? 'checked' : '' }}
+                            class="accent-gold" onchange="this.form.submit()">
+                            <span class="text-sm font-body text-gray-600 group-hover:text-navy">{{ $locLabel }}</span>
+                            </label>
                             @endforeach
                         </div>
                     </div>
@@ -487,7 +486,7 @@
                             };
                             $whatsappMsg = urlencode(
                                 "Hi, I'm enquiring about the {$part->part_name} for a {$part->year_from}–{$part->year_to} {$part->brand} {$part->model}. " .
-                                "Part ID: {$part->part_code}. Location: {$part->location}. Price: {$price}. Is this available?"
+                                "Part ID: {$part->part_code}. Location: " . \App\Support\HubLocations::publicLabel($part->location) . ". Price: {$price}. Is this available?"
                             );
                         @endphp
 
@@ -523,7 +522,7 @@
                                         {{ $part->year_from }}@if($part->year_to != $part->year_from)–{{ $part->year_to }}@endif {{ $part->brand }} {{ $part->model }}
                                     </div>
                                     <span class="text-xs font-body font-500 px-2 py-0.5 rounded-full flex-shrink-0 {{ $locClass }}">
-                                        {{ $locFlag }} {{ explode(' ', $part->location)[0] }}
+                                        {{ $locFlag }} {{ \App\Support\HubLocations::publicLabel($part->location) }}
                                     </span>
                                 </div>
 
@@ -690,7 +689,7 @@
                                     </div>
                                     <div class="text-right flex-shrink-0">
                                         <div class="font-display font-800 text-navy text-xl">{{ $price }}</div>
-                                        <div class="text-xs text-gray-400 mt-0.5">{{ $part->location }}</div>
+                                        <div class="text-xs text-gray-400 mt-0.5">{{ \App\Support\HubLocations::publicLabel($part->location) }}</div>
                                         <div class="flex gap-2 mt-2">
                                             <a href="{{ route('parts.show', $part->id) }}" class="text-xs font-body border border-navy text-navy rounded-lg px-3 py-1.5 hover:bg-navy hover:text-white transition-colors">Details</a>
                                             <a href="https://wa.me/{{ str_contains($part->location, 'Nigeria') || str_contains($part->location,'Ghana') ? '2349155688804' : '16822563201' }}?text={{ $whatsappMsg }}" target="_blank" class="text-xs font-body bg-green-500 text-white rounded-lg px-3 py-1.5 hover:bg-green-600 transition-colors">WhatsApp</a>

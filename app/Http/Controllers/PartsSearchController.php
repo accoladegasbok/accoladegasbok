@@ -81,16 +81,8 @@ class PartsSearchController extends Controller
         ))->with([
             'chips'     => $this->buildChips($request, $filters),
             'total'     => $parts->total(),
-            'locations' => [
-                'Waxahachie TX'   => 'Waxahachie TX 🇺🇸',
-                'Elkhorn WI'      => 'Elkhorn WI 🇺🇸',
-                'Ile-Ife Nigeria' => 'Ile-Ife Nigeria 🇳🇬',
-                'Ibadan Nigeria'  => 'Ibadan Nigeria 🇳🇬',
-                'Lagos Nigeria'   => 'Lagos Nigeria 🇳🇬',
-                'Abuja Nigeria'   => 'Abuja Nigeria 🇳🇬',
-                'Akure Nigeria'   => 'Akure Nigeria 🇳🇬',
-                'Accra Ghana'     => 'Accra Ghana 🇬🇭',
-            ],
+            // The customer's Location filter, in the Lagos-hub wording.
+            'locations' => \App\Support\HubLocations::filterOptions(),
         ]);
     }
 
@@ -292,13 +284,9 @@ class PartsSearchController extends Controller
             // Nigeria / Ghana) rather than individual city locations —
             // staff-side tools (Harvest, Manual Invoice, etc.) still
             // use the precise city-level locations unaffected by this.
-            $countryLocations = match($filters['location']) {
-                'USA'     => ['Waxahachie TX', 'Kennedale TX', 'Elkhorn WI'],
-                'Nigeria' => ['Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria'],
-                'Ghana'   => ['Accra Ghana'],
-                default   => [$filters['location']], // fallback: exact match if somehow an old value is passed
-            };
-            $q->whereIn('location', $countryLocations);
+            // Lagos hub rule (App\Support\HubLocations): "Lagos" finds ALL West Africa stock,
+            // a yard name (Ibadan, Ife, ...) finds what is really in that yard, USA/Nigeria/Ghana still work.
+            $q->whereIn('location', \App\Support\HubLocations::physicalLocationsFor($filters['location']));
         }
         if ($filters['condition'])$q->where('condition_grade', $filters['condition']);
 
@@ -481,7 +469,8 @@ class PartsSearchController extends Controller
             'price_local'           => $priceLocal,
             'currency_code'         => $currencyCode,
             'price_usd'             => $p->price_usd, // kept for template compatibility — frozen snapshot, not for display
-            'location'              => $p->location,
+            // Customers see the hub label ("Lagos / Ibadan"); the real location stays with staff.
+            'location'              => \App\Support\HubLocations::publicLabel($p->location),
             'status'                => $p->status,
             'thumb' => !empty($photos[0])
                  ? asset('storage/' . $photos[0])
