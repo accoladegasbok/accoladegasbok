@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Forgot Password — Auto Zenith Parts Admin</title>
+<link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/az-favicon-64.png') }}">
+<link rel="apple-touch-icon" href="{{ asset('images/az-icon-192.png') }}">
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -11,6 +13,8 @@
   .card { background: #fff; border-radius: 16px; padding: 36px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
   .brand { text-align: center; font-family: 'Big Shoulders Display', sans-serif; font-weight: 800; font-size: 22px; color: #0A1F5C; margin-bottom: 4px; }
   .brand span { color: #C8960C; }
+  .logo-link { display: block; text-align: center; margin-bottom: 6px; }
+  .logo-link img { display: inline-block; height: 68px; width: auto; }
   .sub { text-align: center; font-size: 13px; color: #8C96AC; margin-bottom: 24px; }
   label { display: block; font-size: 12px; color: #4A5568; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
   input[type=email] { width: 100%; border: 1.5px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-bottom: 18px; }
@@ -26,7 +30,9 @@
 </head>
 <body>
   <div class="card">
-    <div class="brand">AUTO <span>ZENITH</span> PARTS</div>
+    <a href="{{ route('home') }}" class="logo-link" aria-label="Auto Zenith Parts — home page">
+      <img src="{{ asset('images/az-logo-doc.jpg') }}" alt="Auto Zenith Parts" width="112" height="68">
+    </a>
     <div class="sub">Reset your staff account password</div>
 
     @if(session('success'))<div class="msg success">{{ session('success') }}</div>@endif
@@ -41,6 +47,7 @@
     </form>
 
     <a href="{{ route('admin.login') }}" class="back">← Back to Login</a>
+    <a href="{{ route('home') }}" class="back" style="margin-top:8px;">← Back to the website</a>
   </div>
 </body>
 </html>
