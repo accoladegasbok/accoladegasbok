@@ -2,6 +2,9 @@
 <!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #222; max-width: 600px; margin: 0 auto;">
+  <div style="text-align:center; padding:18px 0 14px;">
+    <a href="https://autozenithparts.com" style="text-decoration:none;"><img src="https://autozenithparts.com/images/az-logo-doc.jpg" width="150" height="91" alt="Auto Zenith Parts" style="display:inline-block; border:0; outline:none; text-decoration:none;"></a>
+  </div>
   <div style="background: #0A1F5C; color: #fff; padding: 20px; border-radius: 8px 8px 0 0;">
     <h2 style="margin:0;">New Staff Ticket — {{ $ticket->ticket_no }}</h2>
   </div>

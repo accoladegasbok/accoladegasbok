@@ -8,7 +8,7 @@
         <table width="440" cellpadding="0" cellspacing="0" style="background:#fff; border:1.5px solid #0D1B2A; border-radius:14px; padding:36px;">
           <tr>
             <td style="text-align:center; padding-bottom:24px;">
-              <div style="font-size:20px; font-weight:800; color:#0A1F5C; letter-spacing:0.02em;">AUTO <span style="color:#C8960C;">ZENITH</span> PARTS</div>
+              <img src="https://autozenithparts.com/images/az-logo-doc.jpg" width="150" height="91" alt="Auto Zenith Parts" style="display:inline-block; border:0; outline:none; text-decoration:none;">
             </td>
           </tr>
           <tr>
@@ -28,7 +28,7 @@
             </td>
           </tr>
         </table>
-        <div style="font-size:11px; color:#A0A8B8; margin-top:20px;">Auto Zenith Parts · autozenithparts.com</div>
+        <div style="font-size:11px; color:#A0A8B8; margin-top:20px;">Auto Zenith Parts · autozenithparts.com · info@autozenithparts.com</div>
       </td>
     </tr>
   </table>
