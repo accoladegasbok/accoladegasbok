@@ -7,6 +7,11 @@
     <title>@yield('title', 'Auto Zenith Parts — Quality Used Auto Parts')</title>
     <meta name="description" content="@yield('meta_desc', 'Search quality used auto parts by VIN or vehicle. Toyota, Lexus, Honda, Nissan, Kia, Hyundai and more. Locations in Texas, Wisconsin, Nigeria and Ghana.')">
 
+    {{-- Brand icons + default share image --}}
+    <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/az-favicon-64.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/az-icon-192.png') }}">
+    <meta property="og:image" content="{{ asset('images/az-logo.png') }}">
+
     {{-- Google Fonts --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -84,14 +89,10 @@
             {{-- Logo — links to the SEO homepage, not the parts search
                  page itself (search is reached via the "Search Parts"
                  nav link below instead). --}}
-            <a href="{{ route('home') }}" class="flex items-center gap-3">
-                <div class="w-9 h-9 bg-gold rounded flex items-center justify-center">
-                    <span class="font-display font-800 text-navy text-lg leading-none">AZ</span>
-                </div>
-                <div>
-                    <div class="font-display font-700 text-white text-xl leading-none tracking-wide">AUTO ZENITH</div>
-                    <div class="text-gold text-xs font-body font-500 tracking-widest uppercase leading-none">Parts</div>
-                </div>
+            <a href="{{ route('home') }}" class="flex items-center" aria-label="Auto Zenith Parts — home">
+                <span class="bg-white rounded-md px-2 py-1 flex items-center">
+                    <img src="{{ asset('images/az-logo-doc.jpg') }}" alt="Auto Zenith Parts" width="66" height="40" class="block h-10 w-auto">
+                </span>
             </a>
 
             {{-- Nav links --}}
@@ -217,7 +218,9 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-12">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div class="md:col-span-2">
-                <div class="font-display font-700 text-white text-2xl mb-1 tracking-wide">AUTO ZENITH PARTS</div>
+                <a href="{{ route('home') }}" class="inline-block bg-white rounded-lg px-3 py-2 mb-3" aria-label="Auto Zenith Parts — home">
+                    <img src="{{ asset('images/az-logo-doc.jpg') }}" alt="Auto Zenith Parts" width="89" height="54" class="block h-14 w-auto">
+                </a>
                 <div class="text-gold text-xs font-500 tracking-widest uppercase mb-4">A Division of Gasbok Engineering Nig. Limited · RC: 1135830</div>
                 <p class="text-sm text-gray-400 leading-relaxed max-w-sm">Quality used and new spare parts for Toyota, Lexus, Honda, Nissan, Kia, Hyundai, Mercedes-Benz, Infiniti, Ford, GM, Chevrolet, Acura and VW — across the USA, Nigeria and Ghana.</p>
             </div>
@@ -240,6 +243,7 @@
                         <span class="text-xs text-amber-400">— Complaints (WhatsApp only)</span>
                     </li>
                     <li>🌐 autozenithparts.com</li>
+                    <li>✉ <a href="mailto:info@autozenithparts.com" class="hover:text-white transition-colors">info@autozenithparts.com</a></li>
                     <li>🔐 <a href="https://accounts.autozenithparts.com" target="_blank" class="hover:text-white transition-colors">accounts.autozenithparts.com</a></li>
                 </ul>
             </div>
