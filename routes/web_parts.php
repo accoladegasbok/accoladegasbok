@@ -5,6 +5,7 @@ use App\Http\Controllers\PartRequestController;
 use App\Http\Controllers\SubscribeController;
 use App\Http\Controllers\PolicyController;
 use App\Http\Controllers\Admin\CustomerCreditAdminController;
+use App\Http\Controllers\Admin\AiFitmentReviewController;
 use App\Http\Controllers\Admin\SubscriberAdminController;
 use App\Http\Controllers\Admin\PartRequestAdminController;
 use Illuminate\Support\Facades\Route;
@@ -57,4 +58,15 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/customer-cred
     Route::post('/recheck', [CustomerCreditAdminController::class, 'recheck'])->name('recheck');
     Route::get('/{phoneKey}',         [CustomerCreditAdminController::class, 'show'])->name('show')->where('phoneKey', '[0-9]+');
     Route::post('/{phoneKey}/payout', [CustomerCreditAdminController::class, 'payout'])->name('payout')->where('phoneKey', '[0-9]+');
+});
+
+// NEW: AI fitment review — batch select, a mandatory second review step, audit log and the 30-day report.
+// The controller limits every action to supervisor and above.
+Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/ai-fitment')->name('admin.ai-fitment.')->group(function () {
+    Route::get('/',        [AiFitmentReviewController::class, 'index'])->name('index');
+    Route::post('/review', [AiFitmentReviewController::class, 'review'])->name('review');
+    Route::get('/review',  [AiFitmentReviewController::class, 'showReview'])->name('review.show');
+    Route::post('/confirm',[AiFitmentReviewController::class, 'confirm'])->name('confirm');
+    Route::post('/reject', [AiFitmentReviewController::class, 'reject'])->name('reject');
+    Route::get('/report',  [AiFitmentReviewController::class, 'report'])->name('report');
 });
