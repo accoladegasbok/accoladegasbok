@@ -128,20 +128,23 @@ class AiFitmentReviewController extends Controller
 
         $staffId = Session::get('staff_id'); $staffName = Session::get('staff_name');
         $note    = trim((string) $request->input('note', '')) ?: null;
+        $itemNotes = array_map(fn ($n) => mb_substr(trim((string) $n), 0, 300), (array) $request->input('item_note', []));
 
         try {
-            DB::transaction(function () use ($suggestions, $fitment, $staffId, $staffName, $note) {
+            DB::transaction(function () use ($suggestions, $fitment, $staffId, $staffName, $note, $itemNotes) {
                 $batchId = DB::table('ai_fitment_batches')->insertGetId([
                     'action' => 'confirm', 'staff_id' => $staffId, 'staff_name' => $staffName,
                     'item_count' => $suggestions->count(), 'note' => $note, 'created_at' => now(),
                 ]);
                 foreach ($suggestions as $s) {
-                    $r = $fitment->apply($s, $staffId);
+                    $itemNote = ($itemNotes[$s->id] ?? '') ?: null;
+                    $r = $fitment->apply($s, $staffId, $itemNote);
                     DB::table('ai_suggestions')->where('id', $s->id)->update([
                         'group_id' => $r['group_id'], 'review_status' => 'confirmed', 'reviewed_by_staff_id' => $staffId,
-                        'reviewed_at' => now(), 'batch_id' => $batchId, 'review_note' => $note, 'updated_at' => now(),
+                        'reviewed_at' => now(), 'batch_id' => $batchId, 'review_note' => $itemNote ?: $note, 'updated_at' => now(),
                     ]);
-                    $this->log($batchId, $s, 'confirm', $staffId, $staffName, $r['group_id'], $r['vehicle_row_id'], $r['result']);
+                    $this->log($batchId, $s, 'confirm', $staffId, $staffName, $r['group_id'], $r['vehicle_row_id'],
+                        $r['result'] . ($itemNote ? ' | Note: ' . $itemNote : ''));
                 }
             });
         } catch (\Throwable $e) {

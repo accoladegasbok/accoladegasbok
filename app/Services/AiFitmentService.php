@@ -36,6 +36,16 @@ class AiFitmentService
         $part = DB::table('parts_inventory')->where('id', $s->part_id)->first();
         if (!$part) { $w[] = ['level' => 'high', 'text' => 'The part no longer exists.']; return $w; }
 
+        // Second opinion from OUR OWN platform data (no extra AI call): does it agree with the suggestion?
+        try {
+            $check = self::platformCheck(
+                (string) $part->brand, (string) $part->model, (int) ($part->compat_year_from ?? $part->year_from),
+                (string) $s->suggested_make, (string) $s->suggested_model, (int) $s->suggested_year_from, (int) $s->suggested_year_to,
+                (string) $part->part_category
+            );
+            if ($check) $w[] = $check;
+        } catch (\Throwable $e) { /* platform data not available — skip this extra check */ }
+
         if (!$part->interchange_group_id) {
             $w[] = ['level' => 'info', 'text' => 'This part has no fitment group yet — one will be created.'];
         } elseif ($this->vehicleAlreadyInGroup((int) $part->interchange_group_id, $s)) {
@@ -44,8 +54,36 @@ class AiFitmentService
         return $w;
     }
 
+    /**
+     * Compare a suggestion with the platform / generation table. Returns a warning line, or null when
+     * there is nothing useful to say. It only informs the reviewer — it never blocks or approves.
+     * Pure function (no database), so it is easy to test.
+     */
+    public static function platformCheck(string $partMake, string $partModel, int $partYear,
+                                         string $sugMake, string $sugModel, int $sugFrom, int $sugTo,
+                                         string $partCategory): ?array
+    {
+        $pf = \App\Data\PlatformDatabase::lookup($partMake, $partModel, $partYear);
+        if (empty($pf['generation'])) return null;               // we have no platform data for this vehicle
+
+        foreach ($pf['shared_vehicles'] as $v) {
+            if (strtoupper($v['make']) === strtoupper($sugMake) && strtoupper($v['model']) === strtoupper($sugModel)
+                && (int) $v['year_from'] <= $sugFrom && (int) $v['year_to'] >= $sugTo) {
+                $own = ($v['categories'] ?? null) === \App\Data\PlatformDatabase::OWN_GENERATION_CATEGORIES;
+                return ['level' => 'info', 'text' => "Platform data agrees: {$pf['generation']} ({$pf['compat_year_from']}–{$pf['compat_year_to']})"
+                    . ($own ? '.' : ' — same chassis, but only suspension and brakes are known to be shared.')];
+            }
+        }
+
+        $powertrain = in_array(strtolower($partCategory), ['engine', 'transmission', 'drivetrain'], true);
+        return ['level' => 'mid', 'text' => "Platform data puts this part's own vehicle in {$pf['generation']} ({$pf['compat_year_from']}–{$pf['compat_year_to']}) and does not list "
+            . strtoupper($sugMake) . ' ' . strtoupper($sugModel) . " {$sugFrom}–{$sugTo} with it. "
+            . ($powertrain ? 'That can be normal for an engine or transmission shared by engine code — confirm the code before approving.'
+                           : 'Check the generation before approving.')];
+    }
+
     /** @return array{group_id:int, vehicle_row_id:?int, result:string} */
-    public function apply(object $s, ?int $staffId): array
+    public function apply(object $s, ?int $staffId, ?string $note = null): array
     {
         $part = DB::table('parts_inventory')->where('id', $s->part_id)->first();
         if (!$part) throw new \RuntimeException('Part no longer exists.');
@@ -79,8 +117,10 @@ class AiFitmentService
 
         $extra = ['ai_suggestion_id' => $s->id];
         if (Schema::hasColumn('part_interchange_vehicles', 'conditions_note')) {
+            // The staff member's own fitment note comes first (e.g. "2.5L engine only"), then the codes.
             $codes = trim(($s->engine_code ? "Engine {$s->engine_code}" : '') . ($s->transmission_code ? ' / Trans ' . $s->transmission_code : ''), ' /');
-            if ($codes !== '') $extra['conditions_note'] = Str::limit($codes . ' (AI-suggested, staff-approved)', 480, '');
+            $parts = array_filter([trim((string) $note), $codes]);
+            if ($parts) $extra['conditions_note'] = Str::limit(implode(' · ', $parts) . ' (AI-suggested, staff-approved)', 480, '');
         }
         DB::table('part_interchange_vehicles')->where('id', $rowId)->update($extra);
 
