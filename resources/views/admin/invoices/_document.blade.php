@@ -211,6 +211,8 @@
                         <span class="doc-disc">-{{ $money($lineDisc) }}</span>
                         @if(($item->discount_type ?? null) === 'percent')
                         <div class="doc-muted">({{ rtrim(rtrim(number_format((float) ($item->discount_value ?? 0), 2), '0'), '.') }}%)</div>
+                        @elseif(($item->discount_type ?? null) === 'fixed' && (int) $item->qty > 1 && abs(((float) ($item->discount_value ?? 0)) * (int) $item->qty - $lineDisc) < 0.01)
+                        <div class="doc-muted">({{ $money((float) $item->discount_value) }} × {{ (int) $item->qty }})</div>
                         @endif
                     @else
                         <span class="doc-muted">-</span>

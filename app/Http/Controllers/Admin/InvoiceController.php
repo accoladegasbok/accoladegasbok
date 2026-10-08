@@ -640,7 +640,11 @@ class InvoiceController extends Controller
                 'price'          => $priceLocal,
                 'grade'          => $i->condition_grade,
                 'qty'            => $i->qty,
-                'discount_value' => $i->discount_value,
+                // A fixed line discount is now PER UNIT. Older invoices stored the whole-line amount, so
+                // seed the form with amount / qty — editing an old invoice keeps exactly the discount it had.
+                'discount_value' => (($i->discount_type ?? 'fixed') === 'fixed' && (int) $i->qty > 1 && (float) ($i->discount_amount_local ?? 0) > 0)
+                                        ? round($i->discount_amount_local / $i->qty, 2)
+                                        : $i->discount_value,
                 'discount_type'  => $i->discount_type ?? 'fixed',
             ];
         })->values()->toJson();
@@ -695,7 +699,7 @@ class InvoiceController extends Controller
             if ($discValue > 0) {
                 $discLocal = $discType === 'percent'
                     ? $lineGrossLocal * ($discValue / 100)
-                    : min($discValue, $lineGrossLocal);
+                    : min($discValue * $qty, $lineGrossLocal);   // fixed amount is per unit
             }
             $lineLocal = $lineGrossLocal - $discLocal;
             // CRITICAL: keep the real part_id if one was submitted. This
@@ -836,7 +840,7 @@ class InvoiceController extends Controller
             if ($discValue > 0) {
                 $discLocal = $discType === 'percent'
                     ? $lineGrossLocal * ($discValue / 100)
-                    : min($discValue, $lineGrossLocal);
+                    : min($discValue * $qty, $lineGrossLocal);   // fixed amount is per unit
             }
             $lineLocal = $lineGrossLocal - $discLocal;
             $part = !empty($item['part_id']) ? DB::table('parts_inventory')->find($item['part_id']) : null;
@@ -1055,31 +1059,9 @@ class InvoiceController extends Controller
 
             DB::commit();
 
-            // ── Phase 4b: record a payment for immediately-paid sales —
-            // every Payment Method except "Credit / Deferred" means the
-            // customer paid at point of sale.
-            //
-            // POLICY CHANGE: this used to insert with status='confirmed'
-            // immediately, with no staff review step at all — meaning a
-            // manual invoice's point-of-sale payment silently became
-            // "Paid" the instant the invoice was created, unlike every
-            // other payment path in the app (orders, later top-up
-            // payments), which all require an explicit staff confirm.
-            // Now every payment starts 'pending' regardless of how it
-            // was recorded, and only counts toward the confirmed total
-            // once a staff member explicitly clicks Confirm — consistent
-            // everywhere, no silent auto-approval anywhere.
-            if ($paymentMethod !== 'Credit / Deferred') {
-                DB::table('invoice_payments')->insert([
-                    'invoice_id'             => $invoiceId,
-                    'amount_local'           => $subtotalLocal,
-                    'payment_method'         => $paymentMethod,
-                    'status'                 => 'pending',
-                    'notes'                  => 'Recorded at point of sale (manual invoice) — awaiting staff confirmation',
-                    'created_at'             => $createdAt,
-                    'updated_at'             => $createdAt,
-                ]);
-            }
+            // NO payment is created automatically. A new invoice starts with nothing paid ("NOT YET PAID");
+            // staff add the payment on the invoice page (Add payment) and confirm it, exactly like every other
+            // payment in the system. The Payment Method chosen above is kept on the invoice for reference only.
 
             // ── Phase 4: fire PartSold for each real inventory part ──
             // Runs AFTER commit so listener never fires on a rolled-back

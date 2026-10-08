@@ -3,11 +3,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>@yield('title', 'Admin') — Auto Zenith Parts</title>
   <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/az-favicon-64.png') }}">
   <link rel="apple-touch-icon" href="{{ asset('images/az-icon-192.png') }}">
+  {{-- Phones and tablets: "Add to Home Screen" opens the admin like an app (full screen, no browser bar) --}}
+  <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
+  <meta name="theme-color" content="#0A1F5C">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AZ Admin">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -41,15 +48,53 @@
     .badge-red    { background:#FCEBEB; color:#A32D2D; }
     .badge-gray   { background:#F1EFE8; color:#5F5E5A; }
     ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-thumb { background:#C8960C; border-radius:2px; }
+
+    /* ── Phones and tablets ─────────────────────────────────────────────── */
+    .az-shell { height:100vh; height:100dvh; }              /* 100dvh = the visible height, not under the browser bar */
+    .az-backdrop { display:none; }
+    html { -webkit-text-size-adjust:100%; }
+    img, video { max-width:100%; }
+    input, select, textarea { max-width:100%; }
+
+    /* Under 1024px (phones, tablets upright): the menu slides in over the page instead of taking 224px */
+    @media (max-width: 1023px) {
+      .az-sidebar { position:fixed; z-index:60; top:0; bottom:0; left:0; width:17rem; max-width:85vw;
+                    transform:translateX(-100%); transition:transform .2s ease; -webkit-overflow-scrolling:touch;
+                    padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+      .az-sidebar.open { transform:none; box-shadow:0 0 40px rgba(0,0,0,.45); }
+      .az-backdrop.open { display:block; position:fixed; inset:0; z-index:55; background:rgba(10,31,92,.55); }
+      .sidebar-link { padding:12px 16px; font-size:14px; }
+      .az-main { padding-bottom:calc(1rem + env(safe-area-inset-bottom)); }
+    }
+
+    /* Touch screens: no zoom-on-focus on iPhone (16px text), and fingertip-sized controls */
+    @media (pointer: coarse) {
+      input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select, textarea { font-size:16px !important; }
+      input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), select { min-height:44px; }
+      button, [type=submit], [type=button], .badge-btn { min-height:40px; }
+      input[type=checkbox], input[type=radio] { width:20px; height:20px; }
+      input[type=file] { font-size:14px !important; max-width:100%; }
+    }
+
+    /* Phones */
+    @media (max-width: 639px) {
+      .grid.grid-cols-3, .grid.grid-cols-4, .grid.grid-cols-5, .grid.grid-cols-6 { grid-template-columns:repeat(2, minmax(0,1fr)) !important; }
+      .col-span-2, .col-span-3, .col-span-4, .col-span-5, .col-span-6 { grid-column:1 / -1 !important; }
+      table { display:block; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+      .w-96, .w-80, .w-72 { width:calc(100vw - 2rem) !important; max-width:100% !important; }
+      .min-w-48 { min-width:0 !important; }
+      .stat-card { padding:1rem; }
+    }
   </style>
   @stack('head')
 </head>
 <body class="bg-gray-50">
 
-<div class="flex h-screen overflow-hidden">
+<div class="az-shell flex overflow-hidden">
 
   {{-- ── Sidebar ────────────────────────────────────────────────────────── --}}
-  <aside class="w-56 bg-navy flex-shrink-0 flex flex-col overflow-y-auto">
+  <div class="az-backdrop" id="azBackdrop"></div>
+  <aside id="azSidebar" class="az-sidebar w-56 bg-navy flex-shrink-0 flex flex-col overflow-y-auto">
     {{-- Logo --}}
     <div class="px-4 py-4 border-b border-white border-opacity-10">
       <a href="{{ route('admin.dashboard') }}" class="block bg-white rounded-lg px-3 py-2" aria-label="Auto Zenith Parts — dashboard">
@@ -263,40 +308,64 @@
   <div class="flex-1 flex flex-col overflow-hidden">
 
     {{-- Top bar --}}
-    <header class="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between flex-shrink-0">
-      <div>
-        <h1 class="font-display font-700 text-navy text-xl tracking-wide">@yield('page-title','Dashboard')</h1>
-        @hasSection('page-sub')
-          <p class="text-xs text-gray-400 font-body mt-0.5">@yield('page-sub')</p>
-        @endif
+    <header class="bg-white border-b border-gray-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 flex-shrink-0" style="padding-top:max(.625rem, env(safe-area-inset-top));">
+      <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+        <button type="button" id="azMenuBtn" class="lg:hidden flex-shrink-0 w-11 h-11 -ml-1 flex items-center justify-center rounded-xl text-navy hover:bg-gray-100" aria-label="Open menu" aria-controls="azSidebar" aria-expanded="false">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="min-w-0">
+          <h1 class="font-display font-700 text-navy text-lg sm:text-xl tracking-wide truncate">@yield('page-title','Dashboard')</h1>
+          @hasSection('page-sub')
+            <p class="hidden sm:block text-xs text-gray-400 font-body mt-0.5">@yield('page-sub')</p>
+          @endif
+        </div>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         @yield('header-actions')
         <a href="{{ route('admin.harvest.create') }}"
-           class="bg-navy text-white font-display font-700 text-xs px-4 py-2 rounded-xl tracking-wide hover:bg-navy-light transition-colors flex items-center gap-1.5">
+           class="bg-navy text-white font-display font-700 text-xs px-3 sm:px-4 py-2 rounded-xl tracking-wide hover:bg-navy-light transition-colors flex items-center gap-1.5 whitespace-nowrap">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
-          New Harvest
+          <span>New Harvest</span>
         </a>
       </div>
     </header>
 
     {{-- Flash messages --}}
     @if(session('success'))
-    <div class="bg-green-50 border-b border-green-200 px-6 py-2.5 text-sm text-green-700 font-body flex items-center gap-2">
+    <div class="bg-green-50 border-b border-green-200 px-4 sm:px-6 py-2.5 text-sm text-green-700 font-body flex items-center gap-2">
       <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
       {{ session('success') }}
     </div>
     @endif
     @if(session('error'))
-    <div class="bg-red-50 border-b border-red-200 px-6 py-2.5 text-sm text-red-700 font-body">{{ session('error') }}</div>
+    <div class="bg-red-50 border-b border-red-200 px-4 sm:px-6 py-2.5 text-sm text-red-700 font-body">{{ session('error') }}</div>
     @endif
 
     {{-- Page body --}}
-    <main class="flex-1 overflow-y-auto p-6">
+    <main class="az-main flex-1 overflow-y-auto p-3 sm:p-6">
       @yield('content')
     </main>
   </div>
 </div>
+
+<script>
+// Slide-out menu for phones and small tablets
+(function () {
+    var side = document.getElementById('azSidebar'), back = document.getElementById('azBackdrop'), btn = document.getElementById('azMenuBtn');
+    if (!side || !btn) return;
+    function setOpen(open) {
+        side.classList.toggle('open', open);
+        back.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        document.body.style.overflow = open ? 'hidden' : '';
+    }
+    btn.addEventListener('click', function () { setOpen(!side.classList.contains('open')); });
+    back.addEventListener('click', function () { setOpen(false); });
+    side.addEventListener('click', function (e) { if (e.target.closest('a')) setOpen(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+    window.addEventListener('resize', function () { if (window.innerWidth >= 1024) setOpen(false); });
+})();
+</script>
 
 @stack('scripts')
 </body>

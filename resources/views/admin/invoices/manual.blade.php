@@ -382,7 +382,7 @@ function addItem() {
                     class="price-input w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-gold">
             </div>
             <div>
-                <label class="block text-xs text-gray-400 mb-1">Discount</label>
+                <label class="block text-xs text-gray-400 mb-1">Discount <span class="text-gray-300">(per unit)</span></label>
                 <div class="flex gap-1">
                     <input type="number" name="items[${i}][discount_value]" id="item-discount-${i}"
                         placeholder="0" min="0" oninput="updateTotal()"
@@ -533,14 +533,16 @@ function selectPart(i, part) {
 const STAFF_DISCOUNT_CAP_FIXED   = {{ $staffDiscountCapFixed   ?? 'null' }};
 const STAFF_DISCOUNT_CAP_PERCENT = {{ $staffDiscountCapPercent ?? 'null' }};
 
-function applyDiscount(amount, value, type) {
+// perUnitQty: for LINE discounts a fixed amount is per unit, so it is multiplied by the quantity.
+// (A percentage already scales with the quantity; the whole-invoice discount passes no quantity.)
+function applyDiscount(amount, value, type, perUnitQty = 1) {
     value = parseFloat(value || 0);
     if (value <= 0) return { discounted: amount, discountAmt: 0 };
     if (type === 'percent') {
         const discountAmt = amount * (value / 100);
         return { discounted: amount - discountAmt, discountAmt };
     }
-    const discountAmt = Math.min(value, amount);
+    const discountAmt = Math.min(value * perUnitQty, amount);
     return { discounted: amount - discountAmt, discountAmt };
 }
 
@@ -556,7 +558,7 @@ function updateTotal() {
         const price      = parseFloat(priceEl.value || 0);
         const qty        = parseInt(qtyEl?.value || 1);
         const lineGross  = price * qty;
-        const { discounted: lineNet, discountAmt } = applyDiscount(lineGross, discValEl?.value, discTypeEl?.value || 'fixed');
+        const { discounted: lineNet, discountAmt } = applyDiscount(lineGross, discValEl?.value, discTypeEl?.value || 'fixed', qty);
         subtotal               += lineNet;
         totalLineDiscountLocal += discountAmt;
         if (totalEl) totalEl.textContent = lineNet > 0
