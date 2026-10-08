@@ -140,6 +140,20 @@
           <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $pendingReturns }}</span>
         @endif
       </a>
+      <a href="{{ route('admin.part-requests.index') }}" class="sidebar-link {{ request()->routeIs('admin.part-requests*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-5.2-5.2m0 0A7.5 7.5 0 105.2 5.2a7.5 7.5 0 0010.6 10.6z"/></svg>
+        Part Requests
+        @php try { $newPartRequests = \Illuminate\Support\Facades\DB::table('part_requests')->where('status','new')->count(); } catch (\Throwable $e) { $newPartRequests = 0; } @endphp
+        @if($newPartRequests > 0)
+          <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $newPartRequests }}</span>
+        @endif
+      </a>
+      @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
+      <a href="{{ route('admin.subscribers.index') }}" class="sidebar-link {{ request()->routeIs('admin.subscribers*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+        Email Subscribers
+      </a>
+      @endif
       <a href="{{ route('admin.payments.index') }}" class="sidebar-link {{ request()->routeIs('admin.payments*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3M3.75 21h16.5a1.5 1.5 0 001.5-1.5V5.25a1.5 1.5 0 00-1.5-1.5H3.75a1.5 1.5 0 00-1.5 1.5v14.25a1.5 1.5 0 001.5 1.5z"/></svg>
         Payments

@@ -466,10 +466,15 @@
         </div>
         <div class="footer-col">
           <h5>Staff</h5>
-          <a href="/admin/login">Staff / Admin Login</a>
+          <a href="/admin/login" style="color:#E8C766;font-weight:700;">Sales Rep / Staff Login</a>
           <a href="/admin/forgot-password">Forgot Password?</a>
         </div>
       </div>
+    </div>
+    <div style="margin-bottom:28px;">
+@endverbatim
+@include('partials._subscribe')
+@verbatim
     </div>
     <div class="footer-bottom">
       <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved. · <a href="mailto:info@autozenithparts.com" style="color:#B9C2D6;">info@autozenithparts.com</a></span>
@@ -520,6 +525,9 @@ function closeGalleryLightbox() {
     document.getElementById('galleryLightboxContent').innerHTML = '';
 }
 </script>
+@endverbatim
+@include('partials._text-us')
+@verbatim
 </body>
 </html>
 @endverbatim

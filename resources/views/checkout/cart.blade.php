@@ -55,7 +55,7 @@
                 @else bg-amber-50 text-amber-700 border border-amber-200 @endif">
                 Grade {{ $item['condition_grade'] }}
               </span>
-              <span>{{ $item['location'] }}</span>
+              <span>{{ \App\Support\HubLocations::publicLabel($item['location']) }}</span>
             </div>
           </div>
 

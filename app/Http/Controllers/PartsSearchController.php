@@ -80,6 +80,7 @@ class PartsSearchController extends Controller
             'filters','totalAvailable','totalOrdersEver','totalCustomersServed'
         ))->with([
             'chips'     => $this->buildChips($request, $filters),
+            'recentlySold' => ($filters['page'] ?? 1) <= 1 ? $this->recentlySold($filters) : collect(),
             'total'     => $parts->total(),
             // The customer's Location filter, in the Lagos-hub wording.
             'locations' => \App\Support\HubLocations::filterOptions(),
@@ -246,12 +247,9 @@ class PartsSearchController extends Controller
         ];
     }
 
-    private function searchParts(array $filters)
+    /** Shared by the live results and the 'recently sold' strip, so both follow the same rules. */
+    private function applyFilters($q, array $filters, bool $withPrice = true): void
     {
-        $q = DB::table('parts_inventory')
-            ->where('status', 'Available')
-            ->orderByDesc('created_at');
-
         // NEW: scope constrains results to the right grouping even
         // when no explicit category filter is chosen — this is what
         // actually keeps /parts and /other-items from mixing. If a
@@ -290,12 +288,15 @@ class PartsSearchController extends Controller
         }
         if ($filters['condition'])$q->where('condition_grade', $filters['condition']);
 
-        // ── Price filter — now against price_local (each part's own fixed
-        // currency). NOTE: if "All Locations" is selected, this mixes
-        // different currencies in one numeric range — best paired with a
-        // Location filter for a meaningful result (flagged to user in UI).
-        if ($filters['price_min']) $q->where('price_local', '>=', $filters['price_min']);
-        if ($filters['price_max']) $q->where('price_local', '<=', $filters['price_max']);
+        if ($withPrice) {
+            // ── Price filter — now against price_local (each part's own fixed
+            // currency). NOTE: if "All Locations" is selected, this mixes
+            // different currencies in one numeric range — best paired with a
+            // Location filter for a meaningful result (flagged to user in UI).
+            if ($filters['price_min']) $q->where('price_local', '>=', $filters['price_min']);
+            if ($filters['price_max']) $q->where('price_local', '<=', $filters['price_max']);
+
+        }
 
         if ($filters['q']) {
             $kw = $filters['q'];
@@ -310,6 +311,15 @@ class PartsSearchController extends Controller
                    ->orWhere('description',           'like', "%{$kw}%");
             });
         }
+    }
+
+    private function searchParts(array $filters)
+    {
+        $q = DB::table('parts_inventory')
+            ->where('status', 'Available')
+            ->orderByDesc('created_at');
+
+        $this->applyFilters($q, $filters);
 
         // ── Sort — now by price_local (each part's fixed price)
         if ($filters['sort'] === 'price_asc')  $q->reorder('price_local', 'asc');
@@ -321,6 +331,24 @@ class PartsSearchController extends Controller
         // the moment a customer went to the next page. withQueryString() adds
         // the current filters to every pagination link.
         return $q->paginate(24)->withQueryString();
+    }
+
+    /**
+     * Parts sold in the last 2 weeks that match the same search — shown under the results as proof
+     * of movement and a way to ask for "one like it". Only parts with a real photo; no price, no
+     * location. (A part's sale date is the last time its status changed, i.e. updated_at.)
+     */
+    private function recentlySold(array $filters)
+    {
+        $q = DB::table('parts_inventory')
+            ->where('status', 'Sold')
+            ->where('updated_at', '>=', now()->subDays(14))
+            ->whereNotNull('photos')
+            ->where('photos', '!=', '[]')
+            ->orderByDesc('updated_at');
+        $this->applyFilters($q, $filters, false);
+
+        return $q->limit(12)->get();
     }
 
     // ── Callahan-style search helpers ────────────────────────────────

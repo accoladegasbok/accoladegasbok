@@ -248,9 +248,15 @@
                 </ul>
             </div>
         </div>
+
+        {{-- Subscribe to our emails --}}
+        <div class="mt-8">
+            @include('partials._subscribe')
+        </div>
+
         <div class="border-t border-navy-light mt-8 pt-6 text-xs text-gray-500 flex flex-col sm:flex-row justify-between gap-2">
             <span>© {{ date('Y') }} Auto Zenith LLC. All rights reserved.</span>
-            <span><a href="{{ route('admin.login') }}" class="hover:text-white transition-colors">Staff Login</a> · <a href="{{ route('admin.password.request') }}" class="hover:text-white transition-colors">Forgot Password?</a></span>
+            <span><a href="{{ route('admin.login') }}" class="text-gold font-600 hover:text-white transition-colors">Sales Rep / Staff Login</a> · <a href="{{ route('admin.password.request') }}" class="hover:text-white transition-colors">Forgot Password?</a></span>
             <span>Quality Cars · Trusted Deals · Smooth Delivery</span>
         </div>
     </div>
@@ -292,5 +298,8 @@
 </script>
 
 @stack('scripts')
+
+{{-- "Text us" prompt (every public page) --}}
+@include('partials._text-us')
 </body>
 </html>
