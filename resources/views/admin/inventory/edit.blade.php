@@ -474,6 +474,47 @@
     </div>
   </form>
 
+  {{-- Compatibility notes: free-text caveats that don't fit year/make/model, e.g. "only the 2.5L", "a modified unit".
+       Each note is attributed (who, role, when) and only ever added to. Staff only — not shown to customers.
+       Own forms, not part of the main Save form above. --}}
+  @php
+      $compatNotes = app(\App\Services\InterchangeService::class)->notesForPart($part->id);
+      $canRemoveNote = in_array(session('staff_role'), ['admin', 'manager'], true);
+  @endphp
+  <div class="stat-card mb-5" id="compat-notes">
+    <h2 class="font-display font-700 text-navy text-sm tracking-wide uppercase mb-1">Compatibility Notes</h2>
+    <p class="text-xs text-gray-400 font-body mb-4">
+      Anything about fitment that does not fit the year / make / model lists: a caveat, a modified unit, a batch difference.
+      Each note records who added it and when. Staff only.
+    </p>
+
+    @forelse($compatNotes as $n)
+      <div class="border border-gray-200 rounded-xl p-3 mb-2 flex items-start justify-between gap-3">
+        <div>
+          <div class="text-sm font-body text-gray-700 whitespace-pre-line">{{ $n->note }}</div>
+          <div class="text-xs text-gray-400 font-body mt-1">{{ $n->added_by_name ?: 'Unknown' }}@if($n->added_by_role) ({{ $n->added_by_role }})@endif · {{ \Carbon\Carbon::parse($n->created_at)->format('d M Y, H:i') }}</div>
+        </div>
+        @if($canRemoveNote)
+        <form method="POST" action="{{ route('admin.interchange.notes.remove', $n->id) }}" onsubmit="return confirm('Remove this note? This cannot be undone.')">
+          @csrf @method('DELETE')
+          <button type="submit" class="text-xs text-red-500 hover:text-red-700 font-body">Remove</button>
+        </form>
+        @endif
+      </div>
+    @empty
+      <p class="text-xs text-gray-400 font-body mb-3">No notes yet.</p>
+    @endforelse
+
+    <form method="POST" action="{{ route('admin.interchange.notes.add', $part->id) }}" class="mt-3">
+      @csrf
+      <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Add a note</label>
+      <textarea name="note" rows="3" maxlength="1000" required
+        class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-gold"
+        placeholder="e.g. Fits the 2.5L only. The 3.5L uses a different mount."></textarea>
+      <button type="submit" class="mt-2 bg-navy text-white font-display font-700 text-xs px-5 py-2.5 rounded-lg hover:bg-navy-light transition-colors">Save note</button>
+    </form>
+  </div>
+
   {{-- ── Interchange / Compatibility Aggregation (Phase B3) ───────────
        Separate forms (own POST actions) — not part of the main Save form. --}}
   <div class="stat-card mb-5">
@@ -491,6 +532,15 @@
       </button>
       <p class="text-xs text-gray-400 font-body mt-1.5">Asks AI which other makes/models/years likely share this exact part, based on its engine/transmission code. You review and confirm — nothing is added automatically.</p>
       <div id="aiSuggestResults" class="mt-3 space-y-2"></div>
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 font-body">
+        AI suggestions are not added automatically. They are saved and wait in
+        @if(in_array(session('staff_role'), ['admin','manager','supervisor'], true))
+          <a href="{{ route('admin.ai-fitment.index') }}?q={{ urlencode($part->part_code) }}" class="underline font-700">AI Fitment Review</a>,
+        @else
+          AI Fitment Review,
+        @endif
+        where a supervisor ticks them and checks each one a second time.
+      </p>
     </div>
 
     @if($interchangeGroup)
@@ -645,10 +695,7 @@ async function getAiSuggestions() {
                         </div>
                         <div class="text-xs text-gray-400 font-body mt-0.5">${s.reason}</div>
                     </div>
-                    <button type="button" onclick='confirmAiSuggestion(${JSON.stringify(s).replace(/'/g,"&#39;")}, this)'
-                        class="text-xs font-body font-700 bg-gold text-navy px-3 py-2 rounded-lg hover:bg-yellow-500 transition-colors whitespace-nowrap">
-                        + Confirm
-                    </button>
+                    <span class="text-xs font-body font-700 text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg whitespace-nowrap">Waiting for review</span>
                 </div>`).join('');
         }
     } catch (e) {
@@ -659,79 +706,6 @@ async function getAiSuggestions() {
     btn.textContent = '🤖 Get AI Interchange Suggestions';
 }
 
-async function confirmAiSuggestion(s, btn) {
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-
-    try {
-        if (HAS_GROUP) {
-            // Add directly to the existing confirmed group — no reload,
-            // so staff can keep confirming other suggestions in the list.
-            const form = new FormData();
-            form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
-            form.append('part_id', PART_ID);
-            form.append('make', s.brand);
-            form.append('model', s.model);
-            form.append('year_from', s.year_from);
-            form.append('year_to', s.year_to);
-            if (s.ai_suggestion_id) form.append('ai_suggestion_id', s.ai_suggestion_id);
-            const res = await fetch(`/admin/interchange/groups/${GROUP_ID}/add-vehicle`, { method: 'POST', body: form });
-            if (res.ok || res.redirected) {
-                markSuggestionConfirmed(btn);
-            } else {
-                btn.disabled = false;
-                btn.textContent = '+ Confirm';
-                alert('Could not add this vehicle. Please try again.');
-            }
-        } else {
-            // First confirmation with no group yet — create the group,
-            // then remember GROUP_ID/HAS_GROUP so subsequent confirms in
-            // this same session add straight to it without another prompt.
-            const groupCode = prompt(`No confirmed interchange group exists yet for this part. Enter a group code to create one (e.g. COROLLA-E170-HEADLIGHT-R):`);
-            if (!groupCode) { btn.disabled = false; btn.textContent = '+ Confirm'; return; }
-
-            const form = new FormData();
-            form.append('_token', document.querySelector('meta[name="csrf-token"]').content);
-            form.append('part_id', PART_ID);
-            form.append('group_code', groupCode);
-            form.append('make', s.brand);
-            form.append('model', s.model);
-            form.append('year_from', s.year_from);
-            form.append('year_to', s.year_to);
-            if (s.ai_suggestion_id) form.append('ai_suggestion_id', s.ai_suggestion_id);
-            const res = await fetch(`{{ route('admin.interchange.groups.create') }}`, { method: 'POST', body: form });
-            const data = await res.json().catch(() => null);
-
-            if ((res.ok || res.redirected) && data?.group_id) {
-                HAS_GROUP = true;
-                GROUP_ID  = data.group_id;
-                markSuggestionConfirmed(btn);
-            } else if (res.ok || res.redirected) {
-                // Group created but response didn't include the new ID —
-                // safest is one reload here (first confirmation only),
-                // after which all further confirms in this session use
-                // the fast in-place path above.
-                location.reload();
-            } else {
-                btn.disabled = false;
-                btn.textContent = '+ Confirm';
-                alert('Could not create the interchange group. Please try again.');
-            }
-        }
-    } catch (e) {
-        btn.disabled = false;
-        btn.textContent = '+ Confirm';
-        alert('Network error — please try again.');
-    }
-}
-
-function markSuggestionConfirmed(btn) {
-    btn.textContent = '✓ Added';
-    btn.classList.remove('bg-gold', 'hover:bg-yellow-500', 'text-navy');
-    btn.classList.add('bg-green-100', 'text-green-700', 'cursor-default');
-    btn.disabled = true;
-    btn.onclick = null;
-}
 
 document.getElementById('locationSelect').addEventListener('change', () => loadStoreRooms());
 document.addEventListener('DOMContentLoaded', () => loadStoreRooms(true));

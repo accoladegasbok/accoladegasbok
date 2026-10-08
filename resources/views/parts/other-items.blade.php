@@ -76,9 +76,10 @@
                     <label class="block text-xs font-body font-500 text-gray-500 mb-1 uppercase tracking-wider">Location</label>
                     <select name="location" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold bg-white">
                         <option value="">All Locations</option>
-                        <option value="USA" {{ ($filters['location'] ?? '') === 'USA' ? 'selected' : '' }}>🇺🇸 USA</option>
-                        <option value="Nigeria" {{ ($filters['location'] ?? '') === 'Nigeria' ? 'selected' : '' }}>🇳🇬 Nigeria</option>
-                        <option value="Ghana" {{ ($filters['location'] ?? '') === 'Ghana' ? 'selected' : '' }}>🇬🇭 Ghana</option>
+                        {{-- Lagos hub: "Lagos" = all West Africa stock; yards are shown as Lagos / Ibadan etc. --}}
+                        @foreach(\App\Support\HubLocations::filterOptions() as $locValue => $locLabel)
+                        <option value="{{ $locValue }}" {{ ($filters['location'] ?? '') === $locValue ? 'selected' : '' }}>{{ $locLabel }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div>
@@ -152,7 +153,7 @@
                         $displayBrand = explode(' - ', $part->part_name, 2)[0];
                     }
 
-                    $whatsappMsg = urlencode("Hi, I'm enquiring about the {$part->part_name} ({$part->part_code}). Location: {$part->location}. Price: {$price}. Is this available?");
+                    $whatsappMsg = urlencode("Hi, I'm enquiring about the {$part->part_name} ({$part->part_code}). Location: " . \App\Support\HubLocations::publicLabel($part->location) . ". Price: {$price}. Is this available?");
                 @endphp
 
                 <div class="part-card bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
@@ -170,7 +171,7 @@
                         <div class="flex items-start justify-between gap-2 mb-1">
                             <div class="font-display font-700 text-navy text-sm tracking-wide">{{ $displayBrand }}</div>
                             <span class="text-xs font-body font-500 px-2 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-600">
-                                {{ $locFlag }} {{ explode(' ', $part->location)[0] }}
+                                {{ $locFlag }} {{ \App\Support\HubLocations::publicLabel($part->location) }}
                             </span>
                         </div>
 

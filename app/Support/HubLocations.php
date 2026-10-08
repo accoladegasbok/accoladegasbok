@@ -58,6 +58,24 @@ class HubLocations
     }
 
     /**
+     * Turn [physical location => number of parts] into the number to show beside each Location option:
+     * "Lagos" counts every West Africa part, a yard counts its own, USA counts the USA yards.
+     */
+    public static function countsByOption(array $byPhysical): array
+    {
+        $out = array_fill_keys(array_keys(self::filterOptions()), 0);
+        foreach ($byPhysical as $location => $n) {
+            if (in_array($location, self::USA, true)) {
+                $out['USA'] += (int) $n;
+            } elseif (isset(self::WEST_AFRICA[$location])) {
+                $out['Lagos'] += (int) $n;
+                $out[self::WEST_AFRICA[$location]] += (int) $n;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * The physical locations a customer's Location choice should match.
      * Returns null when no location was chosen.
      */

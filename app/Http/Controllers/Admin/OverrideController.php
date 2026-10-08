@@ -34,6 +34,45 @@ class OverrideController extends Controller
             'context' => 'nullable|string|max:255',
         ]);
 
+        $result = self::checkPin($request->pin, $request->action, $request->context);
+
+        if (!$result['ok']) {
+            return response()->json(['error' => $result['error']], 403);
+        }
+
+        return response()->json([
+            'success'     => true,
+            'approved_by' => $result['staff']->name,
+            'role'        => $result['staff']->role,
+        ]);
+    }
+
+    // =========================================================
+    // The one place a PIN is checked. Used by verify() above AND by server-side actions
+    // that must check the PIN themselves (e.g. applying customer credit on an invoice),
+    // so approval cannot be faked by the browser.
+    // Every attempt is logged. After 5 wrong PINs in 10 minutes, the same signed-in user
+    // is locked out of PIN checks for the rest of that window.
+    // Returns: ['ok' => bool, 'staff' => row|null, 'error' => string|null]
+    // =========================================================
+    public static function checkPin(string $pin, string $action, ?string $context = null): array
+    {
+        $requesterId = Session::get('staff_id');
+
+        $recentFailures = DB::table('override_logs')
+            ->where('requested_by_staff_id', $requesterId)
+            ->where('approved_by_staff_id', 0)
+            ->where('created_at', '>=', now()->subMinutes(10))
+            ->count();
+        if ($recentFailures >= 5) {
+            return ['ok' => false, 'staff' => null, 'error' => 'Too many wrong PIN attempts. Wait 10 minutes, or ask a supervisor to do this.'];
+        }
+
+        $pin = trim($pin);
+        if ($pin === '') {
+            return ['ok' => false, 'staff' => null, 'error' => 'Enter a supervisor PIN.'];
+        }
+
         $staffList = DB::table('staff')
             ->whereIn('role', self::ELIGIBLE_ROLES)
             ->whereNotNull('override_pin_hash')
@@ -42,40 +81,33 @@ class OverrideController extends Controller
 
         $matched = null;
         foreach ($staffList as $staff) {
-            if (Hash::check($request->pin, $staff->override_pin_hash)) {
-                $matched = $staff;
-                break;
-            }
+            if (Hash::check($pin, $staff->override_pin_hash)) { $matched = $staff; break; }
         }
 
         if (!$matched) {
             DB::table('override_logs')->insert([
                 'approved_by_staff_id'  => 0,
                 'approved_by_role'      => 'UNKNOWN',
-                'action'                => $request->action,
-                'context'               => ($request->context ?? '') . ' [FAILED — invalid PIN]',
-                'requested_by_staff_id' => Session::get('staff_id'),
+                'action'                => $action,
+                'context'               => ($context ?? '') . ' [FAILED — invalid PIN]',
+                'requested_by_staff_id' => $requesterId,
                 'created_at'            => now(),
                 'updated_at'            => now(),
             ]);
-            return response()->json(['error' => 'Invalid override PIN.'], 403);
+            return ['ok' => false, 'staff' => null, 'error' => 'Invalid override PIN.'];
         }
 
         DB::table('override_logs')->insert([
             'approved_by_staff_id'  => $matched->id,
             'approved_by_role'      => $matched->role,
-            'action'                => $request->action,
-            'context'               => $request->context,
-            'requested_by_staff_id' => Session::get('staff_id'),
+            'action'                => $action,
+            'context'               => $context,
+            'requested_by_staff_id' => $requesterId,
             'created_at'            => now(),
             'updated_at'            => now(),
         ]);
 
-        return response()->json([
-            'success'     => true,
-            'approved_by' => $matched->name,
-            'role'        => $matched->role,
-        ]);
+        return ['ok' => true, 'staff' => $matched, 'error' => null];
     }
 
     // =========================================================

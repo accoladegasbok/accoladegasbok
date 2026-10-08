@@ -75,10 +75,14 @@ class PartsSearchController extends Controller
         $totalCustomersServed = DB::table('orders')->distinct('customer_phone')->count('customer_phone')
             + DB::table('invoices')->distinct('customer_phone')->count('customer_phone');
 
+        [$yardCounts, $trimOptions] = $this->facets($filters);
+
         return view('parts.search', compact(
             'makes','years','categories','parts','rates','currency',
             'filters','totalAvailable','totalOrdersEver','totalCustomersServed'
         ))->with([
+            'yardCounts'  => $yardCounts,
+            'trimOptions' => $trimOptions,
             'chips'     => $this->buildChips($request, $filters),
             'recentlySold' => ($filters['page'] ?? 1) <= 1 ? $this->recentlySold($filters) : collect(),
             'total'     => $parts->total(),
@@ -240,6 +244,7 @@ class PartsSearchController extends Controller
             'location'  => trim($request->get('location', '')),
             'currency'  => $request->get('currency', 'USD'),
             'condition' => trim($request->get('condition', '')),
+            'trim'      => trim((string) $request->get('trim', '')),
             'price_min' => trim($request->get('price_min', '')),
             'price_max' => trim($request->get('price_max', '')),
             'sort'      => trim($request->get('sort', 'newest')),
@@ -287,6 +292,13 @@ class PartsSearchController extends Controller
             $q->whereIn('location', \App\Support\HubLocations::physicalLocationsFor($filters['location']));
         }
         if ($filters['condition'])$q->where('condition_grade', $filters['condition']);
+
+        // Trim: parts store the trims they fit as a comma-separated list ("LE, SE, XLE"). Match a whole trim,
+        // so "LE" never matches "SLE".
+        if (($filters['trim'] ?? '') !== '') {
+            $needle = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $filters['trim']);
+            $q->whereRaw("CONCAT(',', REPLACE(REPLACE(compatible_trims, ', ', ','), ' ,', ','), ',') LIKE ?", ['%,' . $needle . ',%']);
+        }
 
         if ($withPrice) {
             // ── Price filter — now against price_local (each part's own fixed
@@ -349,6 +361,44 @@ class PartsSearchController extends Controller
         $this->applyFilters($q, $filters, false);
 
         return $q->limit(12)->get();
+    }
+
+    // ── Filter sidebar numbers ───────────────────────────────────────
+
+    /**
+     * Counts for the sidebar. Each one answers "how many would I get if I picked this?" — so it uses the
+     * current search but ignores the filter it belongs to.
+     *   yardCounts  : parts per Location option (Lagos hub, each yard, USA)
+     *   trimOptions : trims that exist for the chosen vehicle(s), with how many parts each (only once a vehicle is chosen)
+     */
+    private function facets(array $filters): array
+    {
+        $f = $filters; $f['location'] = '';
+        $q = DB::table('parts_inventory')->where('status', 'Available');
+        $this->applyFilters($q, $f);
+        $byLocation = $q->select('location', DB::raw('COUNT(*) as n'))->groupBy('location')->pluck('n', 'location')->all();
+        $yardCounts = \App\Support\HubLocations::countsByOption($byLocation);
+
+        $trimOptions = [];
+        $hasVehicle  = !empty($filters['vehicles']) || $filters['make'] !== '' || $filters['model'] !== '';
+        if ($hasVehicle) {
+            $f = $filters; $f['trim'] = '';
+            $q = DB::table('parts_inventory')->where('status', 'Available')
+                ->whereNotNull('compatible_trims')->where('compatible_trims', '!=', '');
+            $this->applyFilters($q, $f);
+            foreach ($q->limit(3000)->pluck('compatible_trims') as $list) {
+                foreach (explode(',', (string) $list) as $t) {
+                    $t = trim($t);
+                    if ($t === '') continue;
+                    $k = strtoupper($t);
+                    $trimOptions[$k] = ['label' => $trimOptions[$k]['label'] ?? $t, 'n' => ($trimOptions[$k]['n'] ?? 0) + 1];
+                }
+            }
+            uasort($trimOptions, fn ($a, $b) => strcasecmp($a['label'], $b['label']));
+            $trimOptions = array_slice($trimOptions, 0, 40, true);
+        }
+
+        return [$yardCounts, $trimOptions];
     }
 
     // ── Callahan-style search helpers ────────────────────────────────

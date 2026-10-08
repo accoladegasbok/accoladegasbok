@@ -908,9 +908,20 @@ class InvoiceController extends Controller
         // Supervisor and above only. The amount typed on the form is never trusted: it is capped at
         // the real ledger balance and at what the invoice is worth, and re-checked under a lock below.
         $accountCreditApplied = 0.0;
+        $creditApprover       = null;   // who approved it: the signed-in supervisor, or the supervisor whose PIN was typed
         if ((float) $request->account_credit_local > 0) {
-            if (!\App\Services\CustomerCreditService::canManage()) {
-                return back()->with('error', 'Only a supervisor or above can apply customer credit.')->withInput();
+            if (\App\Services\CustomerCreditService::canManage()) {
+                $creditApprover = Session::get('staff_name');
+            } else {
+                // Below supervisor: needs a supervisor / manager / admin PIN, checked HERE on the server (and logged).
+                $check = \App\Http\Controllers\Admin\OverrideController::checkPin(
+                    (string) $request->override_pin, 'apply_customer_credit',
+                    'Customer credit on a new manual invoice, customer phone ' . $customerInfo->phone
+                );
+                if (!$check['ok']) {
+                    return back()->with('error', $check['error'])->withInput($request->except('override_pin'));
+                }
+                $creditApprover = $check['staff']->name . ' (' . $check['staff']->role . ', PIN)';
             }
             $creditAvailable      = \App\Services\CustomerCreditService::balance($customerInfo->phone, $currencyCode);
             $accountCreditApplied = round(min((float) $request->account_credit_local, $creditAvailable, $subtotalLocal), 2);
@@ -1009,6 +1020,7 @@ class InvoiceController extends Controller
                     'phone' => $customerInfo->phone, 'name' => $customerInfo->name, 'email' => $customerInfo->email,
                     'currency' => $currencyCode, 'amount' => $accountCreditApplied, 'type' => 'used_invoice',
                     'source_type' => 'invoice', 'source_id' => $invoiceId, 'reference' => $invoiceNo,
+                    'authorized_by' => $creditApprover,
                     'notes' => 'Applied on manual invoice',
                 ]);
             }

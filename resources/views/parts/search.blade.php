@@ -260,18 +260,40 @@
                             <label class="flex items-center gap-2 cursor-pointer group">
                                 <input type="radio" name="location" value="" {{ empty($filters['location']) ? 'checked' : '' }}
                                     class="accent-gold" onchange="this.form.submit()">
-                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">All Locations</span>
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">All Locations <span class="text-xs text-gray-400">({{ number_format(($yardCounts['USA'] ?? 0) + ($yardCounts['Lagos'] ?? 0)) }})</span></span>
                             </label>
                             {{-- Lagos hub: "Lagos" = all West Africa stock; the others are the yards (shown to customers as Lagos / Ibadan ...) --}}
                             @foreach($locations as $locValue => $locLabel)
                             <label class="flex items-center gap-2 cursor-pointer group">
                             <input type="radio" name="location" value="{{ $locValue }}" {{ ($filters['location'] ?? '') === $locValue ? 'checked' : '' }}
                             class="accent-gold" onchange="this.form.submit()">
-                            <span class="text-sm font-body text-gray-600 group-hover:text-navy">{{ $locLabel }}</span>
+                            <span class="text-sm font-body {{ ($yardCounts[$locValue] ?? 0) > 0 ? 'text-gray-600' : 'text-gray-300' }} group-hover:text-navy">{{ $locLabel }} <span class="text-xs text-gray-400">({{ number_format($yardCounts[$locValue] ?? 0) }})</span></span>
                             </label>
                             @endforeach
                         </div>
                     </div>
+
+                    {{-- Trim — shown once a vehicle is chosen, with how many parts fit each trim --}}
+                    @if(!empty($trimOptions))
+                    <div class="p-4 border-b border-gray-100">
+                        <button type="button" class="filter-toggle w-full flex justify-between items-center text-left mb-3" data-target="trim-filter">
+                            <span class="font-body font-500 text-sm text-gray-700 uppercase tracking-wider">Trim</span>
+                            <svg class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="trim-filter" class="space-y-2 max-h-56 overflow-y-auto">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="trim" value="" {{ empty($filters['trim']) ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">All trims</span>
+                            </label>
+                            @foreach($trimOptions as $opt)
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="trim" value="{{ $opt['label'] }}" {{ strcasecmp($filters['trim'] ?? '', $opt['label']) === 0 ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">{{ $opt['label'] }} <span class="text-xs text-gray-400">({{ $opt['n'] }})</span></span>
+                            </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
 
                     {{-- Condition Grade --}}
                     <div class="p-4 border-b border-gray-100">

@@ -69,11 +69,27 @@ class InterchangeController extends Controller
     }
 
     // =========================================================
+    // AI suggestions are never approved one at a time. They are approved in
+    // AI Fitment Review (batch select + a second look at every item + a log).
+    // Creating a group or adding a vehicle by hand still works as before —
+    // it just cannot carry an ai_suggestion_id any more.
+    // =========================================================
+    private function refuseAiShortcut(Request $request)
+    {
+        $msg = 'AI suggestions are approved in AI Fitment Review (tick them, then check each one a second time).';
+        if ($request->wantsJson() || $request->ajax()) {
+            abort(response()->json(['success' => false, 'error' => $msg], 422));
+        }
+        abort(redirect()->back()->with('error', $msg));
+    }
+
+    // =========================================================
     // POST /admin/interchange/groups — create a new group and
     // immediately assign the current part to it.
     // =========================================================
     public function createGroup(Request $request)
     {
+        if ($request->filled('ai_suggestion_id')) $this->refuseAiShortcut($request);
         $request->validate([
             'part_id'      => 'required|exists:parts_inventory,id',
             'group_code'   => 'required|string|max:80|unique:part_interchange_groups,group_code',
@@ -142,6 +158,7 @@ class InterchangeController extends Controller
     // =========================================================
     public function addVehicle(Request $request, int $groupId)
     {
+        if ($request->filled('ai_suggestion_id')) $this->refuseAiShortcut($request);
         $request->validate([
             'make'       => 'required|string|max:60',
             'model'      => 'required|string|max:80',

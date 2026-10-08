@@ -55,10 +55,12 @@
         <div id="accountCreditResult" class="mt-2 text-xs font-body"></div>
         <div id="accountCreditApplyRow" class="hidden mt-2 flex items-center gap-2">
           <input type="number" step="0.01" min="0" id="accountCreditAmount" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:border-gold" placeholder="Amount to use">
+          <input type="password" inputmode="numeric" autocomplete="off" maxlength="6" id="accountCreditPin" class="hidden border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:border-gold" placeholder="Supervisor PIN">
           <button type="button" onclick="applyAccountCredit()" class="text-xs font-body font-700 bg-green-600 text-white px-3 py-1.5 rounded-lg">Apply</button>
           <button type="button" onclick="clearAccountCredit()" class="text-xs text-gray-500 underline">Remove</button>
         </div>
         <input type="hidden" name="account_credit_local" id="accountCreditHidden" value="">
+        <input type="hidden" name="override_pin" id="overridePinHidden" value="">
         <input type="hidden" id="returnCreditAmountInput" value="0">
       </div>
     </div>
@@ -627,6 +629,7 @@ document.addEventListener('click', function(e) {
 // ── Return Credit search/select ──────────────────────────────────
 // ── Customer credit (one ledger: overpayments + return credit, per currency) ──
 let accountCreditBalance = 0;
+let accountCreditCanApply = false;   // true when the signed-in staff member is supervisor or above
 
 function toggleAccountCredit() {
     document.getElementById('accountCreditSection').classList.toggle('hidden');
@@ -651,12 +654,11 @@ async function lookupAccountCredit() {
             box.innerHTML = '<span class="text-gray-500">No credit in ' + currency.code + ' for this phone number.</span>';
             return;
         }
-        if (!data.can_apply) {
-            box.innerHTML = '<span class="text-green-700 font-700">' + money(accountCreditBalance) + ' credit available.</span> <span class="text-gray-500">Ask a supervisor to apply it.</span>';
-            return;
-        }
-        box.innerHTML = '<span class="text-green-700 font-700">' + money(accountCreditBalance) + ' credit available.</span>';
+        accountCreditCanApply = !!data.can_apply;
+        box.innerHTML = '<span class="text-green-700 font-700">' + money(accountCreditBalance) + ' credit available.</span>'
+            + (accountCreditCanApply ? '' : ' <span class="text-gray-500">A supervisor PIN is needed to use it.</span>');
         document.getElementById('accountCreditAmount').value = accountCreditBalance;
+        document.getElementById('accountCreditPin').classList.toggle('hidden', accountCreditCanApply);
         row.classList.remove('hidden');
     } catch (e) {
         box.innerHTML = '<span class="text-red-500">Could not check credit.</span>';
@@ -666,12 +668,17 @@ async function lookupAccountCredit() {
 function applyAccountCredit() {
     let amt = parseFloat(document.getElementById('accountCreditAmount').value || 0);
     amt = Math.max(0, Math.min(amt, accountCreditBalance));
+    const pin = document.getElementById('accountCreditPin').value.trim();
+    if (amt > 0 && !accountCreditCanApply && !pin) { alert('Enter a supervisor PIN to use this credit.'); return; }
+    document.getElementById('overridePinHidden').value = (amt > 0 && !accountCreditCanApply) ? pin : '';
     document.getElementById('accountCreditHidden').value = amt > 0 ? amt : '';
     document.getElementById('returnCreditAmountInput').value = amt;   // feeds the live total preview
     updateTotal();
 }
 
 function clearAccountCredit() {
+    document.getElementById('overridePinHidden').value = '';
+    document.getElementById('accountCreditPin').value = '';
     document.getElementById('accountCreditHidden').value = '';
     document.getElementById('returnCreditAmountInput').value = 0;
     document.getElementById('accountCreditAmount').value = '';
