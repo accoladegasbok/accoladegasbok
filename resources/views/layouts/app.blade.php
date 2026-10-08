@@ -254,6 +254,14 @@
             @include('partials._subscribe')
         </div>
 
+        {{-- Policies --}}
+        <div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-400">
+            <a href="{{ route('policy.refund') }}" class="hover:text-white transition-colors">Refund policy</a>
+            <a href="{{ route('policy.shipping') }}" class="hover:text-white transition-colors">Shipping policy</a>
+            <a href="{{ route('policy.warranty') }}" class="hover:text-white transition-colors">Warranty</a>
+            <a href="mailto:info@autozenithparts.com" class="hover:text-white transition-colors">Contact information</a>
+        </div>
+
         <div class="border-t border-navy-light mt-8 pt-6 text-xs text-gray-500 flex flex-col sm:flex-row justify-between gap-2">
             <span>© {{ date('Y') }} Auto Zenith LLC. All rights reserved.</span>
             <span><a href="{{ route('admin.login') }}" class="text-gold font-600 hover:text-white transition-colors">Sales Rep / Staff Login</a> · <a href="{{ route('admin.password.request') }}" class="hover:text-white transition-colors">Forgot Password?</a></span>

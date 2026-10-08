@@ -243,6 +243,11 @@ class ReturnsController extends Controller
             ->where('r.refund_amount_local', '>', 0)
             ->where('r.refund_method', 'store_credit')
             ->whereNull('r.credit_applied_at')
+            // Credit already moved into the customer-credit ledger is used from there, not from here.
+            ->whereNotExists(function ($l) {
+                $l->select(DB::raw(1))->from('customer_credit_ledger as l')
+                  ->whereColumn('l.source_id', 'r.id')->where('l.source_type', 'return')->where('l.entry_type', 'return_credit');
+            })
             ->select(
                 'r.id', 'r.refund_amount_local', 'r.created_at', 'p.part_name', 'p.part_code',
                 DB::raw('COALESCE(i.invoice_no, o.order_ref) as invoice_no'),
@@ -478,9 +483,32 @@ class ReturnsController extends Controller
             return back()->with('error', 'Could not resolve return: ' . $e->getMessage());
         }
 
-        $refundNote = $request->refund_method
+        // Store credit goes into the customer-credit ledger — one place for return credit AND overpayments,
+        // per currency, visible whenever that customer shops. Cash / transfer refunds are just recorded above.
+        $creditNote = '';
+        if ($request->refund_method === 'store_credit'
+            && $return->return_type === 'customer'
+            && $return->refund_amount_local > 0) {
+            $sale = $return->invoice_id
+                ? DB::table('invoices')->where('id', $return->invoice_id)->first()
+                : ($return->order_id ? DB::table('orders')->where('id', $return->order_id)->first() : null);
+
+            if ($sale && \App\Services\CustomerCreditService::phoneKey($sale->customer_phone) !== '') {
+                \App\Services\CustomerCreditService::issue([
+                    'phone' => $sale->customer_phone, 'name' => $sale->customer_name, 'email' => $sale->customer_email,
+                    'currency' => $sale->currency_code ?? 'NGN', 'amount' => $return->refund_amount_local,
+                    'type' => 'return_credit', 'source_type' => 'return', 'source_id' => $id,
+                    'reference' => $sale->invoice_no ?? $sale->order_ref ?? null, 'notes' => 'Store credit for a returned part',
+                ]);
+                $creditNote = ' The amount was added to the customer\'s credit.';
+            } else {
+                $creditNote = ' WARNING: no phone number on the original sale, so the credit could not be added — add it by hand under Customer Credit.';
+            }
+        }
+
+        $refundNote = ($request->refund_method
             ? ' Refund method: ' . ucfirst(str_replace('_', ' ', $request->refund_method)) . '.'
-            : '';
+            : '') . $creditNote;
 
         return redirect()->route('admin.returns.index')
             ->with('success', 'Return resolved — part status updated to ' . $statusMap[$request->resolution] . '.' . $refundNote);

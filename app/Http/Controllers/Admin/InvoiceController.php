@@ -900,6 +900,19 @@ class InvoiceController extends Controller
             }
         }
 
+        // ── Customer (account) credit: overpayments + return store-credit, one ledger, per currency.
+        // Supervisor and above only. The amount typed on the form is never trusted: it is capped at
+        // the real ledger balance and at what the invoice is worth, and re-checked under a lock below.
+        $accountCreditApplied = 0.0;
+        if ((float) $request->account_credit_local > 0) {
+            if (!\App\Services\CustomerCreditService::canManage()) {
+                return back()->with('error', 'Only a supervisor or above can apply customer credit.')->withInput();
+            }
+            $creditAvailable      = \App\Services\CustomerCreditService::balance($customerInfo->phone, $currencyCode);
+            $accountCreditApplied = round(min((float) $request->account_credit_local, $creditAvailable, $subtotalLocal), 2);
+            $subtotalLocal       -= $accountCreditApplied;
+        }
+
         $subtotalFmt = self::formatLocal($subtotalLocal, $currencyCode);
 
         $currentStaffForCap          = DB::table('staff')->where('id', Session::get('staff_id'))->first();
@@ -978,12 +991,23 @@ class InvoiceController extends Controller
                 'discount_override_reason' => $exceedsCap ? $request->discount_override_reason : null,
                 'return_credit_id'             => $returnCreditId,
                 'return_credit_applied_local'   => $returnCreditApplied,
+                'account_credit_applied_local'  => $accountCreditApplied,
                 'payment_method'           => $paymentMethod,
                 'created_by'               => Session::get('staff_name') ?? 'Admin',
                 'notes'                    => $request->notes ?? null,
                 'created_at'               => $createdAt,
                 'updated_at'               => $createdAt,
             ]);
+
+            // Spend the customer credit (logged in the ledger; throws if the balance changed meanwhile).
+            if ($accountCreditApplied > 0) {
+                \App\Services\CustomerCreditService::spend([
+                    'phone' => $customerInfo->phone, 'name' => $customerInfo->name, 'email' => $customerInfo->email,
+                    'currency' => $currencyCode, 'amount' => $accountCreditApplied, 'type' => 'used_invoice',
+                    'source_type' => 'invoice', 'source_id' => $invoiceId, 'reference' => $invoiceNo,
+                    'notes' => 'Applied on manual invoice',
+                ]);
+            }
 
             // Mark the return credit as consumed — prevents it being
             // applied twice to a different invoice later.
@@ -1699,8 +1723,9 @@ class InvoiceController extends Controller
         // total = stored figure; gross Subtotal = stored + discount + return credit.
         $discountLocal      = (float) ($invoice->discount_amount_local ?? 0);
         $returnCreditApplied = (float) ($invoice->return_credit_applied_local ?? 0);
+        $accountCreditApplied = (float) ($invoice->account_credit_applied_local ?? 0);
         $totalLocal         = $subtotalLocal;
-        $grossSubtotalLocal = $subtotalLocal + $discountLocal + $returnCreditApplied;
+        $grossSubtotalLocal = $subtotalLocal + $discountLocal + $returnCreditApplied + $accountCreditApplied;
         $subtotalFmt        = self::formatLocal($grossSubtotalLocal, $currencyCode);
         $totalFmt           = self::formatLocal($totalLocal, $currencyCode);
         $discountFmt        = $discountLocal > 0 ? self::formatLocal($discountLocal, $currencyCode) : null;
@@ -1710,6 +1735,7 @@ class InvoiceController extends Controller
             $discountLabel = "Discount (" . rtrim(rtrim(number_format($effectivePercent, 1), '0'), '.') . "%):";
         }
         $returnCreditFmt = $returnCreditApplied > 0 ? self::formatLocal($returnCreditApplied, $currencyCode) : null;
+        $accountCreditFmt = $accountCreditApplied > 0 ? self::formatLocal($accountCreditApplied, $currencyCode) : null;
 
         $footerAddresses = self::footerAddressesForLocation($saleLocation);
 
@@ -1724,7 +1750,7 @@ class InvoiceController extends Controller
             'invoiceNo', 'businessInfo', 'saleLocation', 'location',
             'createdAt', 'customerInfo', 'paymentMethod', 'copyKey', 'invoiceType',
             'discountLocal', 'discountFmt', 'discountLabel', 'totalFmt', 'footerAddresses',
-            'returnCreditApplied', 'returnCreditFmt', 'revisionNumber', 'lastEditLog'
+            'returnCreditApplied', 'returnCreditFmt', 'accountCreditApplied', 'accountCreditFmt', 'revisionNumber', 'lastEditLog'
         ), self::totalsExtras($invoice, $currencyCode));
     }
 
@@ -1799,7 +1825,13 @@ class InvoiceController extends Controller
             );
         }
 
-        return back()->with('success', 'Payment confirmed.');
+        // Paid more than the invoice is worth? The extra becomes customer credit.
+        $credited = \App\Services\CustomerCreditService::syncOverpayment('invoice', $invoiceId);
+        $creditNote = $credited > 0
+            ? ' Overpayment of ' . self::formatLocal($credited, $invoice->currency_code ?? 'NGN') . ' was added to the customer\'s credit.'
+            : '';
+
+        return back()->with('success', 'Payment confirmed.' . $creditNote);
     }
 
     // =========================================================

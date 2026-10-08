@@ -461,7 +461,9 @@
         <div class="footer-col">
           <h5>Company</h5>
           <a href="#what-we-do">How It Works</a>
-          <a href="#warranty">Warranty Policy</a>
+          <a href="/warranty">Warranty Policy</a>
+          <a href="/refund-policy">Refund Policy</a>
+          <a href="/shipping-policy">Shipping Policy</a>
           <a href="mailto:info@autozenithparts.com">Contact</a>
         </div>
         <div class="footer-col">

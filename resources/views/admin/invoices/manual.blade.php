@@ -39,27 +39,26 @@
     </div>
     <div id="customerHistoryNote" class="hidden mt-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs font-body text-blue-700"></div>
 
-    {{-- NEW: Apply Return Credit — a returned part's refund value can
-         go toward this new invoice (e.g. a defective part swapped for
-         a replacement) instead of, or alongside, a separate cash
-         refund. Searches by the same phone number entered above. --}}
+    {{-- Customer credit: overpayments and return store-credit live in ONE ledger, per currency.
+         Anyone can see the balance; only supervisor and above can apply it (the server enforces this). --}}
     <div class="mt-3 border-t border-gray-100 pt-3">
-      <button type="button" onclick="toggleReturnCredit()" id="returnCreditToggleBtn"
+      <button type="button" onclick="toggleAccountCredit()" id="accountCreditToggleBtn"
         class="text-xs font-body font-700 text-green-700 border border-green-200 bg-green-50 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
-        💳 Apply a Return Credit
+        Use customer credit
       </button>
-      <div id="returnCreditSection" class="hidden mt-3">
-        <p class="text-xs text-gray-400 font-body mb-2">Checks for unused return credits on the phone number entered above.</p>
-        <button type="button" onclick="searchReturnCredits()"
+      <div id="accountCreditSection" class="hidden mt-3">
+        <p class="text-xs text-gray-400 font-body mb-2">Checks the credit this customer has in the currency of this invoice (matched by the phone number entered above).</p>
+        <button type="button" onclick="lookupAccountCredit()"
           class="text-xs font-body font-700 bg-navy text-white px-3 py-1.5 rounded-lg hover:bg-opacity-90 transition-colors">
-          Search Credits for This Customer
+          Check credit for this customer
         </button>
-        <div id="returnCreditResults" class="mt-2 space-y-1"></div>
-        <div id="selectedReturnCredit" class="hidden mt-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between">
-          <span class="text-xs font-body text-green-800" id="selectedReturnCreditLabel"></span>
-          <button type="button" onclick="clearReturnCredit()" class="text-xs text-green-600 underline">Remove</button>
+        <div id="accountCreditResult" class="mt-2 text-xs font-body"></div>
+        <div id="accountCreditApplyRow" class="hidden mt-2 flex items-center gap-2">
+          <input type="number" step="0.01" min="0" id="accountCreditAmount" class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:border-gold" placeholder="Amount to use">
+          <button type="button" onclick="applyAccountCredit()" class="text-xs font-body font-700 bg-green-600 text-white px-3 py-1.5 rounded-lg">Apply</button>
+          <button type="button" onclick="clearAccountCredit()" class="text-xs text-gray-500 underline">Remove</button>
         </div>
-        <input type="hidden" name="return_credit_id" id="returnCreditIdInput">
+        <input type="hidden" name="account_credit_local" id="accountCreditHidden" value="">
         <input type="hidden" id="returnCreditAmountInput" value="0">
       </div>
     </div>
@@ -172,7 +171,7 @@
           </div>
         </div>
         <div id="returnCreditDisplayRow" class="hidden flex justify-between items-center text-sm font-body py-1 text-green-700">
-          <span>Return Credit Applied:</span>
+          <span>Customer Credit Applied:</span>
           <span id="returnCreditDisplay">-$0.00</span>
         </div>
         <div class="flex justify-between text-sm font-body py-1 border-t border-gray-200 mt-1 pt-2">
@@ -624,49 +623,56 @@ document.addEventListener('click', function(e) {
 });
 
 // ── Return Credit search/select ──────────────────────────────────
-function toggleReturnCredit() {
-    document.getElementById('returnCreditSection').classList.toggle('hidden');
+// ── Customer credit (one ledger: overpayments + return credit, per currency) ──
+let accountCreditBalance = 0;
+
+function toggleAccountCredit() {
+    document.getElementById('accountCreditSection').classList.toggle('hidden');
 }
 
-async function searchReturnCredits() {
+function money(n) {
+    return currency.symbol + (currency.code === 'NGN' ? Math.round(n).toLocaleString() : Number(n).toFixed(2));
+}
+
+async function lookupAccountCredit() {
     const phone = document.getElementById('customerPhoneInput').value.trim();
-    const box = document.getElementById('returnCreditResults');
-    if (!phone) {
-        box.innerHTML = '<div class="text-xs text-red-500 font-body">Enter the customer\'s phone number above first.</div>';
-        return;
-    }
-    box.innerHTML = '<div class="text-xs text-gray-400 font-body">Searching...</div>';
+    const box   = document.getElementById('accountCreditResult');
+    const row   = document.getElementById('accountCreditApplyRow');
+    row.classList.add('hidden');
+    if (!phone) { box.innerHTML = '<span class="text-red-500">Enter the customer\'s phone number above first.</span>'; return; }
+    box.innerHTML = '<span class="text-gray-400">Checking...</span>';
     try {
-        const res = await fetch(`{{ route('admin.returns.customer-credits') }}?phone=${encodeURIComponent(phone)}`);
+        const res  = await fetch(`{{ route('admin.customer-credit.lookup') }}?phone=${encodeURIComponent(phone)}&currency=${currency.code}`);
         const data = await res.json();
-        if (!data.credits || data.credits.length === 0) {
-            box.innerHTML = '<div class="text-xs text-gray-400 font-body">No unused return credits found for this phone number.</div>';
+        accountCreditBalance = Number(data.balance || 0);
+        if (accountCreditBalance <= 0) {
+            box.innerHTML = '<span class="text-gray-500">No credit in ' + currency.code + ' for this phone number.</span>';
             return;
         }
-        box.innerHTML = data.credits.map(c => `
-            <button type="button" onclick='selectReturnCredit(${c.id}, ${c.refund_amount_local}, "${c.part_name} (${c.part_code}) — ₦${Number(c.refund_amount_local).toLocaleString()} credit from invoice ${c.invoice_no || 'N/A'}")'
-                class="block w-full text-left text-xs font-body border border-gray-200 rounded-lg px-3 py-2 hover:border-gold transition-colors">
-                <strong>${c.part_name}</strong> (${c.part_code}) — ₦${Number(c.refund_amount_local).toLocaleString()} credit available
-            </button>
-        `).join('');
+        if (!data.can_apply) {
+            box.innerHTML = '<span class="text-green-700 font-700">' + money(accountCreditBalance) + ' credit available.</span> <span class="text-gray-500">Ask a supervisor to apply it.</span>';
+            return;
+        }
+        box.innerHTML = '<span class="text-green-700 font-700">' + money(accountCreditBalance) + ' credit available.</span>';
+        document.getElementById('accountCreditAmount').value = accountCreditBalance;
+        row.classList.remove('hidden');
     } catch (e) {
-        box.innerHTML = '<div class="text-xs text-red-500 font-body">Search failed.</div>';
+        box.innerHTML = '<span class="text-red-500">Could not check credit.</span>';
     }
 }
 
-function selectReturnCredit(id, amount, label) {
-    document.getElementById('returnCreditIdInput').value = id;
-    document.getElementById('returnCreditAmountInput').value = amount;
-    document.getElementById('selectedReturnCreditLabel').textContent = label;
-    document.getElementById('selectedReturnCredit').classList.remove('hidden');
-    document.getElementById('returnCreditResults').innerHTML = '';
+function applyAccountCredit() {
+    let amt = parseFloat(document.getElementById('accountCreditAmount').value || 0);
+    amt = Math.max(0, Math.min(amt, accountCreditBalance));
+    document.getElementById('accountCreditHidden').value = amt > 0 ? amt : '';
+    document.getElementById('returnCreditAmountInput').value = amt;   // feeds the live total preview
     updateTotal();
 }
 
-function clearReturnCredit() {
-    document.getElementById('returnCreditIdInput').value = '';
+function clearAccountCredit() {
+    document.getElementById('accountCreditHidden').value = '';
     document.getElementById('returnCreditAmountInput').value = 0;
-    document.getElementById('selectedReturnCredit').classList.add('hidden');
+    document.getElementById('accountCreditAmount').value = '';
     updateTotal();
 }
 

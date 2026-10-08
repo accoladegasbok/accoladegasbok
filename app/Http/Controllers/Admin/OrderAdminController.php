@@ -632,7 +632,13 @@ class OrderAdminController extends Controller
             );
         }
 
-        return back()->with('success', 'Payment confirmed.');
+        // Paid more than the order is worth? The extra becomes customer credit.
+        $credited = \App\Services\CustomerCreditService::syncOverpayment('order', $id);
+        $creditNote = ($credited > 0 && $order)
+            ? ' Overpayment of ' . \App\Http\Controllers\Admin\InvoiceController::formatLocal($credited, $order->currency_code ?? 'NGN') . ' was added to the customer\'s credit.'
+            : '';
+
+        return back()->with('success', 'Payment confirmed.' . $creditNote);
     }
 
     // =========================================================

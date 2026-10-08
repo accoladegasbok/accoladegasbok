@@ -3,6 +3,8 @@
 use App\Http\Controllers\PartsSearchController;
 use App\Http\Controllers\PartRequestController;
 use App\Http\Controllers\SubscribeController;
+use App\Http\Controllers\PolicyController;
+use App\Http\Controllers\Admin\CustomerCreditAdminController;
 use App\Http\Controllers\Admin\SubscriberAdminController;
 use App\Http\Controllers\Admin\PartRequestAdminController;
 use Illuminate\Support\Facades\Route;
@@ -39,4 +41,19 @@ Route::get('/unsubscribe/{token}', [SubscribeController::class, 'unsubscribe'])-
 Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/subscribers')->name('admin.subscribers.')->group(function () {
     Route::get('/',       [SubscriberAdminController::class, 'index'])->name('index');
     Route::get('/export', [SubscriberAdminController::class, 'export'])->name('export');
+});
+
+// NEW: public policy pages (linked from every footer; the receipts point to /warranty).
+Route::get('/refund-policy',   [PolicyController::class, 'refund'])->name('policy.refund');
+Route::get('/shipping-policy', [PolicyController::class, 'shipping'])->name('policy.shipping');
+Route::get('/warranty',        [PolicyController::class, 'warranty'])->name('policy.warranty');
+
+// NEW: customer credit (overpayments + return store-credit). Viewing and paying out need supervisor or above;
+// the invoice form's balance lookup is open to any signed-in staff. The controller enforces the role.
+Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/customer-credit')->name('admin.customer-credit.')->group(function () {
+    Route::get('/',        [CustomerCreditAdminController::class, 'index'])->name('index');
+    Route::get('/lookup',  [CustomerCreditAdminController::class, 'lookup'])->name('lookup');
+    Route::post('/adjust', [CustomerCreditAdminController::class, 'adjust'])->name('adjust');
+    Route::get('/{phoneKey}',         [CustomerCreditAdminController::class, 'show'])->name('show')->where('phoneKey', '[0-9]+');
+    Route::post('/{phoneKey}/payout', [CustomerCreditAdminController::class, 'payout'])->name('payout')->where('phoneKey', '[0-9]+');
 });

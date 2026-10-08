@@ -257,6 +257,9 @@
                     @if(($returnCreditApplied ?? 0) > 0)
                     <tr><td>Return Credit Applied:</td><td class="r">-{{ $returnCreditFmt }}</td></tr>
                     @endif
+                    @if(($accountCreditApplied ?? 0) > 0)
+                    <tr><td>Account Credit Applied:</td><td class="r">-{{ $accountCreditFmt }}</td></tr>
+                    @endif
                     <tr><td>Shipping:</td><td class="r">{{ $shippingFmt ?? $money(0) }}</td></tr>
                     @if(!empty($taxLabel))
                     <tr><td>{{ $taxLabel }}</td><td class="r">{{ $taxFmt }}</td></tr>
