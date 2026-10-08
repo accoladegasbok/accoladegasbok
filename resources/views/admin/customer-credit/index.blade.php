@@ -46,6 +46,19 @@
 <div class="mb-8">{{ $customers->links() }}</div>
 
 @if($canManage)
+<details class="bg-white rounded-2xl border border-gray-200 shadow-sm mb-4">
+  <summary class="cursor-pointer px-5 py-4 font-display font-700 text-navy text-sm uppercase tracking-wide">Re-check an invoice or order for overpayment</summary>
+  <form method="POST" action="{{ route('admin.customer-credit.recheck') }}" class="px-5 pb-5 flex flex-wrap gap-3 items-end">
+    @csrf
+    <div>
+      <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Invoice number or order reference</label>
+      <input type="text" name="reference" required placeholder="e.g. AZP-20261008-1A2B" class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-72 focus:outline-none focus:border-gold">
+    </div>
+    <button class="bg-navy text-white font-display font-700 text-sm px-5 py-2 rounded-lg">Re-check</button>
+    <p class="w-full text-xs text-gray-400">If the customer paid more than the amount due, the extra is added to their credit. Running it twice never adds it twice.</p>
+  </form>
+</details>
+
 <details class="bg-white rounded-2xl border border-gray-200 shadow-sm">
   <summary class="cursor-pointer px-5 py-4 font-display font-700 text-navy text-sm uppercase tracking-wide">Add credit by hand (supervisor and above)</summary>
   <form method="POST" action="{{ route('admin.customer-credit.adjust') }}" class="px-5 pb-5 grid grid-cols-1 sm:grid-cols-5 gap-3">

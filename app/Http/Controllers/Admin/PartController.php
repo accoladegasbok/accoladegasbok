@@ -120,9 +120,18 @@ class PartController extends Controller
         }
 
         // ── Whatsapp pre-filled msg ───────────────────────────
-        $yearRange = $part->year_from === $part->year_to
-            ? $part->year_from
-            : "{$part->year_from}–{$part->year_to}";
+        // NEW: use the shared well-known year range (confirmed
+        // interchange group → PlatformDatabase generation →
+        // OemDatabase engine/trans code → raw donor year as last
+        // resort) instead of always showing just the literal donor
+        // vehicle's year(s). Same logic now driving the barcode tag
+        // and Compatibility Checker, so the customer page finally
+        // agrees with everything else.
+        $interchange = new InterchangeService();
+        $wellKnown = $interchange->wellKnownYearRange($part);
+        $yearRange = $wellKnown['year_from'] == $wellKnown['year_to']
+            ? $wellKnown['year_from']
+            : "{$wellKnown['year_from']}–{$wellKnown['year_to']}";
         $waMsg = urlencode(
             "Hi, I'm enquiring about: {$part->part_name} for {$yearRange} {$part->brand} {$part->model}. " .
             "Part code: {$part->part_code}. Location: {$part->location}. Price: {$priceDisplay}. Is this available?"

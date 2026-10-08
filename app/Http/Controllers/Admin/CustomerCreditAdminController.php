@@ -100,6 +100,31 @@ class CustomerCreditAdminController extends Controller
         return back()->with('success', 'Credit paid out as ' . $data['method'] . ' and logged.');
     }
 
+    // POST /admin/customer-credit/recheck — look at ONE invoice or order again and add any overpayment
+    // that was not credited yet (e.g. the credit check could not run when the payment was confirmed).
+    // Safe to run more than once: it only ever adds what is still missing.
+    public function recheck(Request $request)
+    {
+        abort_unless(Credit::canManage(), 403, 'Supervisor and above only.');
+        $data = $request->validate(['reference' => 'required|string|max:60']);
+        $ref  = trim($data['reference']);
+
+        $invoice = DB::table('invoices')->where('invoice_no', $ref)->first();
+        if ($invoice) {
+            $added = Credit::syncOverpayment('invoice', $invoice->id);
+            $cur   = $invoice->currency_code ?? 'NGN';
+        } else {
+            $order = DB::table('orders')->where('order_ref', $ref)->first();
+            if (!$order) return back()->with('error', "No invoice or order found with the reference {$ref}.");
+            $added = Credit::syncOverpayment('order', $order->id);
+            $cur   = $order->currency_code ?? 'NGN';
+        }
+
+        return back()->with('success', $added > 0
+            ? 'Added ' . InvoiceController::formatLocal($added, $cur) . " of overpayment credit for {$ref}."
+            : "Nothing to add for {$ref}: it is not overpaid, the overpayment was already credited, or the sale has no customer phone number.");
+    }
+
     // POST /admin/customer-credit/adjust — add (or remove) credit by hand, with a reason
     public function adjust(Request $request)
     {

@@ -54,6 +54,7 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/customer-cred
     Route::get('/',        [CustomerCreditAdminController::class, 'index'])->name('index');
     Route::get('/lookup',  [CustomerCreditAdminController::class, 'lookup'])->name('lookup');
     Route::post('/adjust', [CustomerCreditAdminController::class, 'adjust'])->name('adjust');
+    Route::post('/recheck', [CustomerCreditAdminController::class, 'recheck'])->name('recheck');
     Route::get('/{phoneKey}',         [CustomerCreditAdminController::class, 'show'])->name('show')->where('phoneKey', '[0-9]+');
     Route::post('/{phoneKey}/payout', [CustomerCreditAdminController::class, 'payout'])->name('payout')->where('phoneKey', '[0-9]+');
 });

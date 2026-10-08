@@ -166,7 +166,7 @@
           @if($part->status === 'Available')
             <span class="w-2.5 h-2.5 bg-green-500 rounded-full"></span>
             <span class="text-green-700 font-500">In stock</span>
-            <span class="text-gray-400">· {{ $part->location }}</span>
+            <span class="text-gray-400">· {{ \App\Support\HubLocations::publicLabel($part->location) }}</span>
           @else
             <span class="w-2.5 h-2.5 bg-red-500 rounded-full"></span>
             <span class="text-red-600 font-500">{{ $part->status }}</span>
@@ -205,6 +205,15 @@
           class="flex items-center justify-center gap-2 font-display font-700 text-sm py-4 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors mb-4 w-full">
           Ask us to source this part
         </a>
+
+        {{-- Saved to our staff inbox, so the request is never lost in WhatsApp --}}
+        @include('parts._request-form', [
+            'requestVehicle' => trim($yearRange . ' ' . $part->brand . ' ' . $part->model),
+            'requestPart'    => $part->part_name,
+            'requestPartId'  => $part->id,
+            'requestSource'  => 'part_page',
+            'requestOpen'    => true,
+        ])
       @endif
 
       {{-- Specs table --}}
@@ -219,7 +228,7 @@
           ['Origin Market',   ($part->origin_market ?? 'N/A') !== 'N/A' ? ($part->origin_market ?? null) : null],
           ['Side',            $part->side !== 'N/A' ? $part->side : null],
           ['Body Style',      $part->body_style],
-          ['Location',        $part->location],
+          ['Location',        \App\Support\HubLocations::publicLabel($part->location)],
         ] as [$label, $value])
           @if($value)
           <div class="spec-row flex gap-4 px-4 py-2.5 border-b border-gray-100 last:border-0">

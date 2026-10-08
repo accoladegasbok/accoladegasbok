@@ -437,6 +437,17 @@
                     </button>
                 </div>
 
+                {{-- Recently sold (adverts) --}}
+                @include('parts._sold-ads')
+
+                {{-- The same request, saved to our staff inbox --}}
+                @include('parts._request-form', [
+                    'requestVehicle' => collect($chips['vehicles'] ?? [])->pluck('label')->implode(', ') ?: trim(($filters['year'] ?? '') . ' ' . ($filters['make'] ?? '') . ' ' . ($filters['model'] ?? '')),
+                    'requestPart'    => collect($chips['parts'] ?? [])->pluck('label')->implode(', ') ?: ($filters['q'] ?? ''),
+                    'requestSource'  => 'search',
+                    'requestOpen'    => true,
+                ])
+
             @else
 
                 {{-- Grid view (default) --}}
@@ -705,6 +716,17 @@
                 <div class="mt-8">
                     {{ $parts->links() }}
                 </div>
+
+                {{-- Recently sold (adverts) --}}
+                @include('parts._sold-ads')
+
+                {{-- Didn't see what you need? --}}
+                @include('parts._request-form', [
+                    'requestVehicle' => collect($chips['vehicles'] ?? [])->pluck('label')->implode(', ') ?: trim(($filters['year'] ?? '') . ' ' . ($filters['make'] ?? '') . ' ' . ($filters['model'] ?? '')),
+                    'requestPart'    => collect($chips['parts'] ?? [])->pluck('label')->implode(', ') ?: ($filters['q'] ?? ''),
+                    'requestSource'  => 'search',
+                    'requestOpen'    => false,
+                ])
 
             @endif
         </main>

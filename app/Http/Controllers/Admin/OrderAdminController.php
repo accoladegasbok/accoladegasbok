@@ -633,10 +633,17 @@ class OrderAdminController extends Controller
         }
 
         // Paid more than the order is worth? The extra becomes customer credit.
-        $credited = \App\Services\CustomerCreditService::syncOverpayment('order', $id);
-        $creditNote = ($credited > 0 && $order)
-            ? ' Overpayment of ' . \App\Http\Controllers\Admin\InvoiceController::formatLocal($credited, $order->currency_code ?? 'NGN') . ' was added to the customer\'s credit.'
-            : '';
+        // The payment is already confirmed above, so a problem here must never turn into an error page.
+        $creditNote = '';
+        try {
+            $credited = \App\Services\CustomerCreditService::syncOverpayment('order', $id);
+            if ($credited > 0 && $order) {
+                $creditNote = ' Overpayment of ' . \App\Http\Controllers\Admin\InvoiceController::formatLocal($credited, $order->currency_code ?? 'NGN') . ' was added to the customer\'s credit.';
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Overpayment credit check failed for order ' . $id . ': ' . $e->getMessage());
+            $creditNote = ' (The overpayment credit check could not run — use Customer Credit → Re-check once it is fixed.)';
+        }
 
         return back()->with('success', 'Payment confirmed.' . $creditNote);
     }

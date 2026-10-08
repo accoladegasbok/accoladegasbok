@@ -1808,10 +1808,17 @@ class InvoiceController extends Controller
         }
 
         // Paid more than the invoice is worth? The extra becomes customer credit.
-        $credited = \App\Services\CustomerCreditService::syncOverpayment('invoice', $invoiceId);
-        $creditNote = $credited > 0
-            ? ' Overpayment of ' . self::formatLocal($credited, $invoice->currency_code ?? 'NGN') . ' was added to the customer\'s credit.'
-            : '';
+        // The payment is already confirmed above, so a problem here must never turn into an error page.
+        $creditNote = '';
+        try {
+            $credited = \App\Services\CustomerCreditService::syncOverpayment('invoice', $invoiceId);
+            if ($credited > 0) {
+                $creditNote = ' Overpayment of ' . self::formatLocal($credited, $invoice->currency_code ?? 'NGN') . ' was added to the customer\'s credit.';
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Overpayment credit check failed for invoice ' . $invoiceId . ': ' . $e->getMessage());
+            $creditNote = ' (The overpayment credit check could not run — use Customer Credit → Re-check once it is fixed.)';
+        }
 
         return back()->with('success', 'Payment confirmed.' . $creditNote);
     }
