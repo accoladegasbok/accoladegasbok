@@ -4,6 +4,11 @@ DirectoryIndex index.php
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # One main address: send www.autozenithparts.com to autozenithparts.com (permanent redirect, page and
+    # search words kept) so Google and customers see one copy of the site. Keep this ABOVE the other rules.
+    RewriteCond %{HTTP_HOST} ^www\.autozenithparts\.com$ [NC]
+    RewriteRule ^(.*)$ https://autozenithparts.com/$1 [R=301,L]
+
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
