@@ -10,7 +10,16 @@
     {{-- Brand icons + default share image --}}
     <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/az-favicon-64.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('images/az-icon-192.png') }}">
-    <meta property="og:image" content="{{ asset('images/az-logo.png') }}">
+    {{-- Search engines and link previews. Pages override these with @section('canonical'), ('robots'), ('og_image'), ('og_type'). --}}
+    <link rel="canonical" href="@yield('canonical', url()->current())">
+    <meta name="robots" content="@yield('robots', 'index,follow')">
+    <meta property="og:site_name" content="Auto Zenith Parts">
+    <meta property="og:type" content="@yield('og_type', 'website')">
+    <meta property="og:url" content="@yield('canonical', url()->current())">
+    <meta property="og:title" content="@yield('title', 'Auto Zenith Parts')">
+    <meta property="og:description" content="@yield('meta_desc', 'Quality used auto parts from Auto Zenith Parts. Search by VIN or vehicle.')">
+    <meta property="og:image" content="@hasSection('og_image')@yield('og_image')@else{{ asset('images/az-logo.png') }}@endif">
+    <meta name="twitter:card" content="summary_large_image">
 
     {{-- Google Fonts --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">

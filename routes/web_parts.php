@@ -4,6 +4,7 @@ use App\Http\Controllers\PartsSearchController;
 use App\Http\Controllers\PartRequestController;
 use App\Http\Controllers\SubscribeController;
 use App\Http\Controllers\PolicyController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\Admin\CustomerCreditAdminController;
 use App\Http\Controllers\Admin\AiFitmentReviewController;
 use App\Http\Controllers\Admin\SubscriberAdminController;
@@ -70,3 +71,6 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/ai-fitment')-
     Route::post('/reject', [AiFitmentReviewController::class, 'reject'])->name('reject');
     Route::get('/report',  [AiFitmentReviewController::class, 'report'])->name('report');
 });
+
+// NEW: sitemap for search engines (home, main pages, policies and every part that is available).
+Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');

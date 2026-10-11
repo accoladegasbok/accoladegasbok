@@ -1,10 +1,20 @@
 {{-- FILE: resources/views/parts/show.blade.php --}}
 @extends('layouts.app')
-@section('title', $part->part_name . ' — ' . $part->brand . ' ' . $part->model . ' — Auto Zenith Parts')
+@php
+    $seoUrl    = route('parts.show', $part->id);
+    $seoPhotos = !empty($hasRealPhotos) ? array_values(array_filter($photos ?? [])) : [];
+    $seoFits   = trim(\App\Support\Seo::yearRange($part) . ' ' . $part->brand . ' ' . $part->model);
+@endphp
+@section('title', $part->part_name . ' - ' . $seoFits . ' | Auto Zenith Parts')
+@section('meta_desc', \App\Support\Seo::partDescription($part))
+@section('canonical', $seoUrl)
+@section('og_type', 'product')
+@if($seoPhotos)@section('og_image', $seoPhotos[0])@endif
+{{-- A sold or reserved part keeps working for anyone with the link, but stays out of search results. --}}
+@section('robots', $part->status === 'Available' ? 'index,follow' : 'noindex,follow')
 
 @push('head')
-<meta property="og:title" content="{{ $part->part_name }} — {{ $part->brand }} {{ $part->model }}">
-@if(!empty($photos[0]))<meta property="og:image" content="{{ $photos[0] }}">@endif
+<script type="application/ld+json">{!! \App\Support\Seo::json(\App\Support\Seo::productSchema($part, $seoPhotos, $seoUrl)) !!}</script>
 <style>
 .thumb-btn.active{border-color:#C8960C}
 .spec-row:nth-child(even){background:#f9f9f9}

@@ -2,6 +2,9 @@
 @php use Illuminate\Support\Arr; @endphp
 
 @section('title', 'Search Auto Parts — Auto Zenith Parts')
+{{-- Filtered, sorted and paged result pages repeat the same parts: keep them out of search results and point to the clean page. --}}
+@section('robots', count(request()->query()) > 0 ? 'noindex,follow' : 'index,follow')
+@section('canonical', route('parts.search'))
 @section('meta_desc', 'Search quality used auto parts by VIN or vehicle make and model. Toyota, Lexus, Honda, Nissan and more. USA, Nigeria and Ghana locations.')
 
 @section('content')

@@ -1,2 +1,12 @@
+# Auto Zenith Parts — what search engines may and may not visit
 User-agent: *
-Disallow:
+
+# Staff and private areas
+Disallow: /admin
+Disallow: /account
+Disallow: /cart
+Disallow: /checkout
+Disallow: /receipt/
+Disallow: /unsubscribe/
+
+Sitemap: https://autozenithparts.com/sitemap.xml

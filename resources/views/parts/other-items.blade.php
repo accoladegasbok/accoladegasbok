@@ -2,6 +2,8 @@
 @php use Illuminate\Support\Arr; @endphp
 
 @section('title', 'Other Items — Consumables, Electronics & More | Auto Zenith Parts')
+@section('robots', count(request()->query()) > 0 ? 'noindex,follow' : 'index,follow')
+@section('canonical', route('other-items'))
 @section('meta_desc', 'Browse consumables, electronics, computers and other items from Auto Zenith Parts — oils, fluids, filters, and more, across USA, Nigeria and Ghana locations.')
 
 @section('content')
