@@ -5,6 +5,11 @@
 
     RewriteEngine On
 
+    # One main address: send www.autozenithparts.com to autozenithparts.com (permanent redirect, path and
+    # query kept), so Google and customers only ever see one copy of the site. Must stay ABOVE the rules below.
+    RewriteCond %{HTTP_HOST} ^www\.autozenithparts\.com$ [NC]
+    RewriteRule ^(.*)$ https://autozenithparts.com/$1 [R=301,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
