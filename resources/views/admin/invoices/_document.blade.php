@@ -280,6 +280,12 @@
                     @endif
                     <tr class="paid"><td>AMOUNT PAID:</td><td class="r">{{ !empty($docPay['unknown']) ? ($totalFmt ?? $subtotalFmt) : $money($docPay['confirmed']) }}</td></tr>
                     <tr class="due" style="color: {{ $docPay['balance'] > 0 ? '#c0392b' : '#1b9e5c' }};"><td>AMOUNT DUE:</td><td class="r">{{ $money($docPay['balance']) }}</td></tr>
+                    @if(($docPay['overpaid'] ?? 0) > 0)
+                    <tr class="sub"><td>Overpayment (added to your account credit):</td><td class="r">{{ $money($docPay['overpaid']) }}</td></tr>
+                    @endif
+                    @if(($docPay['credit_available'] ?? 0) > 0)
+                    <tr class="sub"><td><strong>Account credit available</strong> (as of {{ now()->format('d M Y') }}):</td><td class="r"><strong>{{ $money($docPay['credit_available']) }}</strong></td></tr>
+                    @endif
                 </table>
             </td>
         </tr>

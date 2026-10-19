@@ -430,7 +430,7 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
             <td style="padding:6px;"><span style="padding:2px 6px; border-radius:4px; font-size:11px; background:{{ $p->status==='confirmed' ? '#e8f7ee' : ($p->status==='rejected' ? '#fdecec' : '#fff8e6') }}; color:{{ $p->status==='confirmed' ? '#1b9e5c' : ($p->status==='rejected' ? '#c0392b' : '#8a6d1f') }};">{{ ucfirst($p->status) }}</span></td>
             <td style="padding:6px; text-align:right;">
                 @if($p->status === 'pending')
-                <form method="POST" action="{{ route('admin.invoices.payments.confirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;">@csrf<button style="color:#1b9e5c; border:none; background:none; cursor:pointer; font-size:12px;">✓</button></form>
+                <form method="POST" action="{{ route('admin.invoices.payments.confirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" data-amount="{{ $p->amount_local }}" data-due="{{ $paySummary['balanceDue'] }}" data-sym="{{ $currency['symbol'] }}" onsubmit="return azOverpay(this)">@csrf<input type="hidden" name="confirm_overpay" value="0"><button style="color:#1b9e5c; border:none; background:none; cursor:pointer; font-size:12px;">✓</button></form>
                 <form method="POST" action="{{ route('admin.invoices.payments.reject', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Reject this payment?')">@csrf<button style="color:#c0392b; border:none; background:none; cursor:pointer; font-size:12px;">✕</button></form>
                 @endif
             </td>
@@ -439,6 +439,23 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
         </tbody>
     </table>
     @endif
+<script>
+// Overpayment warning: if a payment is bigger than what is still due, ask before confirming.
+function azOverpay(f) {
+  var amt = parseFloat(f.getAttribute('data-amount')) || 0;
+  var due = parseFloat(f.getAttribute('data-due')) || 0;
+  var sym = f.getAttribute('data-sym') || '';
+  var fmt = function (n) { return sym + n.toLocaleString(undefined, {maximumFractionDigits: 2}); };
+  if (amt > due + 0.004) {
+    var ok = confirm('WARNING: OVERPAYMENT\n\nThis payment is ' + fmt(amt) + ' but only ' + fmt(due) + ' is due.\n'
+      + 'The extra ' + fmt(amt - due) + ' will be added to this customer\'s account credit (in the same currency).\n\n'
+      + 'Are you sure you want to confirm ' + fmt(amt) + '?');
+    if (!ok) return false;
+    f.confirm_overpay.value = '1';
+  }
+  return true;
+}
+</script>
     @if($paySummary['balanceDue'] > 0)
     <form method="POST" action="{{ route('admin.invoices.payments.add', $resolvedInvoiceId) }}" enctype="multipart/form-data" style="border:2px solid #c9a84c; border-radius:8px; padding:12px;">
         @csrf

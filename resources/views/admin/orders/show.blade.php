@@ -167,7 +167,7 @@
               </td>
               <td class="px-3 py-2 text-right">
                 @if($p->status === 'pending')
-                <form method="POST" action="{{ route('admin.orders.payments.confirm', [$order->id, $p->id]) }}" class="inline">@csrf<button class="text-green-600 hover:text-green-800 mr-2">✓ Confirm</button></form>
+                <form method="POST" action="{{ route('admin.orders.payments.confirm', [$order->id, $p->id]) }}" class="inline" data-amount="{{ $p->amount_local ?? $p->amount_ngn }}" data-due="{{ $paySummary['balanceDue'] }}" data-sym="{{ $paySym }}" onsubmit="return azOverpay(this)">@csrf<input type="hidden" name="confirm_overpay" value="0"><button class="text-green-600 hover:text-green-800 mr-2">✓ Confirm</button></form>
                 <form method="POST" action="{{ route('admin.orders.payments.reject', [$order->id, $p->id]) }}" class="inline" onsubmit="return confirm('Reject this payment record?')">@csrf<button class="text-red-500 hover:text-red-700">✕ Reject</button></form>
                 @endif
               </td>
@@ -427,6 +427,23 @@
 @endsection
 
 @push('scripts')
+<script>
+// Overpayment warning: if a payment is bigger than what is still due, ask before confirming.
+function azOverpay(f) {
+  var amt = parseFloat(f.getAttribute('data-amount')) || 0;
+  var due = parseFloat(f.getAttribute('data-due')) || 0;
+  var sym = f.getAttribute('data-sym') || '';
+  var fmt = function (n) { return sym + n.toLocaleString(undefined, {maximumFractionDigits: 2}); };
+  if (amt > due + 0.004) {
+    var ok = confirm('WARNING: OVERPAYMENT\n\nThis payment is ' + fmt(amt) + ' but only ' + fmt(due) + ' is due.\n'
+      + 'The extra ' + fmt(amt - due) + ' will be added to this customer\'s account credit (in the same currency).\n\n'
+      + 'Are you sure you want to confirm ' + fmt(amt) + '?');
+    if (!ok) return false;
+    f.confirm_overpay.value = '1';
+  }
+  return true;
+}
+</script>
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 

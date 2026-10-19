@@ -19,15 +19,27 @@
 <div id="azt-wrap">
   <div id="azt-panel" role="dialog" aria-label="Contact Auto Zenith Parts">
     <header>What parts are you looking for?</header>
+    @php
+      $aztMsg = 'Hi%2C%20I%20am%20looking%20for%20a%20part.';
+      $aztRows = [
+        ['usa',    'USA',                        true],
+        ['lagos',  'Lagos hub (Nigeria)',        false],
+        ['accra',  'Accra, Ghana',               false],
+        ['ibadan', 'Ibadan',                     false],
+        ['ife',    'Ile-Ife regional hub',       false],
+        ['kaduna', 'Kaduna / Jos / Makurdi',     false],
+      ];
+    @endphp
+    @foreach($aztRows as [$aztKey, $aztLabel, $aztText])
     <div class="azt-row">
-      <b>USA</b>
-      <a class="azt-wa" href="https://wa.me/16822563201?text=Hi%2C%20I%20am%20looking%20for%20a%20part." target="_blank" rel="noopener">WhatsApp</a>
-      <a href="sms:+16822563201">Text</a>
+      <b>{{ $aztLabel }}</b>
+      <a class="azt-wa" href="https://wa.me/{{ \App\Support\Contacts::wa($aztKey) }}?text={{ $aztMsg }}" target="_blank" rel="noopener">WhatsApp</a>
+      @if($aztText)<a href="sms:{{ \App\Support\Contacts::line($aztKey)['number'] }}">Text</a>@else<a href="tel:{{ \App\Support\Contacts::line($aztKey)['number'] }}">Call</a>@endif
     </div>
+    @endforeach
     <div class="azt-row">
-      <b>Nigeria / Ghana (Lagos hub)</b>
-      <a class="azt-wa" href="https://wa.me/2349155688804?text=Hi%2C%20I%20am%20looking%20for%20a%20part." target="_blank" rel="noopener">WhatsApp</a>
-      <a href="tel:+2349155688804">Call</a>
+      <b>Complaints and enquiries</b>
+      <a class="azt-wa" href="https://wa.me/{{ \App\Support\Contacts::wa('complaints') }}?text={{ $aztMsg }}" target="_blank" rel="noopener">WhatsApp only</a>
     </div>
   </div>
   <div id="azt-bubble" role="status">Hi there! What parts are you looking for?<button type="button" id="azt-close" aria-label="Dismiss">&times;</button></div>

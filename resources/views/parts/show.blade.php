@@ -32,6 +32,7 @@
 @endpush
 
 @section('content')
+@php $waNumber = \App\Support\Contacts::waFor($part->location); @endphp
 
 {{-- Breadcrumb --}}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 text-xs font-body text-gray-400 flex items-center gap-1.5 flex-wrap">

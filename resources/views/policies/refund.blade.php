@@ -65,7 +65,7 @@
 
     <section>
       <h2 class="font-display font-700 text-navy text-lg mb-2">Questions</h2>
-      <p>Email <a class="underline" href="mailto:info@autozenithparts.com">info@autozenithparts.com</a>, or message us on WhatsApp: USA <a class="underline" href="https://wa.me/16822563201" target="_blank" rel="noopener">+1 (682) 256-3201</a>, Nigeria / Ghana <a class="underline" href="https://wa.me/2349155688804" target="_blank" rel="noopener">+234 915 568 8804</a>.</p>
+      <p>Email <a class="underline" href="mailto:info@autozenithparts.com">info@autozenithparts.com</a>, or message us on WhatsApp: USA <a class="underline" href="https://wa.me/{{ \App\Support\Contacts::wa('usa') }}" target="_blank" rel="noopener">{{ \App\Support\Contacts::prettyKey('usa') }}</a>, Lagos (Nigeria) <a class="underline" href="https://wa.me/{{ \App\Support\Contacts::wa('lagos') }}" target="_blank" rel="noopener">{{ \App\Support\Contacts::prettyKey('lagos') }}</a>, Accra (Ghana) <a class="underline" href="https://wa.me/{{ \App\Support\Contacts::wa('accra') }}" target="_blank" rel="noopener">{{ \App\Support\Contacts::prettyKey('accra') }}</a>. Complaints and general enquiries (WhatsApp only): <a class="underline" href="https://wa.me/{{ \App\Support\Contacts::wa('complaints') }}" target="_blank" rel="noopener">{{ \App\Support\Contacts::prettyKey('complaints') }}</a>.</p>
     </section>
   </div>
 </div>

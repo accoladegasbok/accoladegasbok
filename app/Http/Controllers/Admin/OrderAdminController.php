@@ -597,8 +597,24 @@ class OrderAdminController extends Controller
     // Payment Received notification at the actual moment a specific
     // payment is confirmed.
     // =========================================================
-    public function confirmPaymentRecord(int $id, int $paymentId)
+    public function confirmPaymentRecord(Request $request, int $id, int $paymentId)
     {
+        // Overpayment guard: confirming more than is due needs an explicit yes.
+        $toConfirm = DB::table('order_payments')->where('id', $paymentId)->where('order_id', $id)->first();
+        $ord       = DB::table('orders')->where('id', $id)->first();
+        if ($toConfirm && $ord && $toConfirm->status !== 'confirmed') {
+            $sum   = self::paymentSummary($id);
+            $due   = (float) $sum['balanceDue'];
+            $amt   = (float) ($toConfirm->amount_local ?? $toConfirm->amount_ngn ?? $toConfirm->amount_usd ?? 0);
+            $extra = round($amt - $due, 2);
+            if ($extra > 0.004 && !$request->boolean('confirm_overpay')) {
+                $cc = $ord->currency_code ?? 'NGN';
+                $fmt = fn ($n) => \App\Http\Controllers\Admin\InvoiceController::formatLocal((float) $n, $cc);
+                return back()->with('error', 'Not confirmed: this payment of ' . $fmt($amt) . ' is more than the ' . $fmt($due)
+                    . ' due. Confirm again and accept the warning to add the extra ' . $fmt($extra) . ' to the customer\'s account credit.');
+            }
+        }
+
         DB::table('order_payments')
             ->where('id', $paymentId)
             ->where('order_id', $id)

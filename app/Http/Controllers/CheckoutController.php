@@ -37,8 +37,7 @@ class CheckoutController extends Controller
     ];
 
     // ── WhatsApp numbers ───────────────────────────────────────────
-    const BUSINESS_WA_US = '15125873425';
-    const BUSINESS_WA_NG = '2349155688804';
+    // WhatsApp numbers now live in App\Support\Contacts (one place to change).
 
     const CURRENCY_SYMBOLS = ['NGN' => '₦', 'GHS' => 'GH₵', 'USD' => '$'];
 
@@ -254,7 +253,9 @@ class CheckoutController extends Controller
         // needs the bank details) — that's just which account to
         // display, completely separate from currency/conversion.
         $isNigeria = in_array($order->customer_country, ['Nigeria', 'Ghana']);
-        $waNumber  = $isNigeria ? self::BUSINESS_WA_NG : self::BUSINESS_WA_US;
+        $waNumber  = ($order->customer_country === 'Ghana')
+            ? \App\Support\Contacts::wa('accra')
+            : ($isNigeria ? \App\Support\Contacts::wa('lagos') : \App\Support\Contacts::wa('usa'));
 
         $bankName    = $isNigeria ? self::NG_BANK_NAME    : self::US_ZELLE_NAME;
         $accountName = $isNigeria ? self::NG_ACCOUNT_NAME : self::US_ZELLE_NAME;

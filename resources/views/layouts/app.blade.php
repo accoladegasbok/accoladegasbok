@@ -177,14 +177,12 @@
         <h3 class="font-display font-700 text-navy text-lg tracking-wide mb-1">Where are you contacting us from?</h3>
         <p class="text-sm text-gray-500 font-body mb-5">We'll connect you to the right team for your region.</p>
         <div class="space-y-2">
-            <button onclick="goToWa('16822563201')" class="w-full flex items-center gap-3 border border-gray-200 hover:border-green-400 hover:bg-green-50 rounded-xl px-4 py-3 transition-colors text-left">
-                <span class="text-xl">🇺🇸</span>
-                <span class="font-body font-500 text-navy text-sm">USA</span>
+            @foreach([['usa','🇺🇸','USA'],['lagos','🇳🇬','Lagos hub (Nigeria)'],['ibadan','🇳🇬','Ibadan'],['ife','🇳🇬','Ile-Ife'],['kaduna','🇳🇬','Kaduna / Jos / Makurdi'],['accra','🇬🇭','Accra, Ghana']] as [$pk,$pf,$pl])
+            <button onclick="goToWa('{{ \App\Support\Contacts::wa($pk) }}')" class="w-full flex items-center gap-3 border border-gray-200 hover:border-green-400 hover:bg-green-50 rounded-xl px-4 py-3 transition-colors text-left">
+                <span class="text-xl">{{ $pf }}</span>
+                <span class="font-body font-500 text-navy text-sm">{{ $pl }}</span>
             </button>
-            <button onclick="goToWa('2349155688804')" class="w-full flex items-center gap-3 border border-gray-200 hover:border-green-400 hover:bg-green-50 rounded-xl px-4 py-3 transition-colors text-left">
-                <span class="text-xl">🇳🇬🇬🇭</span>
-                <span class="font-body font-500 text-navy text-sm">Nigeria or Ghana</span>
-            </button>
+            @endforeach
         </div>
     </div>
 </div>
@@ -238,18 +236,19 @@
                 <ul class="space-y-2 text-sm">
                     <li>📍 3230 S Hwy 77, Suite 303, Waxahachie TX <span class="text-gold text-xs">(HQ)</span></li>
                     <li>📍 613 E Geneva St #23, Elkhorn WI</li>
-                    <li>📍 Ile-Ife <span class="text-gold text-xs">(Regional HQ)</span> · Ibadan · Lagos · Abuja · Akure, Nigeria</li>
+                    <li>📍 Ile-Ife <span class="text-gold text-xs">(Regional HQ)</span> · Ibadan · Lagos · Abuja · Akure · Kaduna / Jos / Makurdi, Nigeria</li>
                     <li>📍 Accra, Ghana</li>
                 </ul>
             </div>
             <div id="footer-contact">
                 <div class="text-white font-500 text-sm uppercase tracking-wider mb-4">Contact</div>
                 <ul class="space-y-2 text-sm">
-                    <li>🇺🇸 <a href="https://wa.me/16822563201" target="_blank" class="hover:text-white transition-colors">+1 (682) 256-3201</a> <span class="text-xs text-gray-500">— USA</span></li>
-                    <li>🌍 <a href="https://wa.me/2349155688804" target="_blank" class="hover:text-white transition-colors">+234 915 568 8804</a> <span class="text-xs text-gray-500">— Nigeria & Ghana</span></li>
+                    @foreach([['usa','🇺🇸','USA'],['lagos','🇳🇬','Lagos hub — main West Africa'],['ibadan','🇳🇬','Ibadan'],['ife','🇳🇬','Ile-Ife regional hub'],['kaduna','🇳🇬','Kaduna / Jos / Makurdi'],['accra','🇬🇭','Accra, Ghana']] as [$fk,$ff,$fl])
+                    <li>{{ $ff }} <a href="https://wa.me/{{ \App\Support\Contacts::wa($fk) }}" target="_blank" class="hover:text-white transition-colors">{{ \App\Support\Contacts::prettyKey($fk) }}</a> <span class="text-xs text-gray-500">— {{ $fl }}</span></li>
+                    @endforeach
                     <li class="pt-1 border-t border-navy-light mt-1">
-                        <a href="https://wa.me/2348067422777" target="_blank" class="hover:text-white transition-colors">+234 806 742 2777</a>
-                        <span class="text-xs text-amber-400">— Complaints (WhatsApp only)</span>
+                        <a href="https://wa.me/{{ \App\Support\Contacts::wa('complaints') }}" target="_blank" class="hover:text-white transition-colors">{{ \App\Support\Contacts::prettyKey('complaints') }}</a>
+                        <span class="text-xs text-amber-400">— Complaints and enquiries (WhatsApp only)</span>
                     </li>
                     <li>🌐 autozenithparts.com</li>
                     <li>✉ <a href="mailto:info@autozenithparts.com" class="hover:text-white transition-colors">info@autozenithparts.com</a></li>

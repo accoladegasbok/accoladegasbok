@@ -196,7 +196,7 @@
                                    class="text-center text-xs font-body font-500 text-navy border border-navy rounded-lg px-3 py-2.5 hover:bg-navy hover:text-white transition-colors">
                                     View Details
                                 </a>
-                                <a href="https://wa.me/{{ str_contains($part->location, 'Nigeria') || str_contains($part->location,'Ghana') ? '2349155688804' : '16822563201' }}?text={{ $whatsappMsg }}"
+                                <a href="https://wa.me/{{ \App\Support\Contacts::waFor($part->location) }}?text={{ $whatsappMsg }}"
                                    target="_blank"
                                    class="flex items-center justify-center gap-1.5 text-xs font-body font-500 bg-green-500 hover:bg-green-600 text-white rounded-lg px-3 py-2.5 transition-colors">
                                     WhatsApp

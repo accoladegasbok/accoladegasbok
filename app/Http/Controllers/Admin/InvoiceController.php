@@ -141,7 +141,21 @@ class InvoiceController extends Controller
         elseif ($confirmed > 0 && $balance > 0)   $status = 'PARTIAL';
         else                                      $status = 'UNPAID';
 
-        return ['summary' => $summary, 'confirmed' => $confirmed, 'balance' => $balance, 'status' => $status, 'legacy' => false, 'unknown' => false];
+        // Paid more than the total? Show the extra on the document, and what credit the customer holds now.
+        $overpaid = round(max(0, $confirmed - $total), 2);
+        $creditAvailable = 0.0;
+        try {
+            $rec = $order ?: $invoice;
+            $cur = $rec->currency_code ?? 'NGN';
+            if (!empty($rec->customer_phone)) {
+                $creditAvailable = (float) \App\Services\CustomerCreditService::balance($rec->customer_phone, $cur);
+            }
+        } catch (\Throwable $e) {
+            // Never let the credit lookup break a receipt.
+        }
+
+        return ['summary' => $summary, 'confirmed' => $confirmed, 'balance' => $balance, 'status' => $status, 'legacy' => false, 'unknown' => false,
+                'overpaid' => $overpaid, 'credit_available' => $creditAvailable];
     }
 
     // The company logo as an inline image, so it prints on screen AND in the PDF with no extra
@@ -189,7 +203,7 @@ class InvoiceController extends Controller
                 'company'   => 'Gasbok Engineering Nig. Limited',
                 'rc'        => 'RC: 1135830',
                 'address'   => 'Oshodi, Lagos State, Nigeria',
-                'phone'     => '+234 915 568 8804',
+                'phone'     => \App\Support\Contacts::prettyKey('lagos'),
                 'email'     => 'lagos@autozenithparts.com',
                 'bank'      => 'Moniepoint',
                 'account'   => '5085726530',
@@ -198,12 +212,12 @@ class InvoiceController extends Controller
             ];
         }
 
-        if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife') || str_contains($loc, 'ibadan')) {
+        if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife') || str_contains($loc, 'ibadan') || str_contains($loc, 'kaduna')) {
             return [
                 'company'   => 'Gasbok Engineering Nig. Limited',
                 'rc'        => 'RC: 1135830',
                 'address'   => 'Ile-Ife, Osun State, Nigeria',
-                'phone'     => '+234 915 568 8804',
+                'phone'     => \App\Support\Contacts::prettyFor($location),
                 'email'     => 'ng@autozenithparts.com',
                 'bank'      => 'Moniepoint',
                 'account'   => '5085726530',
@@ -217,7 +231,7 @@ class InvoiceController extends Controller
                 'company'   => 'Auto Zenith Parts — Ghana Office',
                 'rc'        => null,
                 'address'   => 'Accra, Ghana',
-                'phone'     => '+233 XXX XXX XXXX',
+                'phone'     => \App\Support\Contacts::prettyKey('accra'),
                 'email'     => 'gh@autozenithparts.com',
                 'bank'      => 'Bank Transfer',
                 'account'   => 'On request',
@@ -231,7 +245,7 @@ class InvoiceController extends Controller
                 'company'   => 'Auto Zenith LLC',
                 'rc'        => null,
                 'address'   => '613 E Geneva St #23, Elkhorn WI 53121',
-                'phone'     => '+1 512 587 3425',
+                'phone'     => \App\Support\Contacts::prettyKey('usa'),
                 'email'     => 'wi@autozenithparts.com',
                 'bank'      => 'Zelle / CashApp / Venmo',
                 'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
@@ -244,7 +258,7 @@ class InvoiceController extends Controller
             'company'   => 'Accolade Autos and General LLC',
             'rc'        => null,
             'address'   => 'Waxahachie TX 75165',
-            'phone'     => '+1 512 587 3425',
+            'phone'     => \App\Support\Contacts::prettyKey('usa'),
             'email'     => 'info@autozenithparts.com',
             'bank'      => 'Zelle / CashApp / Venmo',
             'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
@@ -1788,8 +1802,23 @@ class InvoiceController extends Controller
     // =========================================================
     // POST /admin/invoices/{id}/payments/{pid}/confirm
     // =========================================================
-    public function confirmPayment(int $invoiceId, int $paymentId)
+    public function confirmPayment(Request $request, int $invoiceId, int $paymentId)
     {
+        // Overpayment guard: confirming more than is due needs an explicit yes (the screen asks the
+        // staff member first; this check makes sure it cannot be skipped).
+        $toConfirm = DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $invoiceId)->first();
+        $inv       = DB::table('invoices')->where('id', $invoiceId)->first();
+        if ($toConfirm && $inv && $toConfirm->status !== 'confirmed') {
+            $due   = (float) self::invoicePaymentSummary($invoiceId)['balanceDue'];
+            $extra = round((float) $toConfirm->amount_local - $due, 2);
+            if ($extra > 0.004 && !$request->boolean('confirm_overpay')) {
+                $cc = $inv->currency_code ?? 'NGN';
+                return back()->with('error', 'Not confirmed: this payment of ' . self::formatLocal((float) $toConfirm->amount_local, $cc)
+                    . ' is more than the ' . self::formatLocal($due, $cc) . ' due. Confirm again and accept the warning to add the extra '
+                    . self::formatLocal($extra, $cc) . ' to the customer\'s account credit.');
+            }
+        }
+
         DB::table('invoice_payments')
             ->where('id', $paymentId)
             ->where('invoice_id', $invoiceId)
