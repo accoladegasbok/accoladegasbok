@@ -24,6 +24,7 @@ use App\Data\PartNames;
 use App\Data\EngineAddons;
 use App\Data\PartSides;
 use App\Services\PartCodeService;
+use App\Services\PartApprovalService;
 use App\Support\Locations;
 use App\Support\StaffRole;
 
@@ -257,7 +258,7 @@ class InventoryController extends Controller
             'part_category'       => 'nullable|string|max:50',
             'price_usd'           => 'required|numeric|min:0',
             'condition_grade'     => 'required|in:A,B,C,New',
-            'status'              => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped',
+            'status'              => 'required|in:Available,Reserved,Sold,Missing,Hold,Core,Scrapped,Under Review',
             'location'            => 'required|string',
             'description'         => 'nullable|string|max:1000',
             'oem_part_number'     => 'nullable|string|max:80',
@@ -351,6 +352,19 @@ class InventoryController extends Controller
         }
         // ──────────────────────────────────────────────────────────────
 
+        // ── Approval gate: a part waiting for approval stays "Under Review" unless a manager or admin
+        // makes it live. (The edit form may send "Available" by default, so this is enforced here.)
+        $newStatus = $request->status;
+        if ($currentPart && $currentPart->status === PartApprovalService::UNDER_REVIEW) {
+            if (!PartApprovalService::canApprove()) {
+                $newStatus = PartApprovalService::UNDER_REVIEW;
+            } elseif ($newStatus !== PartApprovalService::UNDER_REVIEW) {
+                PartApprovalService::closeNewPart($id);   // manager/admin approved it by editing it live
+            }
+        } elseif ($newStatus === PartApprovalService::UNDER_REVIEW) {
+            $newStatus = $currentPart->status ?? 'Available'; // "Under Review" cannot be set by hand
+        }
+
         // ── Fixed currency by location — the price staff types is the
         // authoritative, never-recalculated value in that location's
         // native currency. price_usd is updated only as a fresh
@@ -417,7 +431,7 @@ class InventoryController extends Controller
             'price_local'            => $priceLocal,
             'currency_code'          => $currency['code'],
             'condition_grade'        => $request->condition_grade,
-            'status'                 => $request->status,
+            'status'                 => $newStatus,
             'location'               => $request->location,
             'description'            => $request->description,
             'oem_part_number'        => $request->oem_part_number,
@@ -552,6 +566,11 @@ class InventoryController extends Controller
 
         $part = DB::table('parts_inventory')->where('id', $id)->first();
         abort_if(!$part, 404);
+
+        // A part waiting for approval can only be made live through Awaiting Approval (manager/admin).
+        if ($part->status === PartApprovalService::UNDER_REVIEW && !PartApprovalService::canApprove()) {
+            return response()->json(['error' => 'This item is waiting for manager approval and cannot be changed yet.'], 403);
+        }
 
         // Non-Sold status changes are unaffected — no quantity math needed.
         if ($request->status !== 'Sold') {
@@ -877,6 +896,13 @@ class InventoryController extends Controller
             ->where('status', 'Available')
             ->first();
 
+        if ($existing && !PartApprovalService::canApprove()) {
+            // Restock by staff below manager: the units are added only after a manager/admin approves.
+            PartApprovalService::requestRestock($existing->id, $qtyToAdd);
+            return redirect()->route('admin.inventory.index')
+                ->with('success', "Restock of {$qtyToAdd} unit(s) for {$existing->part_code} saved and waiting for manager approval. Stock stays at {$existing->stock_qty} until then.");
+        }
+
         if ($existing) {
             $newQty = $existing->stock_qty + $qtyToAdd;
             DB::table('parts_inventory')->where('id', $existing->id)->update([
@@ -892,7 +918,7 @@ class InventoryController extends Controller
         $priceUsdSnapshot = $priceLocal / $currency['rate'];
         // ──────────────────────────────────────────────────────────────
 
-        DB::table('parts_inventory')->insert([
+        $consumableId = DB::table('parts_inventory')->insertGetId([
             'part_code'           => $partCode,
             'brand'                => $brand,
             'model'                => 'Universal',
@@ -913,7 +939,7 @@ class InventoryController extends Controller
             'origin_market'        => 'N/A',
             'description'          => $request->description,
             'stock_qty'            => $request->stock_qty ?? 1,
-            'status'               => 'Available',
+            'status'               => PartApprovalService::initialStatus(),
             'photos'               => '[]',
             'created_at'           => now(),
             'updated_at'           => now(),
@@ -923,8 +949,12 @@ class InventoryController extends Controller
         // (the base name, not the brand-prefixed display name built above)
         $this->registerNewName($request->part_name, $request->part_category ?? 'Consumable');
 
+        $waiting = PartApprovalService::submitNew($consumableId);
+
         return redirect()->route('admin.inventory.index')
-            ->with('success', "Consumable item {$partCode} added to inventory.");
+            ->with('success', $waiting
+                ? "Consumable item {$partCode} saved and waiting for manager approval before it goes live."
+                : "Consumable item {$partCode} added to inventory.");
     }
     // ── Store manually entered part ───────────────────────────────
     public function store(Request $request)
@@ -1087,7 +1117,7 @@ class InventoryController extends Controller
             'colour'                 => $request->colour,
             'description'            => $request->description,
             'stock_qty'              => $isConsumable ? ($request->stock_qty ?? 1) : 1,
-            'status'                 => 'Available',
+            'status'                 => PartApprovalService::initialStatus(),
             'photos'                 => '[]',
             'created_at'             => now(),
             'updated_at'             => now(),
@@ -1141,9 +1171,14 @@ class InventoryController extends Controller
             }
         }
 
+        $waiting = PartApprovalService::submitNew($partId);
+
         $msg = $isConsumable
             ? "Consumable item {$partCode} added to inventory."
             : "Part {$partCode} added to inventory.";
+        if ($waiting) {
+            $msg = "Part {$partCode} saved and waiting for manager approval before it goes live on the website.";
+        }
 
         return redirect()->route('admin.inventory.index')->with('success', $msg);
     }

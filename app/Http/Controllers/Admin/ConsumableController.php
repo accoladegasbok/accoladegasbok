@@ -157,7 +157,7 @@ class ConsumableController extends Controller
             }
         }
 
-        DB::table('parts_inventory')->insert([
+        $newConsumableId = DB::table('parts_inventory')->insertGetId([
             'part_code'        => $partCode,
             'part_name'        => $request->part_name,
             'part_category'    => $category,
@@ -175,7 +175,7 @@ class ConsumableController extends Controller
             'currency_code'    => $currency['code'],
             'stock_qty'        => (int) $request->stock_qty,
             'condition_grade'  => 'New',
-            'status'           => 'Available',
+            'status'           => \App\Services\PartApprovalService::initialStatus(),
             'origin'           => 'N/A',
             'origin_market'    => 'N/A',
             'description'      => $request->description ?? null,
@@ -189,8 +189,12 @@ class ConsumableController extends Controller
             PartNames::ensureTerm($request->part_name, $category);
         }
 
+        $waiting = \App\Services\PartApprovalService::submitNew($newConsumableId);
+
         return redirect()->route('admin.inventory.consumable.index')
-            ->with('success', "\"{$request->part_name}\" ({$category}) added to inventory.");
+            ->with('success', $waiting
+                ? "\"{$request->part_name}\" ({$category}) saved and waiting for manager approval before it goes live."
+                : "\"{$request->part_name}\" ({$category}) added to inventory.");
     }
 
     // =========================================================
@@ -264,6 +268,26 @@ class ConsumableController extends Controller
             }
         }
 
+        // Approval rules: an item waiting for approval stays that way, and extra units added by staff below
+        // manager are held as a restock request instead of going straight into stock.
+        $newQty      = (int) $request->stock_qty;
+        $newStatus   = null;
+        $restockNote = '';
+        if ($item) {
+            $currentQty = (int) ($item->stock_qty ?? 0);
+            if ($item->status === \App\Services\PartApprovalService::UNDER_REVIEW) {
+                if (!\App\Services\PartApprovalService::canApprove()) {
+                    $newStatus = \App\Services\PartApprovalService::UNDER_REVIEW;
+                } else {
+                    \App\Services\PartApprovalService::closeNewPart($id);
+                }
+            } elseif ($newQty > $currentQty && !\App\Services\PartApprovalService::canApprove()) {
+                \App\Services\PartApprovalService::requestRestock($id, $newQty - $currentQty);
+                $newQty = $currentQty;
+                $restockNote = ' The extra units are waiting for manager approval; stock stays at ' . $currentQty . ' until then.';
+            }
+        }
+
         DB::table('parts_inventory')->where('id', $id)->update([
             'part_name'       => $request->part_name,
             // Only updates if actually submitted — safe no-op until
@@ -273,8 +297,8 @@ class ConsumableController extends Controller
             'price_local'     => (float) $request->price_local,
             'price_usd'       => (float) $request->price_local,
             'price_wholesale' => $request->price_wholesale ? (float) $request->price_wholesale : null,
-            'stock_qty'       => (int) $request->stock_qty,
-            'status'          => $request->stock_qty > 0 ? 'Available' : 'Out of Stock',
+            'stock_qty'       => $newQty,
+            'status'          => $newStatus ?? ($newQty > 0 ? 'Available' : 'Out of Stock'),
             'description'     => $request->description ?? null,
             'photos'          => json_encode($existingPhotos),
             'updated_at'      => now(),
@@ -285,7 +309,7 @@ class ConsumableController extends Controller
         }
 
         return redirect()->route('admin.inventory.consumable.index')
-            ->with('success', 'Item updated successfully.');
+            ->with('success', 'Item updated successfully.' . $restockNote);
     }
 
     // =========================================================

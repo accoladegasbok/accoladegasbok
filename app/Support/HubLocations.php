@@ -23,7 +23,6 @@ class HubLocations
         'Ile-Ife Nigeria' => 'Ife',
         'Akure Nigeria'   => 'Akure',
         'Abuja Nigeria'   => 'Abuja',
-        'Kaduna Nigeria'  => 'Kaduna',   // Kaduna / Jos / Makurdi hub
         'Accra Ghana'     => 'Accra',
     ];
 
@@ -54,7 +53,6 @@ class HubLocations
             'Ife'    => 'Lagos / Ife',
             'Akure'  => 'Lagos / Akure',
             'Abuja'  => 'Lagos / Abuja',
-            'Kaduna' => 'Lagos / Kaduna, Jos, Makurdi',
             'Accra'  => 'Lagos / Accra',
         ];
     }
@@ -99,7 +97,7 @@ class HubLocations
         // Older links and country groups keep working.
         return match ($filter) {
             'USA'     => self::USA,
-            'Nigeria' => ['Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Kaduna Nigeria'],
+            'Nigeria' => ['Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria'],
             'Ghana'   => ['Accra Ghana'],
             default   => [$filter],
         };

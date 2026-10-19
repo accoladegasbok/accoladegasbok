@@ -701,7 +701,7 @@ class HarvestController extends Controller
                     'storage_shelf_id'        => $itemShelfId,
                     'bin_location'            => $itemBinCode,
                     'stock_qty'               => $stockQty,
-                    'status'                  => 'Available',
+                    'status'                  => \App\Services\PartApprovalService::initialStatus(),
                     'description'             => $partNote,
                     'photos'                  => '[]',
                     // ── Powerlink Phase 3 fields ──────────────────────────
@@ -721,6 +721,8 @@ class HarvestController extends Controller
                         'inclusions' => $picked ? json_encode($picked) : null,
                     ]);
                 }
+
+                \App\Services\PartApprovalService::submitNew($newPartId);
 
                 // ── Auto-join an existing interchange group if this part's
                 // vehicle/year already falls within one for this part name.
@@ -825,12 +827,14 @@ class HarvestController extends Controller
                             : ($binCodesById[$cp['bin_id']] ?? null))
                         : null,
                     'stock_qty'             => 1,
-                    'status'                => 'Available',
+                    'status'                => \App\Services\PartApprovalService::initialStatus(),
                     'description'           => $cp['note']         ?? null,
                     'photos'                => '[]',
                     'created_at'            => now(),
                     'updated_at'            => now(),
                 ]);
+
+                \App\Services\PartApprovalService::submitNew($newCpId);
 
                 $matchedGroupCp = $interchange->findGroupByVehicle($cp['name'], $session->make, $session->model, (int) $session->year);
                 if ($matchedGroupCp) {
@@ -879,7 +883,9 @@ class HarvestController extends Controller
             DB::commit();
 
             return redirect()->route('admin.harvest.complete', $sessionId)
-                ->with('success', "{$created} parts listed successfully.");
+                ->with('success', \App\Services\PartApprovalService::canApprove()
+                    ? "{$created} parts listed successfully."
+                    : "{$created} parts saved. They are waiting for manager approval before they go live on the website.");
 
         } catch (\Exception $e) {
             DB::rollBack();

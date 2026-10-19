@@ -193,6 +193,16 @@
           <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 w-5 h-5 rounded-full flex items-center justify-center">{{ $newPartRequests }}</span>
         @endif
       </a>
+      @if(in_array(session('staff_role'), ['admin','manager']))
+      <a href="{{ route('admin.part-approvals.index') }}" class="sidebar-link {{ request()->routeIs('admin.part-approvals*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M12 3l7.5 3v5.25c0 4.5-3.2 8.1-7.5 9.75-4.3-1.65-7.5-5.25-7.5-9.75V6L12 3z"/></svg>
+        Awaiting Approval
+        @php $apprPending = \App\Services\PartApprovalService::pendingCount(); @endphp
+        @if($apprPending > 0)
+          <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 min-w-[1.25rem] h-5 px-1 rounded-full flex items-center justify-center">{{ $apprPending }}</span>
+        @endif
+      </a>
+      @endif
       @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
       <a href="{{ route('admin.ai-fitment.index') }}" class="sidebar-link {{ request()->routeIs('admin.ai-fitment*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>

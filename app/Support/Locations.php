@@ -32,7 +32,6 @@ class Locations
         'Lagos Nigeria',
         'Abuja Nigeria',
         'Akure Nigeria',
-        'Kaduna Nigeria',   // Kaduna / Jos / Makurdi hub
         'Accra Ghana',
     ];
 

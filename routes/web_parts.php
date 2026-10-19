@@ -72,5 +72,12 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/ai-fitment')-
     Route::get('/report',  [AiFitmentReviewController::class, 'report'])->name('report');
 });
 
+// NEW: Awaiting Approval — new stock and restocks wait here for a manager or admin (the controller enforces that).
+Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/part-approvals')->name('admin.part-approvals.')->group(function () {
+    Route::get('/',              [\App\Http\Controllers\Admin\PartApprovalController::class, 'index'])->name('index');
+    Route::post('/approve',      [\App\Http\Controllers\Admin\PartApprovalController::class, 'approve'])->name('approve');
+    Route::post('/{id}/reject',  [\App\Http\Controllers\Admin\PartApprovalController::class, 'reject'])->name('reject')->where('id', '[0-9]+');
+});
+
 // NEW: sitemap for search engines (home, main pages, policies and every part that is available).
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
