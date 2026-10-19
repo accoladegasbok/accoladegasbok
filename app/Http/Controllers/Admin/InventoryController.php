@@ -94,6 +94,50 @@ class InventoryController extends Controller
         // NEW: filter inventory down to a specific room, not just location.
         if ($f = $request->get('room'))     $query->where('sr.id', $f);
 
+        // ── More filters: model, year, grade, kind of item, stock level, photos, price range ──
+        if ($f = $request->get('model'))    $query->where('p.model', $f);
+        if ($y = (int) $request->get('year')) {
+            $query->where('p.year_from', '<=', $y)->where(function ($yy) use ($y) {
+                $yy->where('p.year_to', '>=', $y)->orWhereNull('p.year_to');
+            });
+        }
+        if ($f = $request->get('grade'))    $query->where('p.condition_grade', $f);
+        if ($request->get('type') === 'vehicle') $query->whereNotNull('p.donor_vin');
+        if ($request->get('type') === 'generic') $query->whereNull('p.donor_vin');   // consumables, new parts, other items
+        $stockFilter = $request->get('stock');
+        if ($stockFilter === 'instock') $query->where('p.stock_qty', '>', 0);
+        if ($stockFilter === 'low')     $query->whereBetween('p.stock_qty', [1, 3]);
+        if ($stockFilter === 'zero')    $query->where('p.stock_qty', '<=', 0);
+        if ($request->get('photos') === 'with')    $query->whereNotNull('p.photos')->where('p.photos', '!=', '[]')->where('p.photos', '!=', '');
+        if ($request->get('photos') === 'without') $query->where(function ($ph) { $ph->whereNull('p.photos')->orWhere('p.photos', '[]')->orWhere('p.photos', ''); });
+        if (is_numeric($request->get('price_min'))) $query->where('p.price_local', '>=', (float) $request->get('price_min'));
+        if (is_numeric($request->get('price_max'))) $query->where('p.price_local', '<=', (float) $request->get('price_max'));
+
+        // ── Multi-search like the customer site: up to 10 part names and up to 10 vehicles (year|make|model) ──
+        $partChips = collect((array) $request->input('part', []))->map(fn ($x) => trim((string) $x))->filter()->unique()->take(10)->values();
+        if ($partChips->isNotEmpty()) {
+            $query->where(function ($pq) use ($partChips) {
+                foreach ($partChips as $n) $pq->orWhere('p.part_name', 'like', '%' . $n . '%');
+            });
+        }
+        $vehicleChips = collect((array) $request->input('v', []))->map(function ($row) {
+            $x = array_pad(explode('|', (string) $row), 3, '');
+            return ['year' => (int) trim($x[0]), 'make' => trim($x[1]), 'model' => trim($x[2])];
+        })->filter(fn ($v) => $v['year'] || $v['make'] || $v['model'])->take(10)->values();
+        if ($vehicleChips->isNotEmpty()) {
+            $query->where(function ($vq) use ($vehicleChips) {
+                foreach ($vehicleChips as $v) {
+                    $vq->orWhere(function ($one) use ($v) {
+                        if ($v['make'])  $one->where('p.brand', 'like', '%' . $v['make'] . '%');
+                        if ($v['model']) $one->where('p.model', 'like', '%' . $v['model'] . '%');
+                        if ($v['year'])  $one->where('p.year_from', '<=', $v['year'])->where(function ($yy) use ($v) {
+                            $yy->where('p.year_to', '>=', $v['year'])->orWhereNull('p.year_to');
+                        });
+                    });
+                }
+            });
+        }
+
         // ── Search: up to 10 searches at once, separated by commas or new lines (like the website).
         // A row is shown if it matches ANY of the searches. Inside one search, every word must match
         // (e.g. "camry alternator" finds Camry alternators; "2012" matches the model year).
@@ -172,16 +216,27 @@ class InventoryController extends Controller
         }
         $rooms = $roomsQuery->get(['id', 'name', 'location']);
 
+        // Model and year lists for the filters (models follow the chosen brand).
+        $modelQ = DB::table('parts_inventory')->whereNotNull('model')->where('model', '!=', '');
+        if ($b = $request->get('brand')) $modelQ->where('brand', $b);
+        $models = $modelQ->distinct()->orderBy('model')->pluck('model');
+        $allBrands = collect(self::BRANDS)->merge(
+            DB::table('parts_inventory')->whereNotNull('brand')->where('brand', '!=', '')->distinct()->pluck('brand')
+        )->unique()->sort()->values()->all();
+
         return view('admin.inventory.index', [
             'parts'      => $parts,
             'counts'     => $counts,
-            'brands'     => self::BRANDS,
+            'brands'     => $allBrands,
             'categories' => self::CATEGORIES,
             'locations'  => Locations::all(),
             'rooms'      => $rooms,
             'sort'       => $sort,
             'dir'        => $dir,
             'searchTerms'=> $terms,
+            'models'     => $models,
+            'partChips'  => $partChips,
+            'vehicleChips' => $vehicleChips,
         ]);
     }
 

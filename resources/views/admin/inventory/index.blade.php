@@ -51,7 +51,7 @@
     title="Up to 10 searches at once, separated by commas. Words inside one search must all match."
     oninput="liveInventorySearch()"
     class="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
-  <select id="invSearchBrand" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+  <select id="invSearchBrand" onchange="onInventoryBrandChange()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
     <option value="">All brands</option>
     @foreach($brands as $b)<option value="{{ $b }}" {{ request('brand')===$b?'selected':'' }}>{{ $b }}</option>@endforeach
   </select>
@@ -72,10 +72,92 @@
     @foreach($rooms as $r)<option value="{{ $r->id }}" {{ (string) request('room')===(string) $r->id ?'selected':'' }}>{{ $r->name }}</option>@endforeach
   </select>
   <span id="invSearchSpinner" class="hidden self-center text-xs text-gray-400 font-body">Searching...</span>
-  @if(request()->hasAny(['q','brand','category','location','status']))
+  @if(request()->hasAny(['q','brand','category','location','status','model','year','grade','type','stock','photos','price_min','price_max','part','v']))
     <a href="{{ route('admin.inventory.index') }}" class="border border-gray-200 text-gray-500 font-body text-xs px-4 py-2.5 rounded-xl hover:bg-gray-50">Clear</a>
   @endif
 </div>
+
+{{-- More filters: model, year, grade, kind of item, stock level, photos, price --}}
+<div class="flex flex-wrap gap-2 mb-5">
+  <select id="invSearchModel" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">All models</option>
+    @foreach($models as $m)<option value="{{ $m }}" {{ request('model')===$m?'selected':'' }}>{{ $m }}</option>@endforeach
+  </select>
+  <select id="invSearchYear" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any year</option>
+    @for($yr = 2027; $yr >= 1986; $yr--)<option value="{{ $yr }}" {{ (string) request('year')===(string) $yr?'selected':'' }}>{{ $yr }}</option>@endfor
+  </select>
+  <select id="invSearchGrade" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any grade</option>
+    @foreach(['New','A','B','C'] as $g)<option value="{{ $g }}" {{ request('grade')===$g?'selected':'' }}>Grade {{ $g }}</option>@endforeach
+  </select>
+  <select id="invSearchType" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">All kinds of items</option>
+    <option value="vehicle" {{ request('type')==='vehicle'?'selected':'' }}>Vehicle parts (from a donor VIN)</option>
+    <option value="generic" {{ request('type')==='generic'?'selected':'' }}>Generic / consumable / new parts (no VIN)</option>
+  </select>
+  <select id="invSearchStock" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any stock level</option>
+    <option value="instock" {{ request('stock')==='instock'?'selected':'' }}>In stock</option>
+    <option value="low" {{ request('stock')==='low'?'selected':'' }}>Low (1-3)</option>
+    <option value="zero" {{ request('stock')==='zero'?'selected':'' }}>Out of stock</option>
+  </select>
+  <select id="invSearchPhotos" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Photos: any</option>
+    <option value="with" {{ request('photos')==='with'?'selected':'' }}>Has photos</option>
+    <option value="without" {{ request('photos')==='without'?'selected':'' }}>No photos</option>
+  </select>
+  <input type="number" id="invSearchPriceMin" value="{{ request('price_min') }}" placeholder="Min price" oninput="liveInventorySearch()"
+    class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body focus:outline-none">
+  <input type="number" id="invSearchPriceMax" value="{{ request('price_max') }}" placeholder="Max price" oninput="liveInventorySearch()"
+    class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body focus:outline-none">
+  <button type="button" onclick="document.getElementById('multiSearchBox').classList.toggle('hidden')"
+    class="bg-gold text-navy font-display font-700 text-xs px-4 py-2.5 rounded-xl hover:bg-yellow-400 transition-colors">
+    Search up to 10 parts / vehicles {{ (count($partChips) + count($vehicleChips)) ? '(' . (count($partChips) + count($vehicleChips)) . ' active)' : '' }}
+  </button>
+</div>
+
+{{-- Multi-search: up to 10 part names and up to 10 vehicles, same idea as the customer search --}}
+<form id="multiSearchBox" method="GET" action="{{ route('admin.inventory.index') }}"
+      class="{{ (count($partChips) + count($vehicleChips)) ? '' : 'hidden' }} bg-white border border-gray-200 rounded-2xl p-4 mb-5">
+  @foreach(request()->except(['part','v','page']) as $k => $val)
+    @if(!is_array($val))<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+  @endforeach
+  <div class="grid md:grid-cols-2 gap-6">
+    <div>
+      <div class="text-xs font-display font-700 text-navy uppercase tracking-wide mb-2">Parts (up to 10) &mdash; shows any of them</div>
+      <datalist id="msPartNames">@foreach(\App\Data\PartNames::flat() as $pn)<option value="{{ $pn }}">@endforeach</datalist>
+      <div id="msParts" class="space-y-2">
+        @php $pc = $partChips->values()->all(); @endphp
+        @for($i = 0; $i < max(3, count($pc)); $i++)
+          <input type="text" name="part[]" list="msPartNames" value="{{ $pc[$i] ?? '' }}" placeholder="Part name (e.g. Alternator)"
+            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
+        @endfor
+      </div>
+      <button type="button" onclick="msAddPart()" class="mt-2 text-xs font-body text-navy underline">+ Add another part</button>
+    </div>
+    <div>
+      <div class="text-xs font-display font-700 text-navy uppercase tracking-wide mb-2">Vehicles (up to 10) &mdash; year, make, model</div>
+      <datalist id="msBrands">@foreach($brands as $b)<option value="{{ $b }}">@endforeach</datalist>
+      <datalist id="msModels">@foreach($models as $m)<option value="{{ $m }}">@endforeach</datalist>
+      <div id="msVehicles" class="space-y-2">
+        @php $vc = $vehicleChips->values()->all(); @endphp
+        @for($i = 0; $i < max(3, count($vc)); $i++)
+          <div class="flex gap-2 ms-vrow">
+            <input type="number" placeholder="Year" value="{{ $vc[$i]['year'] ?? '' }}" class="ms-y w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
+            <input type="text" list="msBrands" placeholder="Make" value="{{ $vc[$i]['make'] ?? '' }}" class="ms-m flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
+            <input type="text" list="msModels" placeholder="Model" value="{{ $vc[$i]['model'] ?? '' }}" class="ms-d flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
+          </div>
+        @endfor
+      </div>
+      <button type="button" onclick="msAddVehicle()" class="mt-2 text-xs font-body text-navy underline">+ Add another vehicle</button>
+    </div>
+  </div>
+  <div class="flex gap-2 mt-4">
+    <button type="submit" onclick="return msBeforeSubmit(this.form)" class="bg-navy text-white text-sm font-body px-5 py-2 rounded-xl">Search</button>
+    <a href="{{ route('admin.inventory.index', request()->except(['part','v','page'])) }}" class="border border-gray-200 text-gray-500 text-sm font-body px-4 py-2 rounded-xl hover:bg-gray-50">Clear these</a>
+  </div>
+</form>
 
 {{-- NEW: Bulk action bar — hidden until at least one row is checked.
      Currently powers multi-barcode printing (item A of this request);
@@ -304,6 +386,43 @@ async function onInventoryLocationChange() {
     liveInventorySearch();
 }
 
+// Changing the brand reloads the page so the Model list shows only that brand's models.
+function onInventoryBrandChange() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('brand', document.getElementById('invSearchBrand').value);
+    url.searchParams.delete('model');
+    url.searchParams.delete('page');
+    window.location.href = url.toString();
+}
+
+// Multi-search helpers: add rows (max 10 each) and join each vehicle row into one v[] value before sending.
+function msAddPart() {
+    const box = document.getElementById('msParts');
+    if (box.querySelectorAll('input').length >= 10) return;
+    const i = document.createElement('input');
+    i.type = 'text'; i.name = 'part[]'; i.setAttribute('list', 'msPartNames'); i.placeholder = 'Part name';
+    i.className = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-body';
+    box.appendChild(i);
+}
+function msAddVehicle() {
+    const box = document.getElementById('msVehicles');
+    if (box.querySelectorAll('.ms-vrow').length >= 10) return;
+    const row = box.querySelector('.ms-vrow').cloneNode(true);
+    row.querySelectorAll('input').forEach(function (x) { x.value = ''; });
+    box.appendChild(row);
+}
+function msBeforeSubmit(form) {
+    form.querySelectorAll('input[name="v[]"]').forEach(function (x) { x.remove(); });
+    form.querySelectorAll('.ms-vrow').forEach(function (row) {
+        const y = row.querySelector('.ms-y').value.trim(), m = row.querySelector('.ms-m').value.trim(), d = row.querySelector('.ms-d').value.trim();
+        if (!y && !m && !d) return;
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = 'v[]'; h.value = y + '|' + m + '|' + d;
+        form.appendChild(h);
+    });
+    return true;
+}
+
 async function doLiveInventorySearch() {
     const spinner = document.getElementById('invSearchSpinner');
     try {
@@ -319,6 +438,9 @@ async function doLiveInventorySearch() {
         url.searchParams.set('category', category);
         url.searchParams.set('location', location);
         url.searchParams.set('room', room);
+        [['model','invSearchModel'],['year','invSearchYear'],['grade','invSearchGrade'],['type','invSearchType'],
+         ['stock','invSearchStock'],['photos','invSearchPhotos'],['price_min','invSearchPriceMin'],['price_max','invSearchPriceMax']]
+          .forEach(function (p) { var el = document.getElementById(p[1]); if (el) url.searchParams.set(p[0], el.value); });
         url.searchParams.delete('page');
 
         const res = await fetch(url.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });

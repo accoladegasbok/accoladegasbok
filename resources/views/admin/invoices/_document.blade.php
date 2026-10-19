@@ -31,6 +31,14 @@
 
     $stampClass = $docPay['status'] === 'PAID' ? '' : ($docPay['status'] === 'PARTIAL' ? 'partial' : 'unpaid');
     $stampText  = $docPay['status'] === 'PAID' ? 'PAID' : ($docPay['status'] === 'PARTIAL' ? 'PARTIALLY PAID' : 'NOT YET PAID');
+    // Refunds: a fully refunded sale says so on the stamp and the title; a partial refund shows as lines in the totals.
+    $docRefunded     = (float) ($docPay['refunded'] ?? 0);
+    $docFullRefund   = !empty($docPay['fully_refunded']);
+    if ($docFullRefund && !$isWaybill) {
+        $stampClass = 'unpaid';
+        $stampText  = 'FULLY REFUNDED';
+        if (!$isVehicleSale) $docTitle = 'RECEIPT - REFUNDED';
+    }
 
     $docCreatedAt = $createdAt ?? now();
     $docLocation  = $location ?? $saleLocation ?? '';
@@ -280,6 +288,13 @@
                     @endif
                     <tr class="paid"><td>AMOUNT PAID:</td><td class="r">{{ !empty($docPay['unknown']) ? ($totalFmt ?? $subtotalFmt) : $money($docPay['confirmed']) }}</td></tr>
                     <tr class="due" style="color: {{ $docPay['balance'] > 0 ? '#c0392b' : '#1b9e5c' }};"><td>AMOUNT DUE:</td><td class="r">{{ $money($docPay['balance']) }}</td></tr>
+                    @if($docRefunded > 0)
+                        @foreach(($docPay['refund_lines'] ?? []) as $rl)
+                        <tr class="sub"><td>Refund &mdash; {{ $rl->part_name ?? 'item' }} ({{ ucfirst(str_replace('_', ' ', $rl->refund_method ?: 'refund')) }}, {{ \Carbon\Carbon::parse($rl->resolved_at ?? $rl->updated_at)->format('d M Y') }}):</td><td class="r">- {{ $money($rl->refund_amount_local) }}</td></tr>
+                        @endforeach
+                        <tr class="paid"><td><strong>{{ $docFullRefund ? 'TOTAL REFUNDED (FULL REFUND):' : 'TOTAL REFUNDED:' }}</strong></td><td class="r"><strong>{{ $money($docRefunded) }}</strong></td></tr>
+                        <tr class="sub"><td>Net paid after refund:</td><td class="r">{{ $money(max(0, ($docPay['confirmed'] ?? 0) - $docRefunded)) }}</td></tr>
+                    @endif
                     @if(($docPay['overpaid'] ?? 0) > 0)
                     <tr class="sub"><td>Overpayment (added to your account credit):</td><td class="r">{{ $money($docPay['overpaid']) }}</td></tr>
                     @endif
