@@ -183,6 +183,22 @@
                             </a>
                         </h3>
 
+                        @php
+                            $stockKey = mb_strtolower(trim((string) $part->part_name)) . '|' . mb_strtolower(trim((string) $part->brand)) . '|' . mb_strtolower(trim((string) $part->part_category));
+                            $stk = $stock[$stockKey] ?? null;
+                        @endphp
+                        @if($stk)
+                            <div class="mb-3 text-xs font-body text-gray-500">
+                                <span class="font-500 text-green-700">{{ $stk['total'] }} in stock</span>
+                                @if(true)
+                                    <span class="text-gray-400"> &middot; </span>
+                                    @foreach($stk['locations'] as $stkLoc => $stkQty)
+                                        <span class="whitespace-nowrap">{{ $stkLoc }}: {{ $stkQty }}</span>@if(!$loop->last)<span class="text-gray-300"> | </span>@endif
+                                    @endforeach
+                                @endif
+                            </div>
+                        @endif
+
                         <div class="mt-auto">
                             <div class="flex items-end justify-between mb-3">
                                 <div class="font-display font-800 text-navy text-2xl leading-none tracking-wide">{{ $price }}</div>

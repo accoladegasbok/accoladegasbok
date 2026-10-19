@@ -110,7 +110,23 @@ class PartsSearchController extends Controller
             ->whereIn('part_category', self::OTHER_CATEGORIES)
             ->count();
 
-        return view('parts.other-items', compact('categories', 'parts', 'filters', 'totalAvailable'))
+        // Quantity of each product at every location (all Available stock, any location) and the total.
+        $stock = [];
+        $names = collect($parts->items())->pluck('part_name')->unique()->values()->all();
+        if ($names) {
+            $rows = DB::table('parts_inventory')->whereNull('deleted_at')->where('status', 'Available')
+                ->where('stock_qty', '>', 0)->whereIn('part_name', $names)
+                ->whereIn('part_category', self::OTHER_CATEGORIES)
+                ->get(['part_name', 'brand', 'part_category', 'location', 'stock_qty']);
+            foreach ($rows as $r) {
+                $k = mb_strtolower(trim((string) $r->part_name)) . '|' . mb_strtolower(trim((string) $r->brand)) . '|' . mb_strtolower(trim((string) $r->part_category));
+                $label = \App\Support\HubLocations::publicLabel($r->location);
+                $stock[$k]['locations'][$label] = ($stock[$k]['locations'][$label] ?? 0) + (int) $r->stock_qty;
+                $stock[$k]['total'] = ($stock[$k]['total'] ?? 0) + (int) $r->stock_qty;
+            }
+        }
+
+        return view('parts.other-items', compact('categories', 'parts', 'filters', 'totalAvailable', 'stock'))
             ->with([
                 'total'     => $parts->total(),
                 'locations' => [
@@ -332,6 +348,16 @@ class PartsSearchController extends Controller
             ->orderByDesc('created_at');
 
         $this->applyFilters($q, $filters);
+
+        // Other items (oils, filters, electronics...): one card per product, however many locations hold it.
+        // The card then shows the quantity at each location and the total (see otherItems()).
+        if (($filters['scope'] ?? '') === 'other') {
+            $q->whereIn('id', function ($sub) use ($filters) {
+                $sub->from('parts_inventory')->selectRaw('MIN(id)')->where('status', 'Available');
+                $this->applyFilters($sub, $filters);
+                $sub->groupBy('part_name', DB::raw("COALESCE(brand,'')"), 'part_category');
+            });
+        }
 
         // ── Sort — now by price_local (each part's fixed price)
         if ($filters['sort'] === 'price_asc')  $q->reorder('price_local', 'asc');

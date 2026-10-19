@@ -442,6 +442,7 @@
       <p>Search live inventory across all our locations by part, vehicle, or engine code — or reach out directly and our team will source it.</p>
       <div class="hero-ctas">
         <a href="/parts" class="btn btn-primary">Search Inventory →</a>
+        <a href="/other-items" class="btn btn-secondary">Oils, Filters &amp; Other Items</a>
         <a href="#contact" class="btn btn-secondary">Contact Us</a>
       </div>
     </div>

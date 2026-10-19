@@ -79,5 +79,9 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/part-approval
     Route::post('/{id}/reject',  [\App\Http\Controllers\Admin\PartApprovalController::class, 'reject'])->name('reject')->where('id', '[0-9]+');
 });
 
+// NEW: quick restock of an existing consumable (adds units under the same number; staff below manager need approval).
+Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/add-stock', [\App\Http\Controllers\Admin\ConsumableController::class, 'addStock'])
+    ->name('admin.inventory.consumable.addstock')->where('id', '[0-9]+');
+
 // NEW: sitemap for search engines (home, main pages, policies and every part that is available).
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');

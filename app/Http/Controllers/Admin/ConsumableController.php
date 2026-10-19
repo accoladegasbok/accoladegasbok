@@ -31,6 +31,63 @@ class ConsumableController extends Controller
 {
     const CATEGORIES = ['Consumable', 'Electronics', 'Computers', 'Other'];
 
+    /** Same name + brand + category = the same product, whatever the location. */
+    public static function itemKey(?string $name, ?string $brand, ?string $category): string
+    {
+        return mb_strtolower(trim((string) $name)) . '|' . mb_strtolower(trim((string) $brand)) . '|' . mb_strtolower(trim((string) ($category ?: 'Consumable')));
+    }
+
+    /**
+     * Put more units on an item that already exists (restock). No new product or number is created.
+     * Manager/admin add the units straight away; anyone else sends them for approval.
+     * Returns a short message for the screen.
+     */
+    private function addUnits(object $item, int $qty): string
+    {
+        $qty = max(1, $qty);
+        if ($item->status === \App\Services\PartApprovalService::UNDER_REVIEW) {
+            // Not live yet - the units simply join the item while it waits for approval.
+            DB::table('parts_inventory')->where('id', $item->id)->update([
+                'stock_qty' => (int) $item->stock_qty + $qty, 'updated_at' => now(),
+            ]);
+            return "Added {$qty} to {$item->part_code} (still waiting for manager approval).";
+        }
+        if (!\App\Services\PartApprovalService::canApprove()) {
+            \App\Services\PartApprovalService::requestRestock((int) $item->id, $qty);
+            return "{$item->part_code} already exists - {$qty} extra unit(s) sent for manager approval. Stock stays at {$item->stock_qty} until then.";
+        }
+        $new = (int) $item->stock_qty + $qty;
+        DB::table('parts_inventory')->where('id', $item->id)->update([
+            'stock_qty'  => $new,
+            'status'     => in_array($item->status, ['Out of Stock', 'Sold'], true) ? 'Available' : $item->status,
+            'updated_at' => now(),
+        ]);
+        return "Added {$qty} to {$item->part_code} - now {$new} in stock.";
+    }
+
+    /** Find the existing item for the same product at the same location. */
+    private function findExisting(string $name, ?string $brand, string $category, string $location)
+    {
+        return DB::table('parts_inventory')->whereNull('deleted_at')
+            ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($name))])
+            ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) $brand))])
+            ->where('part_category', $category)
+            ->where('location', $location)
+            ->orderBy('id')->first();
+    }
+
+    // =========================================================
+    // POST /admin/consumables/{id}/add-stock  - quick restock from the list
+    // =========================================================
+    public function addStock(Request $request, int $id)
+    {
+        $request->validate(['qty' => 'required|integer|min:1|max:100000']);
+        $item = DB::table('parts_inventory')->where('id', $id)->whereNull('deleted_at')->first();
+        if (!$item) abort(404);
+        $msg = $this->addUnits($item, (int) $request->qty);
+        return redirect()->back()->with('success', $msg);
+    }
+
     // =========================================================
     // GET /admin/consumables
     // =========================================================
@@ -54,11 +111,22 @@ class ConsumableController extends Controller
             $query->where('part_category', $category);
         }
 
-        if ($q !== '') {
-            $query->where(function ($sq) use ($q) {
-                $sq->where('part_name', 'like', "%{$q}%")
-                   ->orWhere('part_code', 'like', "%{$q}%")
-                   ->orWhere('brand', 'like', "%{$q}%");
+        // Up to 10 searches at once, separated by commas (an item shows if it matches any of them).
+        $terms = collect(preg_split('/[,;\n|]+/', $q))->map(fn ($t) => trim($t))->filter()->unique()->take(10)->values();
+        if ($terms->isNotEmpty()) {
+            $query->where(function ($sq) use ($terms) {
+                foreach ($terms as $t) {
+                    $sq->orWhere(function ($one) use ($t) {
+                        foreach (preg_split('/\s+/', $t) as $w) {
+                            $one->where(function ($x) use ($w) {
+                                $x->where('part_name', 'like', "%{$w}%")
+                                  ->orWhere('part_code', 'like', "%{$w}%")
+                                  ->orWhere('brand', 'like', "%{$w}%")
+                                  ->orWhere('part_category', 'like', "%{$w}%");
+                            });
+                        }
+                    });
+                }
             });
         }
 
@@ -73,6 +141,22 @@ class ConsumableController extends Controller
             'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
         ];
 
+        // Stock of the same item (same name, brand, category) at every location, so one row can show
+        // "Lagos 5 · Ibadan 4 · Ife 3 = 12 in total".
+        $everywhere = [];
+        $names = $consumables->pluck('part_name')->unique()->values()->all();
+        if ($names) {
+            $rows = DB::table('parts_inventory')->whereNull('deleted_at')
+                ->whereIn('part_name', $names)->whereIn('part_category', self::CATEGORIES)
+                ->where('status', 'Available')->where('stock_qty', '>', 0)
+                ->get(['part_name', 'brand', 'part_category', 'location', 'stock_qty']);
+            foreach ($rows as $r) {
+                $k = self::itemKey($r->part_name, $r->brand, $r->part_category);
+                $everywhere[$k]['locations'][$r->location] = ($everywhere[$k]['locations'][$r->location] ?? 0) + (int) $r->stock_qty;
+                $everywhere[$k]['total'] = ($everywhere[$k]['total'] ?? 0) + (int) $r->stock_qty;
+            }
+        }
+
         // Stats
         $totalItems  = DB::table('parts_inventory')->whereNull('deleted_at')
             ->whereIn('part_category', self::CATEGORIES)->count();
@@ -85,7 +169,7 @@ class ConsumableController extends Controller
 
         return view('admin.consumables.index', compact(
             'consumables', 'q', 'location', 'status', 'category', 'locations',
-            'totalItems', 'totalValue', 'lowStock'
+            'totalItems', 'totalValue', 'lowStock', 'everywhere'
         ))->with('categories', self::CATEGORIES);
     }
 
@@ -141,6 +225,14 @@ class ConsumableController extends Controller
             return back()->withInput()->withErrors([
                 'part_name' => 'Pick a name from the list, or ask a supervisor to add a new one.',
             ]);
+        }
+
+        // Restock rule: the same product at the same location is never entered twice. The units are added to
+        // the item that already exists, under its existing number.
+        $existing = $this->findExisting($request->part_name, $request->brand ?? null, $category, $request->location);
+        if ($existing) {
+            return redirect()->route('admin.inventory.consumable.index')
+                ->with('success', $this->addUnits($existing, (int) $request->stock_qty));
         }
 
         // Generate part code — kept as a single CON- sequence across

@@ -1,8 +1,8 @@
 {{-- FILE: resources/views/admin/consumables/index.blade.php --}}
 @extends('admin.layouts.admin')
-@section('title', 'Consumables & Others')
-@section('page-title', 'Consumables & Others')
-@section('page-sub', 'Bulk stock items not tied to a donor vehicle — oils, filters, electronics, computers and more')
+@section('title', 'Consumables')
+@section('page-title', 'Consumables & Generic Parts')
+@section('page-sub', 'Bulk stock items not tied to a donor vehicle')
 
 @section('content')
 
@@ -27,28 +27,20 @@
 <div class="flex flex-wrap gap-3 mb-5 items-center">
   <a href="{{ route('admin.inventory.consumable.create') }}"
      class="bg-gold text-navy font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-yellow-400 transition-colors">
-    + Add Item
+    + Add Consumable
   </a>
 
   <form method="GET" action="{{ route('admin.inventory.consumable.index') }}"
         class="flex gap-2 flex-1 min-w-[280px]">
-    <input type="text" name="q" value="{{ $q }}" placeholder="Search item name or code..."
+    <input type="text" name="q" value="{{ $q }}" placeholder="Search up to 10 items, separated by commas"
            class="flex-1 border border-gray-200 rounded-xl px-3.5 py-2 text-sm font-body focus:outline-none focus:border-yellow-400">
-    {{-- NEW: category filter — this page now covers all four grouped
-         categories, not just Consumable. --}}
-    <select name="category" class="border border-gray-200 rounded-xl px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
-      <option value="all" {{ $category === 'all' ? 'selected' : '' }}>All Categories</option>
-      @foreach($categories as $cat)
-      <option value="{{ $cat }}" {{ $category === $cat ? 'selected' : '' }}>{{ $cat }}</option>
-      @endforeach
-    </select>
     <select name="location" class="border border-gray-200 rounded-xl px-3 py-2 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
       @foreach($locations as $loc)
       <option value="{{ $loc }}" {{ $location === $loc ? 'selected' : '' }}>{{ $loc === 'all' ? 'All Locations' : $loc }}</option>
       @endforeach
     </select>
     <button type="submit" class="bg-navy text-white text-xs font-700 px-4 py-2 rounded-xl hover:bg-navy-light transition-colors">Search</button>
-    @if($q || $location !== 'all' || $category !== 'all')
+    @if($q || $location !== 'all')
     <a href="{{ route('admin.inventory.consumable.index') }}" class="border border-gray-200 text-gray-500 text-xs px-3 py-2 rounded-xl hover:bg-gray-50">Clear</a>
     @endif
   </form>
@@ -59,12 +51,12 @@
   <table class="w-full">
     <thead class="bg-navy text-white">
       <tr>
-        <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Item Name</th>
-        <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Category</th>
+        <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Part Name</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Brand</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Location</th>
         <th class="px-4 py-3 text-right text-xs font-display uppercase tracking-wide">Price</th>
-        <th class="px-4 py-3 text-center text-xs font-display uppercase tracking-wide">Stock</th>
+        <th class="px-4 py-3 text-center text-xs font-display uppercase tracking-wide">Stock here</th>
+        <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">All locations</th>
         <th class="px-4 py-3 text-left text-xs font-display uppercase tracking-wide">Status</th>
         <th class="px-4 py-3 text-xs font-display uppercase tracking-wide">Actions</th>
       </tr>
@@ -80,9 +72,6 @@
           <div class="font-body font-600 text-sm text-navy">{{ $item->part_name }}</div>
           <div class="font-mono text-[10px] text-gray-400">{{ $item->part_code }}</div>
         </td>
-        <td class="px-4 py-3">
-          <span class="text-[10px] px-2 py-0.5 rounded-full font-700 bg-gray-100 text-gray-600">{{ $item->part_category }}</span>
-        </td>
         <td class="px-4 py-3 text-sm text-gray-600">{{ $item->brand ?? '—' }}</td>
         <td class="px-4 py-3 text-xs text-gray-500">{{ $item->location }}</td>
         <td class="px-4 py-3 text-right font-700 text-gold text-sm">{{ $sym }}{{ number_format($item->price_local) }}</td>
@@ -90,20 +79,36 @@
           <span class="font-700 text-sm {{ $lowStock ? 'text-red-500' : 'text-navy' }}">{{ $item->stock_qty }}</span>
           @if($lowStock)<div class="text-[9px] text-red-400 font-600">LOW</div>@endif
         </td>
+        <td class="px-4 py-3 text-xs text-gray-600">
+          @php $ev = $everywhere[\App\Http\Controllers\Admin\ConsumableController::itemKey($item->part_name, $item->brand, $item->part_category)] ?? null; @endphp
+          @if($ev)
+            <div class="font-700 text-navy">{{ $ev['total'] }} in total</div>
+            @foreach($ev['locations'] as $locName => $locQty)
+              <div class="text-[10px] text-gray-500">{{ $locName }}: <span class="font-700">{{ $locQty }}</span></div>
+            @endforeach
+          @else
+            <span class="text-gray-300">&mdash;</span>
+          @endif
+        </td>
         <td class="px-4 py-3">
           <span class="text-[10px] px-2 py-0.5 rounded-full font-700
-            {{ $item->status === 'Available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' }}">
+            {{ $item->status === 'Available' ? 'bg-green-100 text-green-700' : ($item->status === 'Under Review' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-500') }}">
             {{ $item->status }}
           </span>
         </td>
         <td class="px-4 py-3 text-center">
           <div class="flex items-center justify-center gap-2">
+            <form method="POST" action="{{ route('admin.inventory.consumable.addstock', $item->id) }}" class="flex items-center gap-1">
+              @csrf
+              <input type="number" name="qty" min="1" value="1" class="w-14 border border-gray-200 rounded-lg px-2 py-1 text-xs" title="Units to add">
+              <button class="text-xs border border-green-300 text-green-700 rounded-lg px-2 py-1 hover:bg-green-50 transition-colors" title="Adds units to this same item - no new number">+ Add</button>
+            </form>
             <a href="{{ route('admin.inventory.consumable.edit', $item->id) }}"
                class="text-xs border border-gray-200 rounded-lg px-3 py-1 hover:border-navy hover:text-navy transition-colors">
               Edit
             </a>
             <form method="POST" action="{{ route('admin.inventory.consumable.destroy', $item->id) }}"
-                  onsubmit="return confirm('Remove this item?')">
+                  onsubmit="return confirm('Remove this consumable?')">
               @csrf @method('DELETE')
               <button class="text-xs border border-red-200 text-red-400 rounded-lg px-3 py-1 hover:bg-red-50 transition-colors">
                 Remove
@@ -115,7 +120,7 @@
       @empty
       <tr>
         <td colspan="8" class="px-4 py-12 text-center text-gray-400 text-sm">
-          No items found.
+          No consumables found.
           <a href="{{ route('admin.inventory.consumable.create') }}" class="text-gold underline ml-1">Add the first one</a>.
         </td>
       </tr>
