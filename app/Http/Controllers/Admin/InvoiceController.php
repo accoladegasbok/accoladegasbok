@@ -562,6 +562,26 @@ class InvoiceController extends Controller
         ));
     }
 
+
+    // A stock number typed or scanned into the name box without picking from the list is matched to the
+    // real part here, so the invoice always carries the full description (never just "SUS-00113").
+    private function resolveScannedItems(Request $request): void
+    {
+        $items = $request->input('items', []);
+        foreach ($items as $k => $it) {
+            if (!empty($it['part_id']) || empty($it['name'])) continue;
+            $part = DB::table('parts_inventory')
+                ->whereRaw('LOWER(part_code) = ?', [strtolower(trim($it['name']))])
+                ->first();
+            if ($part) {
+                $items[$k]['part_id'] = $part->id;
+                $items[$k]['name']    = $part->part_name;
+                if (empty($it['grade'])) $items[$k]['grade'] = $part->condition_grade;
+            }
+        }
+        $request->merge(['items' => $items]);
+    }
+
     // =========================================================
     // MANUAL INVOICE — Walk-in / Staff created
     // GET /admin/invoices/manual/create
@@ -583,6 +603,7 @@ class InvoiceController extends Controller
             'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
             'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
             'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Kaduna Nigeria'  => 'Kaduna / Jos / Makurdi — NGN (₦)',
             'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 
@@ -651,6 +672,7 @@ class InvoiceController extends Controller
             'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
             'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
             'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Kaduna Nigeria'  => 'Kaduna / Jos / Makurdi — NGN (₦)',
             'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 
@@ -709,6 +731,7 @@ class InvoiceController extends Controller
         $invoice = DB::table('invoices')->where('id', $id)->first();
         if (!$invoice) abort(404);
 
+        $this->resolveScannedItems($request);
         $request->validate([
             'customer_name'    => 'required|string|max:120',
             'location'         => 'required|string',
@@ -844,6 +867,7 @@ class InvoiceController extends Controller
     // =========================================================
     public function storeManual(Request $request)
     {
+        $this->resolveScannedItems($request);
         $request->validate([
             'customer_name'    => 'required|string|max:120',
             'location'         => 'required|string',
@@ -1183,6 +1207,7 @@ class InvoiceController extends Controller
             'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
             'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
             'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Kaduna Nigeria'  => 'Kaduna / Jos / Makurdi — NGN (₦)',
             'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 
@@ -1394,6 +1419,7 @@ class InvoiceController extends Controller
             'Lagos Nigeria'   => 'Lagos, Nigeria — NGN (₦)',
             'Abuja Nigeria'   => 'Abuja, Nigeria — NGN (₦)',
             'Akure Nigeria'   => 'Akure, Nigeria — NGN (₦)',
+            'Kaduna Nigeria'  => 'Kaduna / Jos / Makurdi — NGN (₦)',
             'Accra Ghana'     => 'Accra, Ghana — GHS (GH₵)',
         ];
 

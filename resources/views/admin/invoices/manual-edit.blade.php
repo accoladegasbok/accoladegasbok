@@ -210,6 +210,7 @@ const CURRENCIES = {
     'Lagos Nigeria':  { code: 'NGN', symbol: '₦'  },
     'Abuja Nigeria':  { code: 'NGN', symbol: '₦'  },
     'Akure Nigeria':  { code: 'NGN', symbol: '₦'  },
+    'Kaduna Nigeria': { code: 'NGN', symbol: '₦'  },
     'Accra Ghana':    { code: 'GHS', symbol: 'GH₵' },
 };
 
@@ -303,6 +304,7 @@ function addItem(seed = null) {
                     autocomplete="off"
                     onfocus="showAllPartsForLocation(${i})"
                     oninput="searchParts(${i}, this.value)"
+                    onkeydown="itemNameKey(event, ${i})"
                     class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-gold">
                 <div id="suggestions-${i}" class="absolute bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-72 hidden max-h-48 overflow-y-auto"></div>
                 <input type="hidden" name="items[${i}][part_id]" id="item-pid-${i}">
@@ -388,7 +390,43 @@ function showAllPartsForLocation(i) {
     renderSuggestions(i, document.getElementById('suggestions-' + i), getLocationParts().slice(0, 50));
 }
 
+// ── Barcode scanner support ─────────────────────────────────────────────────
+// A scanner types the stock number (e.g. SUS-00113) and presses Enter. Match it to the real part so the
+// invoice carries the full description: name, vehicle fitment, grade, stock number and price.
+function codeMatch(value) {
+    const q = (value || '').trim().toLowerCase();
+    if (q.length < 4) return null;
+    return PARTS.find(p => (p.part_code || '').toLowerCase() === q) || null;
+}
+
+function pickScanned(i, part) {
+    const loc = document.getElementById('locationSelect').value;
+    if ((part.location || '') !== loc) {
+        alert(part.part_code + ' is in ' + (part.location || 'another location') + ', but this invoice is for ' + loc + '. Change the location, or transfer the part first.');
+        return false;
+    }
+    selectPart(i, part);
+    return true;
+}
+
+function itemNameKey(e, i) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();                                   // a scanner's Enter must never submit the form
+    const part = codeMatch(e.target.value);
+    if (!part) return;
+    if (pickScanned(i, part) && i === itemCount) {        // ready for the next scan
+        addItem();
+        const next = document.getElementById('item-name-' + itemCount);
+        if (next) next.focus();
+    }
+}
+
 function searchParts(i, query) {
+    const exact = codeMatch(query);                       // full stock number typed or scanned
+    if (exact && (exact.location || '') === document.getElementById('locationSelect').value) {
+        selectPart(i, exact);
+        return;
+    }
     const box  = document.getElementById('suggestions-' + i);
     const pool = getLocationParts();
     if (!query || query.length < 1) { renderSuggestions(i, box, pool.slice(0, 50)); return; }
