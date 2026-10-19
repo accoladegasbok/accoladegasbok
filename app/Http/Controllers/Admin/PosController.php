@@ -170,6 +170,7 @@ class PosController extends Controller
                 DB::table('parts_inventory')->where('id', $part->id)->update([
                     'stock_qty'  => $newQty,
                     'status'     => $newQty <= 0 ? 'Sold' : 'Available',
+                    'sold_at'    => $newQty <= 0 ? now() : null,
                     'updated_at' => now(),
                 ]);
             }

@@ -238,7 +238,14 @@ class ConsumableController extends Controller
         // Generate part code — kept as a single CON- sequence across
         // all four categories (they're grouped together on the public
         // side too, so one shared numbering scheme is simplest).
-        $partCode = PartCodeService::next('CON');
+        // Same product already stocked at another location? Reuse its number - one product, one number.
+        $elsewhere = DB::table('parts_inventory')->whereNull('deleted_at')
+            ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($request->part_name))])
+            ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) ($request->brand ?? '')))])
+            ->where('part_category', $category)
+            ->where('part_code', 'like', 'CON-%')
+            ->orderBy('id')->first();
+        $partCode = $elsewhere ? $elsewhere->part_code : PartCodeService::next('CON');
 
         $photoPaths = [];
         if ($request->hasFile('photos')) {
@@ -285,8 +292,8 @@ class ConsumableController extends Controller
 
         return redirect()->route('admin.inventory.consumable.index')
             ->with('success', $waiting
-                ? "\"{$request->part_name}\" ({$category}) saved and waiting for manager approval before it goes live."
-                : "\"{$request->part_name}\" ({$category}) added to inventory.");
+                ? "\"{$request->part_name}\" ({$category}) saved as {$partCode} and waiting for manager approval before it goes live."
+                : "\"{$request->part_name}\" ({$category}) added to inventory as {$partCode}" . ($elsewhere ? ' (same number as at its other location).' : '.'));
     }
 
     // =========================================================

@@ -828,7 +828,7 @@ class OrderAdminController extends Controller
                     DB::table('parts_inventory')
                         ->where('id', $item->part_id)
                         ->where('status', 'Reserved')
-                        ->update(['status' => 'Sold', 'updated_at' => now()]);
+                        ->update(['status' => 'Sold', 'sold_at' => now(), 'updated_at' => now()]);
                 }
 
                 // Only fire PartSold if this order hasn't already had

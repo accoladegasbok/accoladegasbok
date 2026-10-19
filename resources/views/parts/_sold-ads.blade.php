@@ -10,8 +10,11 @@
   .sold-card img { filter:saturate(.75) brightness(.95); }
 </style>
 <section class="mt-10" id="recently-sold">
-  <h3 class="font-display font-700 text-navy text-lg tracking-wide uppercase">Recently Sold</h3>
-  <p class="text-xs text-gray-500 font-body mb-4">Parts we sold in the last 2 weeks. Need one like it? Tap <strong>Request one like this</strong> and we'll find it for you.</p>
+  <div class="flex items-end justify-between flex-wrap gap-2">
+    <h3 class="font-display font-700 text-navy text-lg tracking-wide uppercase">Recently Sold</h3>
+    <a href="{{ route('parts.sold') }}" class="text-xs font-display font-700 text-gold hover:text-yellow-600 underline">See all sold items &rarr;</a>
+  </div>
+  <p class="text-xs text-gray-500 font-body mb-4">Parts we sold in the last year. Need one like it? Tap <strong>Request one like this</strong> and we'll find it for you.</p>
 
   <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
     @foreach($recentlySold as $sp)
@@ -29,7 +32,7 @@
       <div class="p-3 flex flex-col flex-1">
         <div class="font-display font-700 text-navy text-sm leading-tight">{{ $sp->part_name }}</div>
         <div class="text-xs text-gray-500 font-body mt-0.5">{{ $spVehicle }}</div>
-        <div class="text-[11px] text-gray-400 font-body mt-0.5">Sold {{ \Carbon\Carbon::parse($sp->updated_at)->diffForHumans() }}</div>
+        <div class="text-[11px] text-gray-400 font-body mt-0.5">Sold {{ \Carbon\Carbon::parse($sp->sold_at ?? $sp->updated_at)->diffForHumans() }}@if(!empty($sp->is_similar)) &middot; <span class="text-az-blue">similar to your search</span>@endif</div>
         <button type="button" class="request-like mt-auto pt-3 text-left text-xs font-display font-700 text-gold hover:text-yellow-600 underline"
                 data-vehicle="{{ $spVehicle }}" data-part="{{ $sp->part_name }}" data-id="{{ $sp->id }}">
           Request one like this

@@ -476,6 +476,7 @@ class InventoryController extends Controller
             'currency_code'          => $currency['code'],
             'condition_grade'        => $request->condition_grade,
             'status'                 => $newStatus,
+            'sold_at'                => $newStatus === 'Sold' ? DB::raw('COALESCE(sold_at, NOW())') : null,
             'location'               => $request->location,
             'description'            => $request->description,
             'oem_part_number'        => $request->oem_part_number,
@@ -641,6 +642,7 @@ class InventoryController extends Controller
             // sales keep the part Available so it still shows up in
             // searches/orders for the remaining quantity.
             'status'     => $remaining === 0 ? 'Sold' : 'Available',
+            'sold_at'    => $remaining === 0 ? now() : null,
             'updated_at' => now(),
         ]);
 

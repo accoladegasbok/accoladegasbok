@@ -372,21 +372,68 @@ class PartsSearchController extends Controller
     }
 
     /**
-     * Parts sold in the last 2 weeks that match the same search — shown under the results as proof
-     * of movement and a way to ask for "one like it". Only parts with a real photo; no price, no
-     * location. (A part's sale date is the last time its status changed, i.e. updated_at.)
+     * Parts sold in the last year that match the same search - shown under the results as proof of movement
+     * and a way to ask for "one like it". Only parts with a real photo; no price, no location.
+     * When fewer than 12 match exactly, the strip is topped up with similar sold parts (same part name,
+     * or same make) and those are flagged is_similar so the page can say "similar to your search".
      */
     private function recentlySold(array $filters)
     {
+        $base = function () {
+            return DB::table('parts_inventory')
+                ->where('status', 'Sold')
+                ->whereRaw('COALESCE(sold_at, updated_at) >= ?', [now()->subYear()])
+                ->whereNotNull('photos')->where('photos', '!=', '[]')
+                ->orderByRaw('COALESCE(sold_at, updated_at) DESC');
+        };
+
+        $q = $base();
+        $this->applyFilters($q, $filters, false);
+        $rows = $q->limit(12)->get();
+        foreach ($rows as $r) $r->is_similar = false;
+
+        if ($rows->count() < 12) {
+            // Relax the search: keep the part names (or the typed words, or just the make).
+            $f = $filters;
+            $make = $filters['make'] ?: ($filters['vehicles'][0]['make'] ?? '');
+            $f['vehicles'] = []; $f['model'] = ''; $f['year'] = ''; $f['trim'] = ''; $f['make'] = '';
+            if (empty($f['parts']) && $f['q'] === '' && $make !== '') $f['make'] = $make;
+            $relaxed = $f['parts'] || $f['q'] !== '' || $f['make'] !== '';
+            if ($relaxed) {
+                $q2 = $base();
+                $this->applyFilters($q2, $f, false);
+                $more = $q2->whereNotIn('id', $rows->pluck('id')->all())->limit(12 - $rows->count())->get();
+                foreach ($more as $r) { $r->is_similar = true; $rows->push($r); }
+            }
+        }
+        return $rows;
+    }
+
+    // =========================================================
+    // GET /parts/sold - everything sold in the last year (searchable)
+    // =========================================================
+    public function soldAll(Request $request)
+    {
         $q = DB::table('parts_inventory')
             ->where('status', 'Sold')
-            ->where('updated_at', '>=', now()->subDays(14))
-            ->whereNotNull('photos')
-            ->where('photos', '!=', '[]')
-            ->orderByDesc('updated_at');
-        $this->applyFilters($q, $filters, false);
+            ->whereRaw('COALESCE(sold_at, updated_at) >= ?', [now()->subYear()])
+            ->whereNotNull('photos')->where('photos', '!=', '[]')
+            ->orderByRaw('COALESCE(sold_at, updated_at) DESC');
 
-        return $q->limit(12)->get();
+        $text = trim((string) $request->get('q', ''));
+        foreach (array_slice(array_filter(preg_split('/\s+/', $text)), 0, 6) as $w) {
+            $q->where(function ($x) use ($w) {
+                $x->where('part_name', 'like', "%{$w}%")->orWhere('brand', 'like', "%{$w}%")
+                  ->orWhere('model', 'like', "%{$w}%")->orWhere('part_category', 'like', "%{$w}%");
+            });
+        }
+        if ($cat = trim((string) $request->get('category', ''))) $q->where('part_category', $cat);
+
+        $items = $q->paginate(24)->withQueryString();
+        $categories = DB::table('parts_inventory')->where('status', 'Sold')->whereNotNull('part_category')
+            ->distinct()->orderBy('part_category')->pluck('part_category');
+
+        return view('parts.sold', ['items' => $items, 'text' => $text, 'category' => $cat ?? '', 'categories' => $categories]);
     }
 
     // ── Filter sidebar numbers ───────────────────────────────────────

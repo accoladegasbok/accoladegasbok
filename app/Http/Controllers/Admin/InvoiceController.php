@@ -98,6 +98,36 @@ class InvoiceController extends Controller
     // =========================================================
     public static function documentPaymentState(?object $order, ?object $invoice, ?int $invoiceId = null): array
     {
+        $state = self::documentPaymentStateBase($order, $invoice, $invoiceId);
+
+        // Refunds already paid out or credited for this sale (resolved customer returns), shown on the document.
+        $state['refunded'] = 0.0; $state['refund_lines'] = collect(); $state['fully_refunded'] = false;
+        try {
+            if (!$order && !$invoice && $invoiceId) $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+            $col = $order ? 'order_id' : ($invoice ? 'invoice_id' : null);
+            if ($col) {
+                $rec  = $order ?: $invoice;
+                $rows = DB::table('returns as r')
+                    ->leftJoin('parts_inventory as p', 'p.id', '=', 'r.part_id')
+                    ->where('r.' . $col, $rec->id)->where('r.status', 'resolved')
+                    ->where('r.return_type', 'customer')->where('r.refund_amount_local', '>', 0)
+                    ->orderBy('r.resolved_at')
+                    ->get(['r.refund_amount_local', 'r.refund_method', 'r.resolved_at', 'r.updated_at', 'p.part_name']);
+                $total = (float) ($order ? ($order->total_amount_local ?? $order->total_amount_ngn ?? $order->total_amount_usd ?? 0)
+                                         : ($invoice->subtotal_local ?? $invoice->subtotal_usd ?? 0));
+                $sum = round((float) $rows->sum('refund_amount_local'), 2);
+                $state['refunded']       = $sum;
+                $state['refund_lines']   = $rows;
+                $state['fully_refunded'] = $total > 0 && $sum >= round($total, 2) - 0.01;
+            }
+        } catch (\Throwable $e) {
+            // A refund lookup problem must never break a receipt.
+        }
+        return $state;
+    }
+
+    private static function documentPaymentStateBase(?object $order, ?object $invoice, ?int $invoiceId = null): array
+    {
         if (!$order && !$invoice && $invoiceId) {
             $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
         }
@@ -572,6 +602,10 @@ class InvoiceController extends Controller
             if (!empty($it['part_id']) || empty($it['name'])) continue;
             $part = DB::table('parts_inventory')
                 ->whereRaw('LOWER(part_code) = ?', [strtolower(trim($it['name']))])
+                // The same consumable number can exist at several locations: prefer this invoice's location,
+                // then stock that is actually available.
+                ->orderByRaw('(location = ?) DESC', [(string) $request->input('location', '')])
+                ->orderByRaw("(status = 'Available' AND stock_qty > 0) DESC")
                 ->first();
             if ($part) {
                 $items[$k]['part_id'] = $part->id;
@@ -1120,6 +1154,7 @@ class InvoiceController extends Controller
                     DB::table('parts_inventory')->where('id', $li->part_id)->update([
                         'stock_qty'  => $newQty,
                         'status'     => $newQty <= 0 ? 'Sold' : 'Available',
+                        'sold_at'    => $newQty <= 0 ? now() : null,
                         'updated_at' => now(),
                     ]);
                 }
@@ -1372,6 +1407,7 @@ class InvoiceController extends Controller
                     DB::table('parts_inventory')->where('id', $li->part_id)->update([
                         'stock_qty'  => $newQty,
                         'status'     => $newQty <= 0 ? 'Sold' : 'Available',
+                        'sold_at'    => $newQty <= 0 ? now() : null,
                         'updated_at' => now(),
                     ]);
                 }
