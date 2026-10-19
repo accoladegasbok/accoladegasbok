@@ -85,8 +85,7 @@ class InventoryController extends Controller
         $query = DB::table('parts_inventory as p')
             ->leftJoin('storage_shelves as ss', 'ss.id', '=', 'p.storage_shelf_id')
             ->leftJoin('storage_rooms as sr', 'sr.id', '=', 'ss.storage_room_id')
-            ->select('p.*', 'sr.name as room_name', 'sr.id as room_id', 'ss.full_bin_code')
-            ->orderByDesc('p.created_at');
+            ->select('p.*', 'sr.name as room_name', 'sr.id as room_id', 'ss.full_bin_code');
 
         if ($f = $request->get('brand'))    $query->where('p.brand', $f);
         if ($f = $request->get('category')) $query->where('p.part_category', $f);
@@ -95,27 +94,69 @@ class InventoryController extends Controller
         // NEW: filter inventory down to a specific room, not just location.
         if ($f = $request->get('room'))     $query->where('sr.id', $f);
 
-        if ($f = $request->get('q')) {
-            $query->where(function($q) use ($f) {
-                $q->where('p.part_name',            'like', "%$f%")
-                  ->orWhere('p.part_code',           'like', "%$f%")
-                  ->orWhereIn('p.id', PartCodeService::idsMatchingOldCode($f))
-                  ->orWhere('p.model',                'like', "%$f%")
-                  ->orWhere('p.oem_part_number',      'like', "%$f%")
-                  ->orWhere('p.engine_code_oem',      'like', "%$f%")  // item 6
-                  ->orWhere('p.transmission_code_oem','like', "%$f%")  // item 6
-                  ->orWhere('p.gear_alias',           'like', "%$f%")  // item 7
-                  ->orWhere('p.pin_count',            'like', "%$f%")  // item 10
-                  // NEW — searchable per this request: our reference,
-                  // part category, room name, bin location, and engine
-                  // displacement.
-                  ->orWhere('p.source_ref',           'like', "%$f%")
-                  ->orWhere('p.part_category',        'like', "%$f%")
-                  ->orWhere('sr.name',                'like', "%$f%")
-                  ->orWhere('ss.full_bin_code',       'like', "%$f%")
-                  ->orWhere('p.bin_location',         'like', "%$f%")
-                  ->orWhere('p.engine_displacement',  'like', "%$f%");
+        // ── Search: up to 10 searches at once, separated by commas or new lines (like the website).
+        // A row is shown if it matches ANY of the searches. Inside one search, every word must match
+        // (e.g. "camry alternator" finds Camry alternators; "2012" matches the model year).
+        $terms = collect(preg_split('/[,;\n|]+/', (string) $request->get('q', '')))
+            ->map(fn ($t) => trim($t))->filter()->unique()->take(10)->values();
+
+        if ($terms->isNotEmpty()) {
+            $query->where(function ($outer) use ($terms) {
+                foreach ($terms as $term) {
+                    $outer->orWhere(function ($one) use ($term) {
+                        foreach (preg_split('/\s+/', $term) as $word) {
+                            $one->where(function ($q) use ($word) {
+                                $q->where('p.part_name',            'like', "%$word%")
+                                  ->orWhere('p.part_code',           'like', "%$word%")
+                                  ->orWhereIn('p.id', PartCodeService::idsMatchingOldCode($word))
+                                  ->orWhere('p.brand',               'like', "%$word%")
+                                  ->orWhere('p.model',               'like', "%$word%")
+                                  ->orWhere('p.oem_part_number',     'like', "%$word%")
+                                  ->orWhere('p.engine_code_oem',     'like', "%$word%")
+                                  ->orWhere('p.transmission_code_oem','like', "%$word%")
+                                  ->orWhere('p.gear_alias',          'like', "%$word%")
+                                  ->orWhere('p.pin_count',           'like', "%$word%")
+                                  ->orWhere('p.source_ref',          'like', "%$word%")
+                                  ->orWhere('p.part_category',       'like', "%$word%")
+                                  ->orWhere('sr.name',               'like', "%$word%")
+                                  ->orWhere('ss.full_bin_code',      'like', "%$word%")
+                                  ->orWhere('p.bin_location',        'like', "%$word%")
+                                  ->orWhere('p.engine_displacement', 'like', "%$word%");
+                                // A 4-digit year matches any part whose vehicle years include it.
+                                if (preg_match('/^(19|20)\d{2}$/', $word)) {
+                                    $y = (int) $word;
+                                    $q->orWhere(fn ($yy) => $yy->where('p.year_from', '<=', $y)->where('p.year_to', '>=', $y));
+                                }
+                            });
+                        }
+                    });
+                }
             });
+        }
+
+        // ── Sorting: click a column heading (sort=...&dir=asc|desc). Newest first by default.
+        $sortMap = [
+            'name'     => ['p.part_name'],
+            'code'     => ['p.part_code'],
+            'category' => ['p.part_category'],
+            'vehicle'  => ['p.brand', 'p.model', 'p.year_from'],
+            'year'     => ['p.year_from'],
+            'grade'    => ['p.condition_grade'],
+            'price'    => ['p.price_local'],
+            'qty'      => ['p.stock_qty'],
+            'location' => ['p.location'],
+            'room'     => ['sr.name'],
+            'status'   => ['p.status'],
+            'added'    => ['p.created_at'],
+        ];
+        $sort = $request->get('sort');
+        $dir  = strtolower((string) $request->get('dir')) === 'asc' ? 'asc' : 'desc';
+        if ($sort && isset($sortMap[$sort])) {
+            foreach ($sortMap[$sort] as $col) $query->orderBy($col, $dir);
+            $query->orderByDesc('p.id');
+        } else {
+            $sort = null;
+            $query->orderByDesc('p.created_at');
         }
 
         $parts  = $query->paginate(30)->withQueryString();
@@ -138,6 +179,9 @@ class InventoryController extends Controller
             'categories' => self::CATEGORIES,
             'locations'  => Locations::all(),
             'rooms'      => $rooms,
+            'sort'       => $sort,
+            'dir'        => $dir,
+            'searchTerms'=> $terms,
         ]);
     }
 
