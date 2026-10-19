@@ -28,21 +28,27 @@
      but had no way to actually BE set on a part — see the per-row
      dropdown below, which is the real fix for improvement #1). --}}
 <div class="flex flex-wrap gap-2 mb-5">
-  @foreach([''=> 'All Parts', 'Available'=>'Available', 'Reserved'=>'Reserved', 'Sold'=>'Sold', 'Missing'=>'Missing', 'Hold'=>'Hold', 'Core'=>'Core', 'Scrapped'=>'Scrapped'] as $val => $lbl)
+  @foreach([''=> 'All Parts', 'Available'=>'Available', 'Reserved'=>'Reserved', 'Sold'=>'Sold', 'Missing'=>'Missing', 'Hold'=>'Hold', 'Core'=>'Core', 'Scrapped'=>'Scrapped', 'Under Review'=>'Under Review'] as $val => $lbl)
   <a href="{{ request()->fullUrlWithQuery(['status'=>$val,'page'=>1]) }}"
      class="inline-flex items-center gap-1.5 text-xs font-body font-500 px-3 py-1.5 rounded-full border transition-colors
-       {{ request('status')===$val ? 'bg-navy text-white border-navy' : 'bg-white text-gray-600 border-gray-200 hover:border-navy' }}">
+       {{ request('status')===$val ? 'bg-navy text-white border-navy' : (($val==='Under Review' && ($counts['Under Review'] ?? 0) > 0) ? 'bg-amber-50 text-amber-800 border-amber-300 hover:border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-navy') }}">
     {{ $lbl }}
     @if($val && isset($counts[$val]))
-      <span class="font-mono">{{ $counts[$val] }}</span>
+      <span class="font-mono {{ $val==='Under Review' && $counts[$val] > 0 && request('status')!==$val ? 'bg-amber-500 text-white rounded-full px-1.5' : '' }}">{{ $counts[$val] }}</span>
     @endif
   </a>
   @endforeach
+  @if(in_array(strtolower(session('staff_role') ?? ''), ['admin','manager']) && ($counts['Under Review'] ?? 0) > 0)
+    <a href="{{ route('admin.part-approvals.index') }}" class="inline-flex items-center text-xs font-body font-500 px-3 py-1.5 rounded-full bg-amber-500 text-white hover:bg-amber-600">
+      Review &amp; approve {{ $counts['Under Review'] }} waiting &rarr;
+    </a>
+  @endif
 </div>
 
 {{-- Filters — all real-time, no Enter key or Search button needed --}}
 <div class="flex flex-wrap gap-2 mb-5">
-  <input type="text" id="invSearchQ" value="{{ request('q') }}" placeholder="Part name, code, ref, room, bin, category, displacement..."
+  <input type="text" id="invSearchQ" value="{{ request('q') }}" placeholder="Search up to 10 items — separate with commas, e.g. camry alternator, 2012 civic hood, SUS-00113"
+    title="Up to 10 searches at once, separated by commas. Words inside one search must all match."
     oninput="liveInventorySearch()"
     class="flex-1 min-w-48 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
   <select id="invSearchBrand" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
@@ -99,15 +105,15 @@
           <th class="px-4 py-3">
             <input type="checkbox" id="selectAllRows" onchange="toggleSelectAllRows(this)" class="rounded border-gray-300">
           </th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Part</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Category</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Vehicle</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Grade</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Price</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Qty</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Location</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Room</th>
-          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider">Status</th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'name','dir'=>(($sort ?? null)==='name' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='name' ? 'text-navy' : '' }}">Part<span class="text-[10px]">{{ ($sort ?? null)==='name' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'category','dir'=>(($sort ?? null)==='category' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='category' ? 'text-navy' : '' }}">Category<span class="text-[10px]">{{ ($sort ?? null)==='category' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'vehicle','dir'=>(($sort ?? null)==='vehicle' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='vehicle' ? 'text-navy' : '' }}">Vehicle<span class="text-[10px]">{{ ($sort ?? null)==='vehicle' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'grade','dir'=>(($sort ?? null)==='grade' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='grade' ? 'text-navy' : '' }}">Grade<span class="text-[10px]">{{ ($sort ?? null)==='grade' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'price','dir'=>(($sort ?? null)==='price' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='price' ? 'text-navy' : '' }}">Price<span class="text-[10px]">{{ ($sort ?? null)==='price' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'qty','dir'=>(($sort ?? null)==='qty' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='qty' ? 'text-navy' : '' }}">Qty<span class="text-[10px]">{{ ($sort ?? null)==='qty' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'location','dir'=>(($sort ?? null)==='location' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='location' ? 'text-navy' : '' }}">Location<span class="text-[10px]">{{ ($sort ?? null)==='location' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'room','dir'=>(($sort ?? null)==='room' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='room' ? 'text-navy' : '' }}">Room<span class="text-[10px]">{{ ($sort ?? null)==='room' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
+          <th class="text-left px-4 py-3 text-xs font-500 text-gray-400 uppercase tracking-wider"><a href="{{ request()->fullUrlWithQuery(['sort'=>'status','dir'=>(($sort ?? null)==='status' && ($dir ?? 'desc')==='asc') ? 'desc' : 'asc','page'=>1]) }}" class="inline-flex items-center gap-1 hover:text-navy {{ ($sort ?? null)==='status' ? 'text-navy' : '' }}">Status<span class="text-[10px]">{{ ($sort ?? null)==='status' ? (($dir ?? 'desc')==='asc' ? '▲' : '▼') : '↕' }}</span></a></th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -204,10 +210,16 @@
             <select onchange="updateStatus({{ $p->id }}, this.value, {{ (int) ($p->stock_qty ?? 1) }}, this)"
               data-original-status="{{ $p->status }}"
               class="border border-gray-200 rounded-lg px-2 py-1 text-xs font-body bg-white focus:outline-none">
+              @if($p->status==='Under Review')
+                <option value="Under Review" selected>Under Review</option>
+              @endif
               @foreach(['Available','Reserved','Sold','Missing','Hold','Core','Scrapped'] as $s)
                 <option value="{{ $s }}" {{ $p->status===$s?'selected':'' }}>{{ $s }}</option>
               @endforeach
             </select>
+            @if($p->status==='Under Review')
+              <div class="mt-1"><span class="inline-block text-[10px] font-500 bg-amber-100 text-amber-800 border border-amber-300 rounded-full px-2 py-0.5">Waiting for manager approval</span></div>
+            @endif
           </td>
           <td class="px-4 py-3">
             <div class="flex items-center gap-2">
