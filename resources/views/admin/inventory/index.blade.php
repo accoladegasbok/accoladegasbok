@@ -72,7 +72,7 @@
     @foreach($rooms as $r)<option value="{{ $r->id }}" {{ (string) request('room')===(string) $r->id ?'selected':'' }}>{{ $r->name }}</option>@endforeach
   </select>
   <span id="invSearchSpinner" class="hidden self-center text-xs text-gray-400 font-body">Searching...</span>
-  @if(request()->hasAny(['q','brand','category','location','status','model','year','grade','type','stock','photos','price_min','price_max','part','v']))
+  @if(request()->hasAny(['q','brand','category','location','status','model','year','year_to','grade','type','stock','photos','price_min','price_max','part','v']))
     <a href="{{ route('admin.inventory.index') }}" class="border border-gray-200 text-gray-500 font-body text-xs px-4 py-2.5 rounded-xl hover:bg-gray-50">Clear</a>
   @endif
 </div>
@@ -83,9 +83,13 @@
     <option value="">All models</option>
     @foreach($models as $m)<option value="{{ $m }}" {{ request('model')===$m?'selected':'' }}>{{ $m }}</option>@endforeach
   </select>
-  <select id="invSearchYear" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
-    <option value="">Any year</option>
+  <select id="invSearchYear" onchange="liveInventorySearch()" title="Year from" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Year from</option>
     @for($yr = 2027; $yr >= 1986; $yr--)<option value="{{ $yr }}" {{ (string) request('year')===(string) $yr?'selected':'' }}>{{ $yr }}</option>@endfor
+  </select>
+  <select id="invSearchYearTo" onchange="liveInventorySearch()" title="Year to" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Year to</option>
+    @for($yr = 2027; $yr >= 1986; $yr--)<option value="{{ $yr }}" {{ (string) request('year_to')===(string) $yr?'selected':'' }}>{{ $yr }}</option>@endfor
   </select>
   <select id="invSearchGrade" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
     <option value="">Any grade</option>
@@ -144,7 +148,7 @@
         @php $vc = $vehicleChips->values()->all(); @endphp
         @for($i = 0; $i < max(3, count($vc)); $i++)
           <div class="flex gap-2 ms-vrow">
-            <input type="number" placeholder="Year" value="{{ $vc[$i]['year'] ?? '' }}" class="ms-y w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
+            <input type="text" placeholder="Year or 2010-2014" value="{{ $vc[$i]['year'] ?? '' }}" class="ms-y w-36 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
             <input type="text" list="msBrands" placeholder="Make" value="{{ $vc[$i]['make'] ?? '' }}" class="ms-m flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
             <input type="text" list="msModels" placeholder="Model" value="{{ $vc[$i]['model'] ?? '' }}" class="ms-d flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-body">
           </div>
@@ -438,7 +442,7 @@ async function doLiveInventorySearch() {
         url.searchParams.set('category', category);
         url.searchParams.set('location', location);
         url.searchParams.set('room', room);
-        [['model','invSearchModel'],['year','invSearchYear'],['grade','invSearchGrade'],['type','invSearchType'],
+        [['model','invSearchModel'],['year','invSearchYear'],['year_to','invSearchYearTo'],['grade','invSearchGrade'],['type','invSearchType'],
          ['stock','invSearchStock'],['photos','invSearchPhotos'],['price_min','invSearchPriceMin'],['price_max','invSearchPriceMax']]
           .forEach(function (p) { var el = document.getElementById(p[1]); if (el) url.searchParams.set(p[0], el.value); });
         url.searchParams.delete('page');

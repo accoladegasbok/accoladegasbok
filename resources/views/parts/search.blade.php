@@ -147,15 +147,24 @@
                    </select>
                 </div>
 
-                {{-- Year --}}
+                {{-- Year (a single year, or a from-to range) --}}
+                @php [$selYearFrom, $selYearTo] = array_pad(explode('-', (string) ($filters['year'] ?? ''), 2), 2, ''); @endphp
                 <div>
-                    <label class="block text-xs font-body font-500 text-gray-500 mb-1 uppercase tracking-wider">Year</label>
+                    <label class="block text-xs font-body font-500 text-gray-500 mb-1 uppercase tracking-wider">Year From &rarr; To</label>
+                    <div class="grid grid-cols-2 gap-2">
                     <select name="year" id="yearSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold bg-white">
-                        <option value="">All Years</option>
+                        <option value="">From</option>
                         @for($y = date('Y'); $y >= 1995; $y--)
-                            <option value="{{ $y }}" {{ ($filters['year'] ?? '') == $y ? 'selected' : '' }}>{{ $y }}</option>
+                            <option value="{{ $y }}" {{ $selYearFrom == $y ? 'selected' : '' }}>{{ $y }}</option>
                         @endfor
                     </select>
+                    <select name="year_to" id="yearToSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold bg-white">
+                        <option value="">To</option>
+                        @for($y = date('Y'); $y >= 1995; $y--)
+                            <option value="{{ $y }}" {{ $selYearTo == $y ? 'selected' : '' }}>{{ $y }}</option>
+                        @endfor
+                    </select>
+                    </div>
                 </div>
 
                 {{-- Part Category --}}
@@ -1023,6 +1032,8 @@ document.querySelectorAll('.filter-toggle').forEach(btn => {
     const makeSel   = document.getElementById('makeSelect');
     const modelSel  = document.getElementById('modelSelect');
     const yearSel   = document.getElementById('yearSelect');
+    const yearToSel = document.getElementById('yearToSelect');
+    const yearValue = () => { const a = yearSel.value.trim(), b = yearToSel ? yearToSel.value.trim() : ''; if (a && b && a !== b) return (+a <= +b) ? a + '-' + b : b + '-' + a; return a || b; };
     const vBox      = document.getElementById('vehicleChips');
     const pBox      = document.getElementById('partChips');
     const inputs    = document.getElementById('chipInputs');
@@ -1060,12 +1071,12 @@ document.querySelectorAll('.filter-toggle').forEach(btn => {
     }
 
     function addVehicle() {
-        const make = makeSel.value.trim(), model = modelSel.value.trim(), year = yearSel.value.trim();
+        const make = makeSel.value.trim(), model = modelSel.value.trim(), year = yearValue();
         if (!make && !model && !year) return false;
         if (state.vehicles.length >= MAX) { alert('You can search up to ' + MAX + ' vehicles at once.'); return false; }
         const v = year + '|' + make + '|' + model;
         if (!state.vehicles.some(x => x.toLowerCase() === v.toLowerCase())) state.vehicles.push(v);
-        makeSel.value = ''; yearSel.value = ''; modelSel.innerHTML = '<option value="">All Models</option>';
+        makeSel.value = ''; yearSel.value = ''; if (yearToSel) yearToSel.value = ''; modelSel.innerHTML = '<option value="">All Models</option>';
         render();
         return true;
     }
@@ -1086,7 +1097,7 @@ document.querySelectorAll('.filter-toggle').forEach(btn => {
     // ── Typeahead: part names that exist for the chosen vehicle(s), with how many are in stock ──
     let timer = null;
     async function fetchSuggestions() {
-        const params = new URLSearchParams({ mode: 'parts', q: partInput.value.trim(), make: makeSel.value, model: modelSel.value, year: yearSel.value });
+        const params = new URLSearchParams({ mode: 'parts', q: partInput.value.trim(), make: makeSel.value, model: modelSel.value, year: yearValue() });
         state.vehicles.forEach(v => params.append('v[]', v));
         try {
             const res  = await fetch(`{{ route('parts.models') }}?` + params.toString());

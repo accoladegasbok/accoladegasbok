@@ -96,9 +96,15 @@ class InventoryController extends Controller
 
         // ── More filters: model, year, grade, kind of item, stock level, photos, price range ──
         if ($f = $request->get('model'))    $query->where('p.model', $f);
-        if ($y = (int) $request->get('year')) {
-            $query->where('p.year_from', '<=', $y)->where(function ($yy) use ($y) {
-                $yy->where('p.year_to', '>=', $y)->orWhereNull('p.year_to');
+        // Year or year range (From -> To): a part matches when its vehicle years overlap the range.
+        $yFrom = (int) $request->get('year');
+        $yTo   = (int) $request->get('year_to');
+        if ($yFrom || $yTo) {
+            if (!$yFrom) $yFrom = $yTo;
+            if (!$yTo)   $yTo   = $yFrom;
+            if ($yFrom > $yTo) [$yFrom, $yTo] = [$yTo, $yFrom];
+            $query->where('p.year_from', '<=', $yTo)->where(function ($yy) use ($yFrom) {
+                $yy->where('p.year_to', '>=', $yFrom)->orWhereNull('p.year_to');
             });
         }
         if ($f = $request->get('grade'))    $query->where('p.condition_grade', $f);
@@ -122,7 +128,7 @@ class InventoryController extends Controller
         }
         $vehicleChips = collect((array) $request->input('v', []))->map(function ($row) {
             $x = array_pad(explode('|', (string) $row), 3, '');
-            return ['year' => (int) trim($x[0]), 'make' => trim($x[1]), 'model' => trim($x[2])];
+            return ['year' => trim($x[0]), 'make' => trim($x[1]), 'model' => trim($x[2])];
         })->filter(fn ($v) => $v['year'] || $v['make'] || $v['model'])->take(10)->values();
         if ($vehicleChips->isNotEmpty()) {
             $query->where(function ($vq) use ($vehicleChips) {
@@ -130,9 +136,15 @@ class InventoryController extends Controller
                     $vq->orWhere(function ($one) use ($v) {
                         if ($v['make'])  $one->where('p.brand', 'like', '%' . $v['make'] . '%');
                         if ($v['model']) $one->where('p.model', 'like', '%' . $v['model'] . '%');
-                        if ($v['year'])  $one->where('p.year_from', '<=', $v['year'])->where(function ($yy) use ($v) {
-                            $yy->where('p.year_to', '>=', $v['year'])->orWhereNull('p.year_to');
-                        });
+                        if ($v['year'] !== '') {
+                            // "2012" or "2010-2014": overlap with the part's vehicle years
+                            $ys = array_map('intval', array_pad(explode('-', $v['year'], 2), 2, null));
+                            $yf = $ys[0]; $yt = $ys[1] ?: $ys[0];
+                            if ($yf > $yt) [$yf, $yt] = [$yt, $yf];
+                            if ($yf) $one->where('p.year_from', '<=', $yt)->where(function ($yy) use ($yf) {
+                                $yy->where('p.year_to', '>=', $yf)->orWhereNull('p.year_to');
+                            });
+                        }
                     });
                 }
             });

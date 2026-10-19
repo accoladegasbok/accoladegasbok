@@ -250,7 +250,7 @@ class PartsSearchController extends Controller
             'scope'     => $scope,
             'make'      => trim($request->get('make', '')),
             'model'     => trim($request->get('model', '')),
-            'year'      => trim($request->get('year', '')),
+            'year'      => $this->normalizeYear($request->get('year', ''), $request->get('year_to', '')),
             // Callahan-style search: up to 10 vehicles and up to 10 part names at once.
             // v[] = "year|make|model", part[] = a part name.
             'vehicles'  => $scope === 'auto' ? $this->parseVehicles($request->input('v', [])) : [],
@@ -476,6 +476,23 @@ class PartsSearchController extends Controller
 
     // ── Callahan-style search helpers ────────────────────────────────
 
+    /**
+     * A year or a year range -> "2012" or "2010-2014" (or '' when not valid). Accepts "2010-2014" in one value,
+     * or a from-year plus a to-year; if they are the wrong way round they are swapped.
+     */
+    private function normalizeYear($from, $to = ''): string
+    {
+        $from = trim((string) $from); $to = trim((string) $to);
+        if (preg_match('/^(\d{4})\s*-\s*(\d{4})$/', $from, $m)) { $from = $m[1]; $to = $m[2]; }
+        $from = preg_match('/^\d{4}$/', $from) ? $from : '';
+        $to   = preg_match('/^\d{4}$/', $to) ? $to : '';
+        if ($from === '' && $to !== '') { $from = $to; $to = ''; }
+        if ($from !== '' && $to !== '' && $to !== $from) {
+            return (int) $from <= (int) $to ? "$from-$to" : "$to-$from";
+        }
+        return $from;
+    }
+
     /** "year|make|model" strings -> up to 10 clean vehicle entries. */
     private function parseVehicles($raw): array
     {
@@ -483,7 +500,7 @@ class PartsSearchController extends Controller
         foreach ((array) $raw as $item) {
             if (!is_string($item)) continue;
             [$year, $make, $model] = array_pad(explode('|', $item, 3), 3, '');
-            $year  = preg_match('/^\d{4}$/', trim($year)) ? trim($year) : '';
+            $year  = $this->normalizeYear($year);
             $make  = mb_substr(trim($make), 0, 40);
             $model = mb_substr(trim($model), 0, 60);
             if ($year === '' && $make === '' && $model === '') continue;
@@ -522,7 +539,12 @@ class PartsSearchController extends Controller
                 $vq->orWhere(function ($one) use ($v) {
                     if (!empty($v['make']))  $one->where('brand', 'like', '%' . $v['make'] . '%');
                     if (!empty($v['model'])) $one->where('model', 'like', '%' . $v['model'] . '%');
-                    if (!empty($v['year']))  $one->where('year_from', '<=', $v['year'])->where('year_to', '>=', $v['year']);
+                    if (!empty($v['year'])) {
+                        // One year, or a range: a part matches when its years overlap what was asked for.
+                        [$yf, $yt] = array_pad(explode('-', (string) $v['year'], 2), 2, null);
+                        $yt = $yt ?: $yf;
+                        $one->where('year_from', '<=', (int) $yt)->where('year_to', '>=', (int) $yf);
+                    }
                 });
             }
         });
@@ -539,9 +561,9 @@ class PartsSearchController extends Controller
         // The vehicle currently picked in the dropdowns (not yet added as a chip) narrows the list too.
         $make  = trim((string) $request->get('make', ''));
         $model = trim((string) $request->get('model', ''));
-        $year  = trim((string) $request->get('year', ''));
+        $year  = $this->normalizeYear($request->get('year', ''), $request->get('year_to', ''));
         if ($make !== '' || $model !== '' || $year !== '') {
-            $vehicles[] = ['year' => preg_match('/^\d{4}$/', $year) ? $year : '', 'make' => $make, 'model' => $model];
+            $vehicles[] = ['year' => $year, 'make' => $make, 'model' => $model];
         }
 
         $term = trim((string) $request->get('q', ''));
