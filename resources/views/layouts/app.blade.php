@@ -251,7 +251,10 @@
                         <span class="text-xs text-amber-400">— Complaints and enquiries (WhatsApp only)</span>
                     </li>
                     <li>🌐 autozenithparts.com</li>
-                    <li>✉ <a href="mailto:info@autozenithparts.com" class="hover:text-white transition-colors">info@autozenithparts.com</a></li>
+                    <li>✉ <a href="mailto:{{ \App\Support\Contacts::GENERAL_EMAIL }}" class="hover:text-white transition-colors">{{ \App\Support\Contacts::GENERAL_EMAIL }}</a> <span class="text-xs text-gray-500">— general</span></li>
+                    @foreach([['usa','USA'],['lagos','Nigeria'],['accra','Ghana']] as [$ek,$el])
+                    <li>✉ <a href="mailto:{{ \App\Support\Contacts::email($ek) }}" class="hover:text-white transition-colors">{{ \App\Support\Contacts::email($ek) }}</a> <span class="text-xs text-gray-500">— {{ $el }}</span></li>
+                    @endforeach
                     <li>🔐 <a href="https://accounts.autozenithparts.com" target="_blank" class="hover:text-white transition-colors">accounts.autozenithparts.com</a></li>
                 </ul>
             </div>

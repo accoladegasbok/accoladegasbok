@@ -204,25 +204,43 @@ class InvoiceController extends Controller
                 'rc'        => 'RC: 1135830',
                 'address'   => 'Oshodi, Lagos State, Nigeria',
                 'phone'     => \App\Support\Contacts::prettyKey('lagos'),
-                'email'     => 'lagos@autozenithparts.com',
+                'email'     => \App\Support\Contacts::email('lagos'),
                 'bank'      => 'Moniepoint',
                 'account'   => '5085726530',
                 'acct_name' => 'Gasbok Engineering Nigeria Limited',
-                'warranty'  => '10 days',
+                'warranty'  => 'See autozenithparts.com/warranty',
             ];
         }
 
-        if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife') || str_contains($loc, 'ibadan') || str_contains($loc, 'kaduna')) {
+        // Ibadan and Kaduna/Jos/Makurdi have their own address (Ife below is the regional HQ).
+        if (str_contains($loc, 'ibadan') || str_contains($loc, 'kaduna') || str_contains($loc, 'jos') || str_contains($loc, 'makurdi')) {
+            $isIbadan = str_contains($loc, 'ibadan');
+            return [
+                'company'   => 'Gasbok Engineering Nig. Limited',
+                'rc'        => 'RC: 1135830',
+                'address'   => $isIbadan
+                    ? 'Auto Zenith Mall, Samadex Junction, off Iwo Road, behind Bishop Philips Academy, Ibadan, Oyo State, Nigeria'
+                    : 'Kaduna / Jos / Makurdi, Nigeria',
+                'phone'     => \App\Support\Contacts::prettyFor($location),
+                'email'     => \App\Support\Contacts::emailFor($location),
+                'bank'      => 'Moniepoint',
+                'account'   => '5085726530',
+                'acct_name' => 'Gasbok Engineering Nigeria Limited',
+                'warranty'  => 'See autozenithparts.com/warranty',
+            ];
+        }
+
+        if (str_contains($loc, 'nigeria') || str_contains($loc, 'ife')) {
             return [
                 'company'   => 'Gasbok Engineering Nig. Limited',
                 'rc'        => 'RC: 1135830',
                 'address'   => 'Ile-Ife, Osun State, Nigeria',
                 'phone'     => \App\Support\Contacts::prettyFor($location),
-                'email'     => 'ng@autozenithparts.com',
+                'email'     => \App\Support\Contacts::emailFor($location),
                 'bank'      => 'Moniepoint',
                 'account'   => '5085726530',
                 'acct_name' => 'Gasbok Engineering Nigeria Limited',
-                'warranty'  => '10 days',
+                'warranty'  => 'See autozenithparts.com/warranty',
             ];
         }
 
@@ -232,11 +250,11 @@ class InvoiceController extends Controller
                 'rc'        => null,
                 'address'   => 'Accra, Ghana',
                 'phone'     => \App\Support\Contacts::prettyKey('accra'),
-                'email'     => 'gh@autozenithparts.com',
+                'email'     => \App\Support\Contacts::email('accra'),
                 'bank'      => 'Bank Transfer',
                 'account'   => 'On request',
                 'acct_name' => 'Auto Zenith Parts Ghana',
-                'warranty'  => '10 days',
+                'warranty'  => 'See autozenithparts.com/warranty',
             ];
         }
 
@@ -246,11 +264,11 @@ class InvoiceController extends Controller
                 'rc'        => null,
                 'address'   => '613 E Geneva St #23, Elkhorn WI 53121',
                 'phone'     => \App\Support\Contacts::prettyKey('usa'),
-                'email'     => 'wi@autozenithparts.com',
+                'email'     => \App\Support\Contacts::email('usa'),
                 'bank'      => 'Zelle / CashApp / Venmo',
                 'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
                 'acct_name' => 'Auto Zenith LLC',
-                'warranty'  => '15 days',
+                'warranty'  => 'See autozenithparts.com/warranty',
             ];
         }
 
@@ -259,11 +277,11 @@ class InvoiceController extends Controller
             'rc'        => null,
             'address'   => 'Waxahachie TX 75165',
             'phone'     => \App\Support\Contacts::prettyKey('usa'),
-            'email'     => 'info@autozenithparts.com',
+            'email'     => \App\Support\Contacts::email('usa'),
             'bank'      => 'Zelle / CashApp / Venmo',
             'account'   => 'Zelle: 5125873425 | CashApp: $GASBOK | Venmo: GASBOK',
             'acct_name' => 'Accolade Autos and General LLC',
-            'warranty'  => '15 days',
+            'warranty'  => 'See autozenithparts.com/warranty',
         ];
     }
 
@@ -288,7 +306,7 @@ class InvoiceController extends Controller
                 'Auto Zenith Parts Regional HQ — No. 1 Suite B, Gasbok Engineering Avenue, Ibadan Road, Ile-Ife, Osun State, Nigeria',
                 'Shop 3 & 4, Oranmiyan Shopping Complex — Lagere, Ile-Ife, Osun State, Nigeria',
                 'No. 3 Aimasiko Street, Shop 1 (Apaku Mall) — Mafoluku, Oshodi, Lagos State, Nigeria',
-                'No. 11, Zone A Suite 2, Samadex Junction — Molade, Iwo Road, Ibadan, Oyo State, Nigeria',
+                'Auto Zenith Mall — Samadex Junction, off Iwo Road, behind Bishop Philips Academy, Ibadan, Oyo State, Nigeria',
             ];
         }
 

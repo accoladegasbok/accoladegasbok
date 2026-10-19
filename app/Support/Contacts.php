@@ -10,13 +10,13 @@ class Contacts
 {
     /** key => [label shown to people, number in international form, digits-only for wa.me / tel:]. */
     public const LINES = [
-        'usa'       => ['label' => 'USA',                          'name' => 'Auto Zenith USA',   'number' => '+15125873425'],
-        'lagos'     => ['label' => 'Lagos (main West Africa hub)', 'name' => 'Auto Zenith 1 LA',  'number' => '+2349155688804'],
-        'accra'     => ['label' => 'Accra, Ghana',                 'name' => 'Accra hub',         'number' => '+233201819789'],
-        'ibadan'    => ['label' => 'Ibadan',                       'name' => 'Auto Zenith 3 IB',  'number' => '+2348168024903'],
-        'ife'       => ['label' => 'Ile-Ife regional hub',         'name' => 'Auto Zenith 2 FE',  'number' => '+2348136078367'],
-        'kaduna'    => ['label' => 'Kaduna / Jos / Makurdi',       'name' => 'Kaduna hub',        'number' => '+2348053066068'],
-        'complaints'=> ['label' => 'Complaints and enquiries (WhatsApp only)', 'name' => 'Complaints', 'number' => '+2348067422777'],
+        'usa'       => ['label' => 'USA',                          'name' => 'Auto Zenith USA',   'number' => '+15125873425', 'email' => 'usa@autozenithparts.com', 'address' => 'Waxahachie TX · Kennedale TX · 613 E Geneva St #23, Elkhorn WI'],
+        'lagos'     => ['label' => 'Lagos (main West Africa hub)', 'name' => 'Auto Zenith 1 LA',  'number' => '+2349155688804', 'email' => 'ng@autozenithparts.com', 'address' => 'No. 3 Aimasiko Street, Shop 1 (Apaku Mall), Mafoluku, Oshodi, Lagos State'],
+        'accra'     => ['label' => 'Accra, Ghana',                 'name' => 'Accra hub',         'number' => '+233201819789', 'email' => 'gh@autozenithparts.com', 'address' => 'Accra, Ghana'],
+        'ibadan'    => ['label' => 'Ibadan',                       'name' => 'Auto Zenith 3 IB',  'number' => '+2348168024903', 'email' => 'ng@autozenithparts.com', 'address' => 'Auto Zenith Mall, Samadex Junction, off Iwo Road, behind Bishop Philips Academy, Ibadan, Oyo State'],
+        'ife'       => ['label' => 'Ile-Ife regional hub',         'name' => 'Auto Zenith 2 FE',  'number' => '+2348136078367', 'email' => 'ng@autozenithparts.com', 'address' => 'No. 1 Suite B, Gasbok Engineering Avenue, Ibadan Road, Ile-Ife, Osun State'],
+        'kaduna'    => ['label' => 'Kaduna / Jos / Makurdi',       'name' => 'Kaduna hub',        'number' => '+2348053066068', 'email' => 'ng@autozenithparts.com', 'address' => 'Kaduna / Jos / Makurdi'],
+        'complaints'=> ['label' => 'Complaints and enquiries (WhatsApp only)', 'name' => 'Complaints', 'number' => '+2348067422777', 'email' => 'info@autozenithparts.com', 'address' => ''],
     ];
 
     /** Which line answers for a part / sale location. USA is the default. */
@@ -76,6 +76,19 @@ class Contacts
     {
         return self::pretty(self::numberFor($location));
     }
+
+    /** Email for a location: usa@ / gh@ / ng@ (all Nigeria hubs); info@ is the general address. */
+    public static function emailFor(?string $location): string
+    {
+        return self::line(self::keyFor($location))['email'];
+    }
+
+    public static function email(string $key): string
+    {
+        return self::line($key)['email'];
+    }
+
+    public const GENERAL_EMAIL = 'info@autozenithparts.com';
 
     public static function prettyKey(string $key): string
     {

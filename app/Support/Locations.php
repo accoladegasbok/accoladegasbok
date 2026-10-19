@@ -32,6 +32,7 @@ class Locations
         'Lagos Nigeria',
         'Abuja Nigeria',
         'Akure Nigeria',
+        'Kaduna Nigeria',   // Kaduna / Jos / Makurdi hub
         'Accra Ghana',
     ];
 
@@ -91,10 +92,8 @@ class Locations
      */
     public static function whatsappNumber(string $location): string
     {
-        return match (true) {
-            str_contains($location, 'Nigeria') || str_contains($location, 'Ghana') => '2349155688804',
-            default => '16822563201',
-        };
+        // Numbers live in App\Support\Contacts — change them there, not here.
+        return \App\Support\Contacts::waFor($location);
     }
 
     /**

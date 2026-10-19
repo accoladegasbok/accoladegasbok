@@ -36,7 +36,7 @@
   "logo": "https://autozenithparts.com/images/az-logo.png",
   "image": "https://autozenithparts.com/images/az-logo.png",
   "email": "info@autozenithparts.com",
-  "telephone": "",
+  "telephone": "+15125873425",
   "priceRange": "$$",
   "areaServed": ["Nigeria", "Ghana", "United States"],
   "location": [
@@ -254,14 +254,14 @@
       <div>
         <div class="eyebrow">Nigeria · Ghana · USA</div>
         <h1>Quality used<br>auto parts,<br><em>graded &amp; guaranteed.</em></h1>
-        <p class="lead">Auto Zenith Parts sources, inspects, and grades used engines, transmissions, body and electrical parts across five locations — so every part you buy comes with a real condition grade, a real warranty, and a real stock number behind it.</p>
+        <p class="lead">Auto Zenith Parts sources, inspects, and grades used engines, transmissions, body and electrical parts across Nigeria, Ghana and the USA — so every part you buy comes with a real condition grade, a real warranty, and a real stock number behind it.</p>
         <div class="hero-ctas">
           <a href="/parts" class="btn btn-primary">Browse Inventory →</a>
           <a href="#what-we-do" class="btn btn-secondary">How It Works</a>
         </div>
         <div class="trust-row">
           <div class="trust-item"><span class="dot">●</span> Condition-graded A / B / C</div>
-          <div class="trust-item"><span class="dot">●</span> 10-day mechanical warranty</div>
+          <div class="trust-item"><span class="dot">●</span> Up to 90-day engine warranty</div>
           <div class="trust-item"><span class="dot">●</span> Legal-trace documented</div>
         </div>
       </div>
@@ -306,7 +306,7 @@
         <div class="wwd-card">
           <div class="wwd-num">03 — DELIVER</div>
           <h3>Documented &amp; Warrantied</h3>
-          <p>Engines, catalytic converters, airbags, and other sensitive parts ship with legal-trace documentation. Mechanical parts carry a 10-day warranty from the day you collect.</p>
+          <p>Engines, catalytic converters, airbags, and other sensitive parts ship with legal-trace documentation. Engines carry up to 90 days (USA) or 30 days (West Africa), mechanical parts 30 days and electrical modules 14 days, all from your invoice date.</p>
         </div>
       </div>
     </div>
@@ -341,7 +341,7 @@
         <div class="cat-tag">
           <div class="cat-icon">🔌</div>
           <h4>Electrical</h4>
-          <p>Alternators, starters, sensors, ECUs — tested before listing, no returns after install.</p>
+          <p>Alternators, starters, sensors, ECUs — tested before listing; 14-day exchange or store credit if faulty.</p>
           <div class="cat-stripe"></div>
         </div>
       </div>
@@ -379,7 +379,7 @@
     <div class="wrap">
       <div class="section-head">
         <div class="section-eyebrow">Where We Operate</div>
-        <h2 class="display">Nine cities.<br>One stock system.</h2>
+        <h2 class="display">Three countries.<br>One stock system.</h2>
         <p>Every location runs on the same inventory, grading, and warranty standard — wherever you buy from, the same rules apply.</p>
       </div>
       <div class="loc-grid">
@@ -419,14 +419,18 @@
     <div id="galleryLightboxContent" style="max-width:90vw; max-height:90vh;" onclick="event.stopPropagation()"></div>
   </div>
 
+@endverbatim
+@include('partials._contacts')
+@verbatim
+
   <!-- ══════ WARRANTY ══════ -->
   <section class="warranty" id="warranty">
     <div class="wrap warranty-inner">
-      <div class="warranty-badge"><span class="n">10</span>DAYS</div>
+      <div class="warranty-badge"><span class="n">30-90</span>DAYS</div>
       <div>
-        <h3>⚠ What Our Warranty Actually Covers</h3>
-        <p>Our 10-day warranty applies to engines and mechanical parts that genuinely can't be verified until they're installed. Warranty is void if a part is disassembled, modified, or damaged after installation — proof of purchase is required for every claim.</p>
-        <p>Electrical parts (brain box/PCM, alternators, starters, fuel pumps, sensors, etc.) are non-returnable — buyers must fully test before leaving our facility. Automatic transmissions carry no warranty. We tell you this upfront, not after you've bought.</p>
+        <h3>What Our Warranty Covers</h3>
+        <p>Warranty starts on your invoice or receipt date and covers defects that stop a part from working normally. <strong>Engines:</strong> 90 days (USA) / 30 days (West Africa). <strong>Transmissions:</strong> 90 days (USA); in West Africa 30 days, only when installed by our recommended technician with our recommended oil &mdash; no warranty on transmissions bought and taken away. <strong>Other mechanical parts:</strong> 30 days. <strong>Electrical modules and sensors:</strong> 14 days, exchange or store credit only.</p>
+        <p>Labor is not covered. The warranty is void if the Auto Zenith tag or mark is removed or the part is disassembled. Body panels, glass and lights must be inspected at purchase. Returns within 7 days, uninstalled, carry a 20% restocking fee. <a href="/warranty" style="color:#5d4037;font-weight:700;text-decoration:underline;">Read the full warranty terms</a>.</p>
       </div>
     </div>
   </section>
@@ -435,10 +439,10 @@
   <section class="final-cta">
     <div class="wrap">
       <h2 class="display">Looking for a specific part?</h2>
-      <p>Search live inventory across all five locations by part, vehicle, or engine code — or reach out directly and our team will source it.</p>
+      <p>Search live inventory across all our locations by part, vehicle, or engine code — or reach out directly and our team will source it.</p>
       <div class="hero-ctas">
         <a href="/parts" class="btn btn-primary">Search Inventory →</a>
-        <a href="mailto:info@autozenithparts.com" class="btn btn-secondary">Contact Us</a>
+        <a href="#contact" class="btn btn-secondary">Contact Us</a>
       </div>
     </div>
   </section>
@@ -465,7 +469,7 @@
           <a href="/warranty">Warranty Policy</a>
           <a href="/refund-policy">Refund Policy</a>
           <a href="/shipping-policy">Shipping Policy</a>
-          <a href="mailto:info@autozenithparts.com">Contact</a>
+          <a href="#contact">Contact</a>
         </div>
         <div class="footer-col">
           <h5>Staff</h5>
@@ -480,7 +484,7 @@
 @verbatim
     </div>
     <div class="footer-bottom">
-      <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved. · <a href="mailto:info@autozenithparts.com" style="color:#B9C2D6;">info@autozenithparts.com</a></span>
+      <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved. · <a href="mailto:info@autozenithparts.com" style="color:#B9C2D6;">info@autozenithparts.com</a> · <a href="mailto:usa@autozenithparts.com" style="color:#B9C2D6;">usa@</a> · <a href="mailto:ng@autozenithparts.com" style="color:#B9C2D6;">ng@</a> · <a href="mailto:gh@autozenithparts.com" style="color:#B9C2D6;">gh@</a></span>
       <span class="mono" style="letter-spacing:0.08em;">AUTOZENITHPARTS.COM</span>
     </div>
   </div>
