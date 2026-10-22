@@ -29,6 +29,9 @@
                 @endif
             </div>
         @endforeach
+        @if(collect($__rows)->contains(fn($r) => $r['label'] === 'Pin count'))
+            <div class="px-4 py-2 bg-gray-50 text-xs text-gray-500">Pin count is the number of terminals on the connector at the valve body, just above the selector switch.</div>
+        @endif
     </div>
     @endif
 @else
