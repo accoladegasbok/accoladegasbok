@@ -60,7 +60,7 @@
     $logoUri = \App\Http\Controllers\Admin\InvoiceController::logoDataUri(!empty($businessInfo['rc']));
 
     // Short warranty text for the document footer (full terms: autozenithparts.com/warranty)
-    $docWarranty = 'Limited Warranty: Engines 90 days (USA) / 30 days (West Africa). Transmissions 90 days (USA); in West Africa 30 days only when installed by our recommended technician with our recommended oil. No warranty on transmissions bought and taken away; inspect properly before purchase. Mechanical parts 30 days. Electrical 14 days, exchange or credit only. Labor not covered. Void if the Auto Zenith tag or mark is removed or the part is disassembled. Returns within 7 days, uninstalled, 20% restocking fee. Full terms: autozenithparts.com/warranty';
+    $docWarranty = \App\Support\Warranty::short();
 @endphp
 
 <div class="doc">

@@ -81,6 +81,8 @@ class PartsSearchController extends Controller
             'makes','years','categories','parts','rates','currency',
             'filters','totalAvailable','totalOrdersEver','totalCustomersServed'
         ))->with([
+            // APS-style part groups for the Part Type picker (each tile may cover several categories)
+            'categoryTiles' => \App\Data\PartCategories::vehicleTiles(),
             'yardCounts'  => $yardCounts,
             'trimOptions' => $trimOptions,
             'chips'     => $this->buildChips($request, $filters),
@@ -89,6 +91,43 @@ class PartsSearchController extends Controller
             // The customer's Location filter, in the Lagos-hub wording.
             'locations' => \App\Support\HubLocations::filterOptions(),
         ]);
+    }
+
+    // =========================================================
+    // GET /parts/categories — browse by part group, then by part type.
+    // Counts come from real Available stock, so a tile or type with
+    // nothing in stock is shown quietly instead of leading nowhere.
+    // =========================================================
+    public function categories(Request $request)
+    {
+        $tiles = \App\Data\PartCategories::vehicleTiles();
+
+        $rows = DB::table('parts_inventory')
+            ->whereNull('deleted_at')
+            ->where('status', 'Available')
+            ->whereIn('part_category', self::AUTO_CATEGORIES)
+            ->selectRaw('part_category, part_name, COUNT(*) as n')
+            ->groupBy('part_category', 'part_name')
+            ->orderBy('part_name')
+            ->get();
+
+        $groups = [];
+        foreach ($tiles as $tile) {
+            $types = [];
+            $count = 0;
+            foreach ($rows as $r) {
+                if (!in_array($r->part_category, $tile['categories'], true)) continue;
+                $types[] = [
+                    'name'  => $r->part_name,
+                    'count' => (int) $r->n,
+                    'url'   => route('parts.search', ['category' => $tile['param'], 'part' => [$r->part_name]]),
+                ];
+                $count += (int) $r->n;
+            }
+            $groups[] = ['tile' => $tile, 'count' => $count, 'types' => $types];
+        }
+
+        return view('parts.categories', ['groups' => $groups]);
     }
 
     // =========================================================
@@ -278,8 +317,13 @@ class PartsSearchController extends Controller
         // scope (prevents e.g. ?category=Electronics being usable on
         // the /parts URL to sneak non-auto results in).
         $scopeCategories = $filters['scope'] === 'other' ? self::OTHER_CATEGORIES : self::AUTO_CATEGORIES;
-        if ($filters['category'] && in_array($filters['category'], $scopeCategories, true)) {
-            $q->where('part_category', $filters['category']);
+        // The category can be one name or a comma list (a tile such as "Interior,Seat").
+        $chosenCategories = array_values(array_intersect(
+            array_filter(array_map('trim', explode(',', (string) $filters['category']))),
+            $scopeCategories
+        ));
+        if ($chosenCategories) {
+            $q->whereIn('part_category', $chosenCategories);
         } else {
             $q->whereIn('part_category', $scopeCategories);
         }

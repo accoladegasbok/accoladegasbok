@@ -54,6 +54,20 @@ class OemDatabase
         // ══════════════════════════════════════════════════════
         // TOYOTA
         // ══════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════
+        // SCION - engine only. Gearbox and pin count are not recorded here
+        // because we have no confirmed data; staff read them off the donor.
+        // ══════════════════════════════════════════════════════
+        if ($make === 'SCION') {
+            if ($model === 'TC') {
+                if ($year >= 2011) return array_merge($default, ['engine_code'=>'2AR-FE','engine_l'=>2.5,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'Scion tC 2011-2016 (2.5L)','compat_year_from'=>2011,'compat_year_to'=>2016]);
+                if ($year >= 2005) return array_merge($default, ['engine_code'=>'2AZ-FE','engine_l'=>2.4,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'Scion tC 2005-2010 (2.4L)','compat_year_from'=>2005,'compat_year_to'=>2010]);
+            }
+            if ($model === 'XB') {
+                if ($year >= 2008 && $year <= 2015) return array_merge($default, ['engine_code'=>'2AZ-FE','engine_l'=>2.4,'cylinders'=>4,'drive_type'=>'FWD','gear_alias'=>'Scion xB 2008-2015 (2.4L)','compat_year_from'=>2008,'compat_year_to'=>2015]);
+            }
+        }
+
         if ($make === 'TOYOTA') {
 
             // ── Corolla ───────────────────────────────────────
@@ -110,14 +124,14 @@ class OemDatabase
                     if ($year >= 2004) return array_merge($default, ['engine_code'=>'3MZ-FE','transmission_code'=>'A541E','gear_alias'=>'V6 3.3L (Highlander 2004-07)','compat_year_from'=>2004,'compat_year_to'=>2007]);
                     return array_merge($default, ['engine_code'=>'1MZ-FE','transmission_code'=>'A541E','gear_alias'=>'V6 3.0L (Highlander 2001-03)','compat_year_from'=>2001,'compat_year_to'=>2003]);
                 }
-                if ($year >= 2008) return array_merge($default, ['engine_code'=>'2AR-FE','transmission_code'=>'U760E','pin_count'=>22,'gear_alias'=>'22-pin (Highlander 2.7L 2008+)','compat_year_from'=>2008,'compat_year_to'=>2019]);
+                if ($year >= 2008) return array_merge($default, ['engine_code'=>'1AR-FE','transmission_code'=>'U760E','pin_count'=>22,'engine_l'=>2.7,'cylinders'=>4,'gear_alias'=>'22-pin (Highlander 2.7L 2008+)','compat_year_from'=>2008,'compat_year_to'=>2019]);
                 return array_merge($default, ['engine_code'=>'2AZ-FE','transmission_code'=>'U241E','pin_count'=>13,'gear_alias'=>'13-pin (Highlander 2.4L 2001-07)','compat_year_from'=>2001,'compat_year_to'=>2007]);
             }
 
             // ── Venza ─────────────────────────────────────────
             if ($model === 'VENZA') {
                 if ($cylinders == 6 || $engineL >= 3.0) return array_merge($default, ['engine_code'=>'2GR-FE','transmission_code'=>'A750E','gear_alias'=>'V6 (Venza 3.5L)','compat_year_from'=>2009,'compat_year_to'=>2015]);
-                return array_merge($default, ['engine_code'=>'2AR-FE','transmission_code'=>'U760E','pin_count'=>22,'gear_alias'=>'22-pin (Venza 2.7L)','compat_year_from'=>2009,'compat_year_to'=>2015]);
+                return array_merge($default, ['engine_code'=>'1AR-FE','transmission_code'=>'U760E','pin_count'=>22,'engine_l'=>2.7,'cylinders'=>4,'gear_alias'=>'22-pin (Venza 2.7L)','compat_year_from'=>2009,'compat_year_to'=>2015]);
             }
 
             // ── Matrix ────────────────────────────────────────
@@ -619,6 +633,12 @@ class OemDatabase
         $map = [
             '2AZ-FE'    => 2.4,
             '2AR-FE'    => 2.5,
+            '1AR-FE'    => 2.7,
+            '2TR-FE'    => 2.7,
+            '3MZ-FE'    => 3.3,
+            '1ZZ-FE'    => 1.8,
+            '2ZR-FE'    => 1.8,
+            '3ZZ-FE'    => 1.6,
             '1MZ-FE'    => 3.0,
             '2GR-FE'    => 3.5,
             'A25A-FKS'  => 2.5,
@@ -663,7 +683,7 @@ class OemDatabase
         if ($make === 'TOYOTA' && $model === 'HIGHLANDER') {
             if ($year >= 2008) {
                 $opts[] = ['label'=>'3.5L V6 (2GR-FE)','engine_code'=>'2GR-FE','cylinders'=>6,'engine_l'=>3.5,'pin_count'=>null];
-                $opts[] = ['label'=>'2.7L 4-cyl (2AR-FE)','engine_code'=>'2AR-FE','cylinders'=>4,'engine_l'=>2.7,'pin_count'=>22];
+                $opts[] = ['label'=>'2.7L 4-cyl (1AR-FE)','engine_code'=>'1AR-FE','cylinders'=>4,'engine_l'=>2.7,'pin_count'=>22];
             } else {
                 $opts[] = ['label'=>'2.4L 4-cyl (2AZ-FE)','engine_code'=>'2AZ-FE','cylinders'=>4,'engine_l'=>2.4,'pin_count'=>13];
                 $opts[] = ['label'=>'3.3L V6 (3MZ-FE)','engine_code'=>'3MZ-FE','cylinders'=>6,'engine_l'=>3.3,'pin_count'=>null];
@@ -745,10 +765,12 @@ class OemDatabase
             'K310'   => ['2009-2013 Toyota Corolla CVT','2009-2013 Toyota Matrix CVT','2007-2013 Toyota Auris CVT'],
             'K311'   => ['2009-2013 Toyota Corolla CVT (K311)','2009-2013 Toyota Matrix CVT'],
             // Toyota 2AZ-FE family (13-pin gear)
-            '2AZ-FE' => ['2002-2009 Toyota Camry 2.4L','2001-2012 Toyota RAV4 2.4L','2001-2007 Toyota Highlander 2.4L','2002-2008 Toyota Solara 2.4L','2009-2012 Toyota Venza 2.7L','2006-2012 Toyota Alphard 2.4L'],
+            '2AZ-FE' => ['2002-2009 Toyota Camry 2.4L','2001-2012 Toyota RAV4 2.4L','2001-2007 Toyota Highlander 2.4L','2002-2008 Toyota Solara 2.4L','2006-2012 Toyota Alphard 2.4L','2005-2010 Scion tC 2.4L','2008-2015 Scion xB 2.4L','2003-2007 Toyota Highlander 2.4L','2009-2010 Pontiac Vibe 2.4L (to verify)','2009-2013 Toyota Matrix 2.4L (to verify)'],
             'U241E'  => ['2002-2009 Toyota Camry (10-pin U241E)','2001-2012 Toyota RAV4','2001-2007 Toyota Highlander','2002-2008 Toyota Solara'],
             // Toyota 2AR-FE family (22-pin gear)
-            '2AR-FE' => ['2010-2011 Toyota Camry 2.5L (20-pin — distinct from 2012+)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4 2.5L','2014-2019 Toyota Highlander 2.7L','2009-2015 Toyota Venza 2.7L','2012-2017 Toyota Avalon 2.5L','2012-2017 Toyota Aurion 2.5L'],
+            '2AR-FE' => ['2010-2011 Toyota Camry 2.5L (20-pin — distinct from 2012+)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4 2.5L','2012-2017 Toyota Avalon 2.5L','2012-2017 Toyota Aurion 2.5L'],
+            // Toyota 1AR-FE (2.7L, 4 cylinder) - the Venza and Highlander 2.7L engine, NOT the 2.5L 2AR-FE
+            '1AR-FE' => ['2009-2016 Toyota Venza 2.7L','2011-2019 Toyota Highlander 2.7L (to verify)'],
             'U760E'  => ['2010-2011 Toyota Camry 2.5L (20-pin)','2012-2018 Toyota Camry 2.5L (22-pin)','2013-2018 Toyota RAV4','2009-2015 Toyota Venza','NOTE: U760E pin count varies by year (20 vs 22) — always confirm year before treating as interchangeable'],
             // Toyota 2GR-FE V6 family
             '2GR-FE' => ['2007-2022 Toyota Camry V6 3.5L','2008-2019 Toyota Highlander V6','2005-2022 Toyota Avalon V6','2008-2020 Toyota Sienna V6','2006-2015 Lexus GS350','2007-2018 Lexus ES350','2007-2019 Lexus RX350'],

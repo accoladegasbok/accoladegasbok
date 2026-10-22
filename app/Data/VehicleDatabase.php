@@ -173,6 +173,9 @@ class VehicleDatabase
             'rolls-royce' => [
                 'Cullinan','Dawn','Ghost','Phantom','Wraith',
             ],
+            'scion' => [
+                'FR-S','iA','iM','iQ','tC','xA','xB','xD',
+            ],
             'pontiac' => [
                 'Aztek','Bonneville','G3','G5','G6','G8','Grand Am',
                 'Grand Prix','GTO','Solstice','Sunfire','Torrent','Vibe',

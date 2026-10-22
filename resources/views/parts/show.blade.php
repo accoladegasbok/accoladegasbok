@@ -99,45 +99,12 @@
         @endif
       </h1>
 
-      {{-- OEM codes — item 6 & 7 --}}
-      @if(($part->engine_code_oem ?? null) || ($part->transmission_code_oem ?? null))
+      {{-- Key spec badges chosen by part type --}}
       <div class="flex flex-wrap gap-2 mb-3">
-        @if($part->engine_code_oem ?? null)
-          <span class="inline-flex items-center gap-1.5 bg-navy text-gold font-mono font-700 text-sm px-3 py-1 rounded-lg">
-            Engine: {{ $part->engine_code_oem }}
-          </span>
-        @endif
-        @if($part->transmission_code_oem ?? null)
-          <span class="inline-flex items-center gap-1.5 bg-navy text-gold font-mono font-700 text-sm px-3 py-1 rounded-lg">
-            Gear: {{ $part->transmission_code_oem }}
-            @if($part->pin_count ?? null)
-              · {{ $part->pin_count }}-pin
-            @endif
-          </span>
-        @endif
-        @if($part->pin_count ?? null)
-          <span class="inline-flex items-center gap-1.5 bg-navy text-gold font-mono font-700 text-sm px-3 py-1 rounded-lg">
-            {{ $part->pin_count }}-pin connector
-          </span>
-        @endif
-        @if($part->drive_type ?? null)
-          <span class="inline-flex items-center gap-1.5 bg-blue-600 text-white font-display font-700 text-sm px-3 py-1 rounded-lg">
-            {{ $part->drive_type }}
-          </span>
-        @elseif($part->gear_alias ?? null)
-          @php
-              $driveFromAlias = null;
-              foreach (['4WD','4x4','AWD','2WD','4x2','FWD','RWD'] as $dt) {
-                  if (str_contains(strtoupper($part->gear_alias), str_replace('x','X',$dt))) { $driveFromAlias = $dt; break; }
-              }
-          @endphp
-          @if($driveFromAlias)
-          <span class="inline-flex items-center gap-1.5 bg-blue-600 text-white font-display font-700 text-sm px-3 py-1 rounded-lg">
-            {{ $driveFromAlias }}
-          </span>
-          @endif
-        @endif
-        @if($part->gear_alias ?? null)
+        @foreach(\App\Support\PartSpecs::chips($part) as $__c)
+          <span class="inline-flex items-center gap-1.5 {{ in_array($__c['tone'], ['drive']) ? 'bg-blue-600 text-white' : 'bg-navy text-gold' }} font-mono font-700 text-sm px-3 py-1 rounded-lg" title="{{ $__c['label'] }}">{{ $__c['value'] }}</span>
+        @endforeach
+        @if(($part->gear_alias ?? null) && in_array(\App\Support\PartSpecs::basis($part), ['transmission','engine_gear']))
           <span class="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 font-body font-500 text-xs px-3 py-1 rounded-lg">
             {{ $part->gear_alias }}
           </span>
@@ -148,7 +115,6 @@
           </span>
         @endif
       </div>
-      @endif
 
       {{-- Grade + mileage --}}
       <div class="flex flex-wrap gap-2 mb-5">
@@ -227,15 +193,13 @@
         ])
       @endif
 
-      {{-- Specs table --}}
+      {{-- Fitment details by part type, then general details --}}
+      @include('parts._specs', ['part' => $part, 'style' => 'table'])
+      @include('partials._warranty-note', ['category' => $part->part_category ?? null])
+
       <div class="border border-gray-200 rounded-2xl overflow-hidden text-sm font-body">
         @foreach([
           ['OEM Part Number', $part->oem_part_number],
-          ['Engine Code',     $part->engine_code_oem ?? null],
-          ['Gear / Trans Code',$part->transmission_code_oem ?? null],
-          ['Pin Count',       ($part->pin_count ?? null) ? ($part->pin_count . ' pins') : null],
-          ['Drive Type',      $part->drive_type ?? null],
-          ['Gear Alias',      $part->gear_alias ?? null],
           ['Origin Market',   ($part->origin_market ?? 'N/A') !== 'N/A' ? ($part->origin_market ?? null) : null],
           ['Side',            $part->side !== 'N/A' ? $part->side : null],
           ['Body Style',      $part->body_style],
@@ -292,18 +256,13 @@
 
         {{-- Engine / gear --}}
         <div>
-          <div class="text-xs text-gray-400 uppercase tracking-wider mb-2 font-body">Engine / Gear</div>
-          @if($part->engine_code_oem ?? null)
-            <div class="font-mono font-700 text-gold text-sm">{{ $part->engine_code_oem }}</div>
-          @endif
-          @if($part->transmission_code_oem ?? null)
-            <div class="font-mono font-700 text-gold text-sm">{{ $part->transmission_code_oem }}
-              @if($part->pin_count ?? null) · {{ $part->pin_count }}-pin @endif
-            </div>
-          @endif
-          @if(!($part->engine_code_oem ?? null) && !($part->transmission_code_oem ?? null))
+          <div class="text-xs text-gray-400 uppercase tracking-wider mb-2 font-body">Fitment</div>
+          @php $__chips2 = \App\Support\PartSpecs::chips($part); @endphp
+          @forelse($__chips2 as $__c2)
+            <div class="font-mono font-700 text-gold text-sm">{{ $__c2['value'] }}</div>
+          @empty
             <div class="text-gray-400 text-sm font-body">See fitment notes</div>
-          @endif
+          @endforelse
         </div>
       </div>
     </div>

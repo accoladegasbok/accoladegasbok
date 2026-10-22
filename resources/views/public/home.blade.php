@@ -36,7 +36,7 @@
   "logo": "https://autozenithparts.com/images/az-logo.png",
   "image": "https://autozenithparts.com/images/az-logo.png",
   "email": "info@autozenithparts.com",
-  "telephone": "",
+  "telephone": "+15125873425",
   "priceRange": "$$",
   "areaServed": ["Nigeria", "Ghana", "United States"],
   "location": [
@@ -45,6 +45,7 @@
     {"@type": "Place", "name": "Ibadan, Oyo State, Nigeria"},
     {"@type": "Place", "name": "Akure, Ondo State, Nigeria"},
     {"@type": "Place", "name": "Abuja, Nigeria"},
+    {"@type": "Place", "name": "Kaduna, Jos and Makurdi, Nigeria"},
     {"@type": "Place", "name": "Accra, Ghana"},
     {"@type": "Place", "name": "Waxahachie, TX, USA"},
     {"@type": "Place", "name": "Kennedale, TX, USA"},
@@ -253,14 +254,14 @@
       <div>
         <div class="eyebrow">Nigeria · Ghana · USA</div>
         <h1>Quality used<br>auto parts,<br><em>graded &amp; guaranteed.</em></h1>
-        <p class="lead">Auto Zenith Parts sources, inspects, and grades used engines, transmissions, body and electrical parts across five locations — so every part you buy comes with a real condition grade, a real warranty, and a real stock number behind it.</p>
+        <p class="lead">Auto Zenith Parts sources, inspects, and grades used engines, transmissions, body and electrical parts across Nigeria, Ghana and the USA — so every part you buy comes with a real condition grade, a real warranty, and a real stock number behind it.</p>
         <div class="hero-ctas">
           <a href="/parts" class="btn btn-primary">Browse Inventory →</a>
           <a href="#what-we-do" class="btn btn-secondary">How It Works</a>
         </div>
         <div class="trust-row">
           <div class="trust-item"><span class="dot">●</span> Condition-graded A / B / C</div>
-          <div class="trust-item"><span class="dot">●</span> 10-day mechanical warranty</div>
+          <div class="trust-item"><span class="dot">●</span> @endverbatim{{ \App\Support\Warranty::trustLine() }}@verbatim</div>
           <div class="trust-item"><span class="dot">●</span> Legal-trace documented</div>
         </div>
       </div>
@@ -305,7 +306,7 @@
         <div class="wwd-card">
           <div class="wwd-num">03 — DELIVER</div>
           <h3>Documented &amp; Warrantied</h3>
-          <p>Engines, catalytic converters, airbags, and other sensitive parts ship with legal-trace documentation. Mechanical parts carry a 10-day warranty from the day you collect.</p>
+          <p>Engines, catalytic converters, airbags, and other sensitive parts ship with legal-trace documentation. Engines carry up to 90 days (USA) or 30 days (West Africa), mechanical parts 30 days and electrical modules 14 days, all from your invoice date.</p>
         </div>
       </div>
     </div>
@@ -319,31 +320,18 @@
         <h2 class="display">Every part category<br>you'd expect from a<br>real donor yard.</h2>
       </div>
       <div class="cat-grid">
-        <div class="cat-tag">
-          <div class="cat-icon">⚙️</div>
-          <h4>Engines</h4>
-          <p>Toyota, Honda, Nissan, Hyundai/Kia, Mercedes &amp; more — verified engine codes.</p>
+@endverbatim
+@foreach(\App\Data\PartCategories::tiles() as $__tile)
+        <a href="{{ $__tile['url'] }}" class="cat-tag" style="display:block;text-decoration:none;">
+          <div class="cat-icon">{{ $__tile['icon'] }}</div>
+          <h4>{{ $__tile['label'] }}</h4>
+          <p>{{ $__tile['blurb'] }}</p>
           <div class="cat-stripe"></div>
-        </div>
-        <div class="cat-tag">
-          <div class="cat-icon">🔧</div>
-          <h4>Transmissions</h4>
-          <p>Automatic &amp; manual gearboxes with pin count and gear ratio noted per unit.</p>
-          <div class="cat-stripe"></div>
-        </div>
-        <div class="cat-tag">
-          <div class="cat-icon">🚘</div>
-          <h4>Body Parts</h4>
-          <p>Doors, bumpers, fenders, and panels — condition-graded, side-specific.</p>
-          <div class="cat-stripe"></div>
-        </div>
-        <div class="cat-tag">
-          <div class="cat-icon">🔌</div>
-          <h4>Electrical</h4>
-          <p>Alternators, starters, sensors, ECUs — tested before listing, no returns after install.</p>
-          <div class="cat-stripe"></div>
-        </div>
+        </a>
+@endforeach
+@verbatim
       </div>
+      <p style="margin-top:18px;text-align:center;"><a href="/parts/categories" style="color:var(--navy);font-weight:700;text-decoration:underline;">See every category and part type in stock &rarr;</a></p>
     </div>
   </section>
 
@@ -378,14 +366,14 @@
     <div class="wrap">
       <div class="section-head">
         <div class="section-eyebrow">Where We Operate</div>
-        <h2 class="display">Nine cities.<br>One stock system.</h2>
+        <h2 class="display">Three countries.<br>One stock system.</h2>
         <p>Every location runs on the same inventory, grading, and warranty standard — wherever you buy from, the same rules apply.</p>
       </div>
       <div class="loc-grid">
         <div class="loc-card">
           <div class="loc-flag">🇳🇬 Nigeria</div>
-          <h3>Five Cities</h3>
-          <ul><li>Lagos</li><li>Ibadan</li><li>Akure</li><li>Abuja</li><li>Ile-Ife</li></ul>
+          <h3>Six Hubs</h3>
+          <ul><li>Lagos</li><li>Ibadan</li><li>Akure</li><li>Abuja</li><li>Ile-Ife</li><li>Kaduna / Jos / Makurdi</li></ul>
         </div>
         <div class="loc-card">
           <div class="loc-flag">🇬🇭 Ghana</div>
@@ -418,26 +406,23 @@
     <div id="galleryLightboxContent" style="max-width:90vw; max-height:90vh;" onclick="event.stopPropagation()"></div>
   </div>
 
-  <!-- ══════ WARRANTY ══════ -->
-  <section class="warranty" id="warranty">
-    <div class="wrap warranty-inner">
-      <div class="warranty-badge"><span class="n">10</span>DAYS</div>
-      <div>
-        <h3>⚠ What Our Warranty Actually Covers</h3>
-        <p>Our 10-day warranty applies to engines and mechanical parts that genuinely can't be verified until they're installed. Warranty is void if a part is disassembled, modified, or damaged after installation — proof of purchase is required for every claim.</p>
-        <p>Electrical parts (brain box/PCM, alternators, starters, fuel pumps, sensors, etc.) are non-returnable — buyers must fully test before leaving our facility. Automatic transmissions carry no warranty. We tell you this upfront, not after you've bought.</p>
-      </div>
-    </div>
-  </section>
+@endverbatim
+@include('partials._contacts')
+@verbatim
+
+@endverbatim
+@include('partials._warranty-band')
+@verbatim
 
   <!-- ══════ FINAL CTA ══════ -->
   <section class="final-cta">
     <div class="wrap">
       <h2 class="display">Looking for a specific part?</h2>
-      <p>Search live inventory across all five locations by part, vehicle, or engine code — or reach out directly and our team will source it.</p>
+      <p>Search live inventory across all our locations by part, vehicle, or engine code — or reach out directly and our team will source it.</p>
       <div class="hero-ctas">
         <a href="/parts" class="btn btn-primary">Search Inventory →</a>
-        <a href="mailto:info@autozenithparts.com" class="btn btn-secondary">Contact Us</a>
+        <a href="/other-items" class="btn btn-secondary">Oils, Filters &amp; Other Items</a>
+        <a href="#contact" class="btn btn-secondary">Contact Us</a>
       </div>
     </div>
   </section>
@@ -464,7 +449,7 @@
           <a href="/warranty">Warranty Policy</a>
           <a href="/refund-policy">Refund Policy</a>
           <a href="/shipping-policy">Shipping Policy</a>
-          <a href="mailto:info@autozenithparts.com">Contact</a>
+          <a href="#contact">Contact</a>
         </div>
         <div class="footer-col">
           <h5>Staff</h5>
@@ -479,7 +464,7 @@
 @verbatim
     </div>
     <div class="footer-bottom">
-      <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved. · <a href="mailto:info@autozenithparts.com" style="color:#B9C2D6;">info@autozenithparts.com</a></span>
+      <span>© <span id="year"></span> Auto Zenith Parts. All rights reserved. · <a href="mailto:info@autozenithparts.com" style="color:#B9C2D6;">info@autozenithparts.com</a> · <a href="mailto:usa@autozenithparts.com" style="color:#B9C2D6;">usa@</a> · <a href="mailto:ng@autozenithparts.com" style="color:#B9C2D6;">ng@</a> · <a href="mailto:gh@autozenithparts.com" style="color:#B9C2D6;">gh@</a></span>
       <span class="mono" style="letter-spacing:0.08em;">AUTOZENITHPARTS.COM</span>
     </div>
   </div>

@@ -19,6 +19,7 @@ Route::get('/parts/search', [PartsSearchController::class, 'ajaxSearch'])->name(
 // NEW: Consumables/Electronics/Computers/Other — grouped separately
 // from automobile parts, since /parts should read as a used-auto-
 // parts site, not a general goods marketplace.
+Route::get('/parts/categories', [PartsSearchController::class, 'categories'])->name('parts.categories');
 Route::get('/parts/sold', [PartsSearchController::class, 'soldAll'])->name('parts.sold');
 Route::get('/other-items', [PartsSearchController::class, 'otherItems'])->name('other-items');
 

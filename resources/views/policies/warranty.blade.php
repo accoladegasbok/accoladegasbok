@@ -25,12 +25,17 @@
             <tr><th class="text-left px-4 py-3">Part</th><th class="text-left px-4 py-3">USA</th><th class="text-left px-4 py-3">West Africa</th></tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-            <tr><td class="px-4 py-3 font-500 text-navy">Complete engines (including Complete Engine, Bare / Borale)</td><td class="px-4 py-3">90 days</td><td class="px-4 py-3">30 days</td></tr>
-            <tr><td class="px-4 py-3 font-500 text-navy">Transmissions</td><td class="px-4 py-3">90 days</td><td class="px-4 py-3">30 days, only when installed by an Auto Zenith recommended technician using our recommended transmission oil</td></tr>
-            <tr><td class="px-4 py-3 font-500 text-navy">Other mechanical parts (alternators, starters, A/C compressors, power steering pumps, axles, suspension, brakes, differentials)</td><td class="px-4 py-3">30 days</td><td class="px-4 py-3">30 days</td></tr>
-            <tr><td class="px-4 py-3 font-500 text-navy">Electrical and electronic modules (ECU, TCM, ABS, BCM, sensors, screens, clusters)</td><td class="px-4 py-3">14 days — exchange or store credit only</td><td class="px-4 py-3">14 days — exchange or store credit only</td></tr>
-            <tr><td class="px-4 py-3 font-500 text-navy">Body panels, glass, lights, interior, trim</td><td class="px-4 py-3" colspan="2">Inspect when you receive it. Report damage within 48 hours. No defect warranty after that.</td></tr>
-            <tr><td class="px-4 py-3 font-500 text-navy">Consumables and new items</td><td class="px-4 py-3" colspan="2">Manufacturer's warranty only</td></tr>
+            @foreach(\App\Support\Warranty::rows() as $__row)
+              <tr>
+                <td class="px-4 py-3 font-500 text-navy">{{ $__row['part'] }}</td>
+                @if(isset($__row['both']))
+                  <td class="px-4 py-3" colspan="2">{{ $__row['both'] }}</td>
+                @else
+                  <td class="px-4 py-3">{{ $__row['usa'] }}</td>
+                  <td class="px-4 py-3">{{ $__row['wa'] }}</td>
+                @endif
+              </tr>
+            @endforeach
           </tbody>
         </table>
       </div>
