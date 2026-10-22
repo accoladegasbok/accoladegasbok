@@ -11,7 +11,7 @@
       <div>
         <h3>What Our Warranty Covers</h3>
         <p>{!! $__paras[0] !!}</p>
-        <p>{!! $__paras[1] !!} <a href="{{ \App\Support\Warranty::URL_PATH }}" style="color:#5d4037;font-weight:700;text-decoration:underline;">Read the full warranty terms</a>.</p>
+        <p>{!! $__paras[1] !!} <a href="{{ \App\Support\Warranty::URL_PATH }}" style="color:var(--blue);font-weight:700;text-decoration:underline;">Read the full warranty terms</a>.</p>
       </div>
     </div>
   </section>

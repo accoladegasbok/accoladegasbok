@@ -5,10 +5,10 @@
   .ts{ padding:34px 24px 6px; }
   .ts-grid{ max-width:1080px; margin:0 auto; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
   .ts-item{ display:flex; align-items:center; gap:12px; padding:12px 14px; border-left:3px solid var(--gold); background:rgba(255,255,255,.55); border-radius:0 10px 10px 0; }
-  .ts-big{ font-family:'Big Shoulders Display',sans-serif; font-weight:800; font-size:28px; line-height:1; color:var(--navy-deep); min-width:58px; }
+  .ts-big{ font-family:'Big Shoulders Display',sans-serif; font-weight:800; font-size:26px; line-height:1; color:var(--navy-deep); white-space:nowrap; flex-shrink:0; }
   .ts-small{ font-size:12.5px; line-height:1.35; color:var(--steel); font-weight:500; }
   @media (max-width:920px){ .ts-grid{ grid-template-columns:repeat(2,1fr); } }
-  @media (max-width:520px){ .ts-big{ font-size:23px; min-width:48px; } }
+  @media (max-width:520px){ .ts-big{ font-size:21px; } }
 </style>
 <div class="ts">
   <div class="ts-grid">
