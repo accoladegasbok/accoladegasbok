@@ -81,6 +81,19 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->prefix('admin/part-approval
     Route::post('/{id}/reject',  [\App\Http\Controllers\Admin\PartApprovalController::class, 'reject'])->name('reject')->where('id', '[0-9]+');
 });
 
+// NEW: Fitment tools - pin counts with donor VIN + connector photo, VIN prefill, staged fitment review.
+// Any signed-in staff member can record a pin count; only a manager or admin can verify (the controller enforces that).
+Route::middleware(['admin.auth'])->prefix('admin/fitment')->name('admin.fitment.')->group(function () {
+    $c = \App\Http\Controllers\Admin\FitmentController::class;
+    Route::get('/',                         [$c, 'index'])->name('index');
+    Route::get('/decode-vin',               [$c, 'decodeVin'])->name('decode-vin');
+    Route::post('/pins',                    [$c, 'storePin'])->name('pins.store');
+    Route::post('/pins/{id}/verify',        [$c, 'verifyPin'])->name('pins.verify')->where('id', '[0-9]+');
+    Route::post('/pins/{id}/reject',        [$c, 'rejectPin'])->name('pins.reject')->where('id', '[0-9]+');
+    Route::delete('/pins/{id}',             [$c, 'deletePin'])->name('pins.delete')->where('id', '[0-9]+');
+    Route::post('/staging/{id}/{decision}', [$c, 'stagingDecision'])->name('staging.decide')->where('id', '[0-9]+');
+});
+
 // NEW: quick restock of an existing consumable (adds units under the same number; staff below manager need approval).
 Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/add-stock', [\App\Http\Controllers\Admin\ConsumableController::class, 'addStock'])
     ->name('admin.inventory.consumable.addstock')->where('id', '[0-9]+');

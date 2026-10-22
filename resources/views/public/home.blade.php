@@ -213,6 +213,28 @@
   .footer-col a:hover{ color:#fff; }
   .footer-bottom{ border-top:1px solid rgba(255,255,255,0.1); padding-top:20px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
 
+
+  /* ── GRAPHICS REFRESH ───────────────────────────── */
+  .hero{ padding:64px 0 72px; background:
+      radial-gradient(900px 420px at 88% -10%, rgba(200,150,12,0.18), transparent 62%),
+      radial-gradient(760px 380px at -5% 105%, rgba(10,31,92,0.10), transparent 60%); }
+  .hero::after{ content:''; position:absolute; right:-120px; top:40px; width:420px; height:420px; border-radius:50%;
+      border:2px dashed rgba(10,31,92,0.12); pointer-events:none; }
+  .hero h1 em{ background:linear-gradient(transparent 62%, rgba(200,150,12,0.28) 62%); padding:0 4px; }
+  .hero-ctas .btn-primary{ font-size:15px; }
+  .tag{ box-shadow: 10px 12px 0 rgba(10,31,92,0.10), 0 24px 40px -18px rgba(10,31,92,0.35); }
+  .whatwedo .wwd-card{ position:relative; background:#fff; border-top:4px solid var(--gold); transition:transform .18s ease, box-shadow .18s ease; }
+  .whatwedo .wwd-card:hover{ transform:translateY(-4px); box-shadow:0 14px 28px -16px rgba(10,31,92,0.35); }
+  .whatwedo .wwd-num{ display:inline-block; background:var(--navy-deep); color:var(--gold-light); padding:4px 10px; border-radius:999px; font-size:13px; }
+  .cat-tag{ display:block; padding-top:22px; }
+  .cat-icon{ width:46px; height:46px; border-radius:12px; background:var(--cream); border:1.5px solid var(--navy-deep); color:var(--navy-deep); display:flex; align-items:center; justify-content:center; margin:14px 0 12px; font-size:0; transition:background .18s ease, color .18s ease; }
+  .cat-tag:hover .cat-icon{ background:var(--navy-deep); color:var(--gold-light); }
+  .cat-svg{ width:26px; height:26px; }
+  .cat-tag h4{ font-size:18px; }
+  .loc-card{ transition:transform .18s ease, background .18s ease; }
+  .loc-card:hover{ transform:translateY(-3px); background:rgba(255,255,255,0.08); }
+  @media (max-width:920px){ .hero::after{ display:none; } .hero{ padding:44px 0 64px; } }
+
   /* ── RESPONSIVE ──────────────────────────────────── */
   @media (max-width:920px){
     .hero-grid{ grid-template-columns:1fr; }
@@ -288,6 +310,11 @@
     </div>
   </section>
 
+@endverbatim
+@include('partials._home-finder')
+@include('partials._home-trust')
+@verbatim
+
   <!-- ══════ WHAT WE DO ══════ -->
   <section class="whatwedo" id="what-we-do">
     <div class="wrap">
@@ -327,7 +354,7 @@
 @endverbatim
 @foreach(\App\Data\PartCategories::tiles() as $__tile)
         <a href="{{ $__tile['url'] }}" class="cat-tag" style="display:block;text-decoration:none;">
-          <div class="cat-icon">{{ $__tile['icon'] }}</div>
+          <div class="cat-icon">@include('partials._cat-icon', ['slug' => $__tile['slug']])</div>
           <h4>{{ $__tile['label'] }}</h4>
           <p>{{ $__tile['blurb'] }}</p>
           <div class="cat-stripe"></div>
@@ -336,6 +363,14 @@
 @verbatim
       </div>
       <p style="margin-top:18px;text-align:center;"><a href="/parts/categories" style="color:var(--navy);font-weight:700;text-decoration:underline;">See every category and part type in stock &rarr;</a></p>
+
+      <div class="section-head" style="margin:56px 0 20px;">
+        <div class="section-eyebrow">Shop by make</div>
+        <h2 class="display" style="font-size:clamp(26px,3.4vw,34px);">Start with your car's brand.</h2>
+      </div>
+@endverbatim
+@include('partials._home-makes')
+@verbatim
     </div>
   </section>
 

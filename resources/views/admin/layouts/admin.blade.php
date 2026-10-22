@@ -203,6 +203,14 @@
         @endif
       </a>
       @endif
+      <a href="{{ route('admin.fitment.index') }}" class="sidebar-link {{ request()->routeIs('admin.fitment*') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085"/></svg>
+        Fitment
+        @php try { $pinPending = \Illuminate\Support\Facades\Schema::hasTable('pin_records') ? \Illuminate\Support\Facades\DB::table('pin_records')->where('status','pending')->count() : 0; } catch (\Throwable $e) { $pinPending = 0; } @endphp
+        @if($pinPending > 0 && in_array(session('staff_role'), ['admin','manager']))
+          <span class="ml-auto bg-amber-500 text-white text-xs font-display font-700 min-w-[1.25rem] h-5 px-1 rounded-full flex items-center justify-center">{{ $pinPending }}</span>
+        @endif
+      </a>
       @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
       <a href="{{ route('admin.ai-fitment.index') }}" class="sidebar-link {{ request()->routeIs('admin.ai-fitment*') ? 'active' : '' }}">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>

@@ -33,6 +33,18 @@ class OemDatabase
         int    $cylinders = 0,
         float  $engineL   = 0.0
     ): array {
+        // A pin count that staff verified on a real unit (donor VIN + connector photo,
+        // approved by a manager) replaces the built-in value.
+        return \App\Support\PinRecords::apply(self::lookupBase($make, $model, $year, $cylinders, $engineL), $make, $model, $year);
+    }
+
+    private static function lookupBase(
+        string $make,
+        string $model,
+        int    $year,
+        int    $cylinders = 0,
+        float  $engineL   = 0.0
+    ): array {
         $make  = strtoupper(trim($make));
         $model = strtoupper(trim($model));
 
