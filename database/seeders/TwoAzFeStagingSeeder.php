@@ -35,7 +35,7 @@ class TwoAzFeStagingSeeder extends Seeder
             ['Toyota', 'RAV4',    '2006-2008', '2AZ-FE', 'U241E', 'E3', $B, '2.4L FWD only'],
             ['Scion',  'tC',      '2005-2010', '2AZ-FE', 'U241E', 'E2', $B, '2.4L automatic'],
             ['Scion',  'xB',      '2008-2015', '2AZ-FE', 'U241E', 'E4', $B, 'Separate timing-cover group. Do not mix with E1-E3 without checking.'],
-            ['Toyota', 'Matrix',  '2009-2011', '2AZ-FE', 'U250E', 'E3', $B, '2.4L FWD automatic. Conservative range, the Matrix 2.4L may run later.'],
+            ['Toyota', 'Matrix',  '2009-2013', '2AZ-FE', 'U250E', 'E3', $B, '2.4L FWD automatic. US range through 2013. Check Canadian 2014 individually.'],
             ['Toyota', 'Corolla XRS', '2009-2010', '2AZ-FE', 'U250E', 'E3', $B, '2.4L automatic'],
             ['Pontiac', 'Vibe',   '2009-2010', '2AZ-FE', 'U250E', 'E3', $B, '2.4L FWD automatic'],
             // 1ZZ-FE 1.8L family

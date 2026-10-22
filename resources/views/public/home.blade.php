@@ -261,7 +261,11 @@
         </div>
         <div class="trust-row">
           <div class="trust-item"><span class="dot">●</span> Condition-graded A / B / C</div>
-          <div class="trust-item"><span class="dot">●</span> @endverbatim{{ \App\Support\Warranty::trustLine() }}@verbatim</div>
+          <div class="trust-item"><span class="dot">●</span>
+@endverbatim
+{{ \App\Support\Warranty::trustLine() }}
+@verbatim
+</div>
           <div class="trust-item"><span class="dot">●</span> Legal-trace documented</div>
         </div>
       </div>
