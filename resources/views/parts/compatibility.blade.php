@@ -169,18 +169,22 @@
     </div>
     @endif
 
-    {{-- Interchange parts --}}
+    {{-- Verified alternatives: other models we have checked fit this vehicle (staff also see unverified leads) --}}
+    @include('parts._alternatives')
+
+    {{-- Same engine/transmission code on other models: a likely fit, but not yet verified --}}
     @if(count($result['interchange_parts']) > 0)
     <div class="mb-8">
         <h2 class="font-display font-700 text-navy text-lg mb-3 flex items-center gap-2">
-            <span class="bg-blue-100 text-blue-700 text-xs px-2.5 py-1 rounded-full">ALSO FITS</span>
-            Interchangeable parts from other models with the same engine/transmission
+            <span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full">PROBABLE FIT</span>
+            Same engine/transmission as your vehicle - confirm with us before you buy
         </h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             @foreach($result['interchange_parts'] as $part)
             <a href="{{ route('parts.show', $part['id']) }}" class="bg-white border border-gray-200 rounded-xl p-4 hover:border-gold hover:shadow-md transition-all block">
                 <div class="font-700 text-navy text-sm mb-1">{{ $part['part_name'] }}</div>
                 <div class="text-xs text-gray-400 mb-2">{{ $part['brand'] }} {{ $part['model'] }} {{ $part['year_from'] }}–{{ $part['year_to'] }} · Grade {{ $part['condition_grade'] }}</div>
+                <div class="text-[11px] font-500 text-amber-700 mb-2">Probable fit - confirm with us</div>
                 <div class="flex items-center justify-between">
                     <span class="font-display font-700 text-navy">{{ $part['price_display'] }}</span>
                     <span class="text-xs text-gray-400">📍 {{ $part['location'] }}</span>
@@ -192,7 +196,7 @@
     @endif
 
     {{-- No parts found --}}
-    @if($result['total_found'] === 0)
+    @if($result['total_found'] === 0 && ($alternatives ?? collect())->isEmpty())
     <div class="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center mb-8">
         <p class="text-gray-500 font-body text-sm mb-3">
             No {{ $result['part_name'] ?: 'parts' }} currently in stock for this vehicle.

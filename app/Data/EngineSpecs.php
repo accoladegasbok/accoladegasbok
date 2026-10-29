@@ -20,6 +20,9 @@ class EngineSpecs
         '1MZ-FE' => [3.0, 6, 'V'], '3MZ-FE' => [3.3, 6, 'V'], '2GR-FE' => [3.5, 6, 'V'], '2GR-FKS' => [3.5, 6, 'V'],
         '1GR-FE' => [4.0, 6, 'V'], '1UZ-FE' => [4.0, 8, 'V'], '2UZ-FE' => [4.7, 8, 'V'], '1UR-FE' => [4.6, 8, 'V'],
         '3UR-FE' => [5.7, 8, 'V'],
+        // Engine families as listed on the owner's engine sheet (code family only)
+        '2AZ' => [2.4, 4, 'I'], '1AZ' => [2.0, 4, 'I'], '2NZ' => [1.3, 4, 'I'], '1NZ' => [1.5, 4, 'I'], '1NR' => [1.3, 4, 'I'],
+        '3S' => [2.0, 4, 'I'], '4S' => [1.8, 4, 'I'], '2UR' => [5.0, 8, 'V'], '2ZR' => [1.8, 4, 'I'], '2TR' => [2.7, 4, 'I'],
         // Honda
         'K24Z1' => [2.4, 4, 'I'], 'K24Z2' => [2.4, 4, 'I'], 'K24Z3' => [2.4, 4, 'I'], 'K24A' => [2.4, 4, 'I'], 'K24W' => [2.4, 4, 'I'],
         'F23A' => [2.3, 4, 'I'], 'R18A1' => [1.8, 4, 'I'], 'L15B7' => [1.5, 4, 'I'],
@@ -36,6 +39,8 @@ class EngineSpecs
     {
         if (!$code) return null;
         $key = strtoupper(trim(preg_split('/[\s(]/', trim($code))[0] ?? ''));
+        // A bare family ("2AZ") from the engine price/application sheet works too
+        if (!isset(self::MAP[$key])) $key = explode('-', $key)[0];
         if (!isset(self::MAP[$key])) return null;
         [$l, $c, $v] = self::MAP[$key];
         return ['litres' => $l, 'cylinders' => $c, 'layout' => $v . $c];
