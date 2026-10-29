@@ -94,6 +94,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/payments', [OrderAdminController::class, 'addPayment'])->name('payments.add');
             Route::post('/{id}/payments/{paymentId}/confirm', [OrderAdminController::class, 'confirmPaymentRecord'])->name('payments.confirm');
             Route::post('/{id}/payments/{paymentId}/reject', [OrderAdminController::class, 'rejectPayment'])->name('payments.reject');
+            Route::post('/{id}/payments/{paymentId}/unconfirm', [OrderAdminController::class, 'unconfirmPayment'])->name('payments.unconfirm');
+            Route::post('/{id}/payments/{paymentId}/delete', [OrderAdminController::class, 'deletePayment'])->name('payments.delete');
             Route::post('/{id}/send-reminder', [OrderAdminController::class, 'sendReminder'])->name('send-reminder');
             Route::post('/{id}/cancel',          [OrderAdminController::class, 'cancel'])->name('cancel');
             Route::delete('/{id}',               [OrderAdminController::class, 'destroy'])->name('destroy');
@@ -327,6 +329,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{id}/payments', [InvoiceController::class, 'addPayment'])->name('payments.add');
             Route::post('/{id}/payments/{paymentId}/confirm', [InvoiceController::class, 'confirmPayment'])->name('payments.confirm');
             Route::post('/{id}/payments/{paymentId}/reject', [InvoiceController::class, 'rejectPayment'])->name('payments.reject');
+            Route::post('/{id}/payments/{paymentId}/unconfirm', [InvoiceController::class, 'unconfirmPayment'])->name('payments.unconfirm');
+            Route::post('/{id}/payments/{paymentId}/delete', [InvoiceController::class, 'deletePayment'])->name('payments.delete');
             Route::post('/{id}/send-reminder', [InvoiceController::class, 'sendReminder'])->name('send-reminder');
             Route::post('/{id}/send-customer-copy', [InvoiceController::class, 'sendCustomerCopy'])->name('send-customer-copy');
             Route::get('/{id}/download-pdf', [InvoiceController::class, 'downloadPdf'])->name('download-pdf');

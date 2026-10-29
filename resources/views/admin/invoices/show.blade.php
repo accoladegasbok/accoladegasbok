@@ -433,6 +433,12 @@ body { font-family: 'Arial', sans-serif; font-size: 16px; color: #1a1a2e; backgr
                 <form method="POST" action="{{ route('admin.invoices.payments.confirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" data-amount="{{ $p->amount_local }}" data-due="{{ $paySummary['balanceDue'] }}" data-sym="{{ $currency['symbol'] }}" onsubmit="return azOverpay(this)">@csrf<input type="hidden" name="confirm_overpay" value="0"><button style="color:#1b9e5c; border:none; background:none; cursor:pointer; font-size:12px;">✓</button></form>
                 <form method="POST" action="{{ route('admin.invoices.payments.reject', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Reject this payment?')">@csrf<button style="color:#c0392b; border:none; background:none; cursor:pointer; font-size:12px;">✕</button></form>
                 @endif
+                @if(session('staff_role') === 'admin')
+                  @if($p->status === 'confirmed')
+                  <form method="POST" action="{{ route('admin.invoices.payments.unconfirm', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Unapprove this payment? It goes back to Pending and the balance goes back up.')">@csrf<button style="color:#b7791f; border:none; background:none; cursor:pointer; font-size:12px;">↩ Unapprove</button></form>
+                  @endif
+                  <form method="POST" action="{{ route('admin.invoices.payments.delete', [$resolvedInvoiceId, $p->id]) }}" style="display:inline;" onsubmit="return confirm('Delete this payment record permanently?')">@csrf<button style="color:#c0392b; border:none; background:none; cursor:pointer; font-size:12px;">🗑 Delete</button></form>
+                @endif
             </td>
         </tr>
         @endforeach

@@ -121,7 +121,7 @@ class CustomerCreditService
         if ($excess <= 0 || self::phoneKey($doc->customer_phone) === '') return 0.0;
 
         $already = (float) DB::table('customer_credit_ledger')
-            ->where('entry_type', 'overpayment')->where('source_type', $type)->where('source_id', $id)->sum('amount_local');
+            ->whereIn('entry_type', ['overpayment', 'overpayment_reversal'])->where('source_type', $type)->where('source_id', $id)->sum('amount_local');
         $new = round($excess - $already, 2);
         if ($new <= 0) return 0.0;
 
@@ -138,5 +138,55 @@ class CustomerCreditService
             'notes'       => 'Paid more than the amount due',
         ]);
         return $new;
+    }
+
+    /**
+     * The opposite of syncOverpayment(): after a confirmed payment is unapproved or deleted, take
+     * back any credit that was issued for money that no longer counts. Never takes more than the
+     * customer still has (credit that was already spent stays spent and is reported as 'short').
+     * Returns ['reversed' => amount taken back, 'short' => amount that could not be taken back].
+     */
+    public static function reverseOverpayment(string $type, int $id): array
+    {
+        $out = ['reversed' => 0.0, 'short' => 0.0];
+
+        if ($type === 'invoice') {
+            $doc = DB::table('invoices')->where('id', $id)->first();
+            if (!$doc) return $out;
+            $total = (float) ($doc->subtotal_local ?? $doc->subtotal_usd ?? 0);
+            $paid  = (float) DB::table('invoice_payments')->where('invoice_id', $id)->where('status', 'confirmed')->sum('amount_local');
+            $ref   = $doc->invoice_no;
+        } else {
+            $doc = DB::table('orders')->where('id', $id)->first();
+            if (!$doc) return $out;
+            $total = (float) ($doc->total_amount_local ?? $doc->total_amount_ngn ?? $doc->total_amount_usd ?? 0);
+            $paid  = (float) DB::table('order_payments')->where('order_id', $id)->where('status', 'confirmed')->get()
+                ->sum(fn ($p) => (float) ($p->amount_local ?? $p->amount_ngn ?? $p->amount_usd ?? 0));
+            $ref   = $doc->order_ref;
+        }
+
+        $key = self::phoneKey($doc->customer_phone);
+        if ($key === '') return $out;
+
+        $shouldHave = max(0.0, round($paid - $total, 2));
+        $issued = (float) DB::table('customer_credit_ledger')
+            ->whereIn('entry_type', ['overpayment', 'overpayment_reversal'])->where('source_type', $type)->where('source_id', $id)->sum('amount_local');
+        $excess = round($issued - $shouldHave, 2);
+        if ($excess <= 0) return $out;
+
+        $currency  = $doc->currency_code ?? 'NGN';
+        $available = max(0.0, self::balance($doc->customer_phone, $currency));
+        $take      = min($excess, $available);
+
+        if ($take > 0) {
+            self::write([
+                'phone' => $doc->customer_phone, 'name' => $doc->customer_name, 'email' => $doc->customer_email,
+                'currency' => $currency, 'type' => 'overpayment_reversal', 'source_type' => $type, 'source_id' => $id,
+                'reference' => $ref, 'notes' => 'Payment unapproved or deleted - overpayment credit taken back',
+            ], -$take);
+        }
+        $out['reversed'] = round($take, 2);
+        $out['short']    = round($excess - $take, 2);
+        return $out;
     }
 }

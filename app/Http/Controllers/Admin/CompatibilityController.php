@@ -79,6 +79,9 @@ class CompatibilityController extends Controller
             // Never required — most searches won't have it, and
             // omitting it just means "any trim."
             'trim'       => 'nullable|string|max:60',
+            // How wide to search: verified (verified + same-model direct only), standard (as before),
+            // broad (adds same engine/gearbox family and near-year parts, each clearly labelled).
+            'breadth'    => 'nullable|in:verified,standard,broad',
         ]);
 
         $make      = strtoupper(trim($request->make));
@@ -90,8 +93,12 @@ class CompatibilityController extends Controller
         $category  = trim($request->get('category', ''));
         // NEW: optional donor trim narrowing.
         $trim      = trim($request->get('trim', ''));
+        $breadth   = $request->get('breadth', 'standard') ?: 'standard';
 
         $results = collect();
+        $liveCol = \Illuminate\Support\Facades\Schema::hasColumn('parts_inventory', 'deleted_at');
+        // Per-group verification for THIS vehicle (see App\Services\VerifiedAlternatives)
+        $groupStatus = \App\Services\VerifiedAlternatives::groupStatuses($make, $model, $year);
 
         // ── Tier 1: Interchange Groups ─────────────────────────────
         $matchingGroups = DB::table('part_interchange_groups as g')
@@ -113,8 +120,15 @@ class CompatibilityController extends Controller
             $parts    = $query->get();
             $vehicles = $this->interchange->vehiclesForGroup($group->id);
             $stock    = $this->interchange->aggregatedStockBreakdown($group->id);
+            $gs = $groupStatus[$group->id] ?? null;
             foreach ($parts as $part) {
-                $results->push($this->formatResult($part, 'interchange', $group, $vehicles, $stock));
+                $results->push($this->withFit(
+                    $this->formatResult($part, 'interchange', $group, $vehicles, $stock),
+                    $gs && $gs['verified'] ? 1 : 3,
+                    $gs['status'] ?? null,
+                    (bool) ($gs['verified'] ?? false),
+                    $gs && $gs['verified'] ? 'Verified fit' : (($gs['status'] ?? null) ? \App\Data\FitmentStatus::label($gs['status']) : 'Group not yet reviewed')
+                ));
             }
         }
 
@@ -141,7 +155,7 @@ class CompatibilityController extends Controller
             });
         }
         foreach ($directQuery->get() as $part) {
-            $results->push($this->formatResult($part, 'direct', null, collect(), null));
+            $results->push($this->withFit($this->formatResult($part, 'direct', null, collect(), null), 2, null, false, 'Same model and year (direct)'));
         }
 
         // ── Tier 2b: Platform-based match (chassis-shared parts) ──
@@ -170,7 +184,7 @@ class CompatibilityController extends Controller
                 if ($partName) $pQuery->where('part_name', 'like', "%{$partName}%");
                 if ($category) $pQuery->where('part_category', $category);
                 foreach ($pQuery->get() as $part) {
-                    $results->push($this->formatResult($part, 'platform', null, collect(), null));
+                    $results->push($this->withFit($this->formatResult($part, 'platform', null, collect(), null), 4, null, false, 'Same chassis platform - confirm'));
                     $existingIds[] = $part->id;
                 }
             }
@@ -180,6 +194,49 @@ class CompatibilityController extends Controller
         // narrowing below needs the SEARCHED vehicle's own drive_type,
         // which this lookup provides.
         $oem = \App\Data\OemDatabase::lookup($make, $model, $year, $cylinders, $engineL);
+
+        // ── Broad mode only: same engine / gearbox family on other models, and near years ──
+        // Clearly labelled and never called verified. Family matches use the codes of the searched vehicle.
+        if ($breadth === 'broad') {
+            $have = $results->pluck('id')->all();
+
+            if (!empty($oem['engine_code']) || !empty($oem['transmission_code'])) {
+                $fq = DB::table('parts_inventory')->where('status', 'Available')->whereNotIn('id', $have)
+                    ->where(function ($w) use ($oem) {
+                        if (!empty($oem['engine_code']))       $w->orWhere('engine_code_oem', 'like', $oem['engine_code'] . '%');
+                        if (!empty($oem['transmission_code'])) $w->orWhere('transmission_code_oem', $oem['transmission_code']);
+                    });
+                if ($liveCol)  $fq->whereNull('deleted_at');
+                if ($partName) $fq->where('part_name', 'like', "%{$partName}%");
+                if ($category) $fq->where('part_category', $category);
+                foreach ($fq->limit(60)->get() as $part) {
+                    // A gearbox of a different drive type is a different unit: leave it out when both are known.
+                    if ($part->part_category === 'Transmission' && !empty($oem['drive_type']) && !empty($part->drive_type)
+                        && strtoupper($part->drive_type) !== strtoupper($oem['drive_type'])) continue;
+                    $e = !empty($oem['engine_code']) && stripos((string) $part->engine_code_oem, $oem['engine_code']) === 0;
+                    $g = !empty($oem['transmission_code']) && strcasecmp((string) $part->transmission_code_oem, $oem['transmission_code']) === 0;
+                    $st = $e && $g ? \App\Data\FitmentStatus::BOTH_FAMILY_MATCH
+                        : ($e ? \App\Data\FitmentStatus::ENGINE_FAMILY_MATCH : \App\Data\FitmentStatus::GEARBOX_FAMILY_MATCH);
+                    $results->push($this->withFit($this->formatResult($part, 'family', null, collect(), null), 5, $st, false, \App\Data\FitmentStatus::label($st) . ' - confirm'));
+                    $have[] = $part->id;
+                }
+            }
+
+            $nq = DB::table('parts_inventory')->where('status', 'Available')->whereNotIn('id', $have)
+                ->where('brand', $make)->where('model', $model)
+                ->where('year_from', '<=', $year + 2)->where('year_to', '>=', $year - 2);
+            if ($liveCol)  $nq->whereNull('deleted_at');
+            if ($partName) $nq->where('part_name', 'like', "%{$partName}%");
+            if ($category) $nq->where('part_category', $category);
+            foreach ($nq->limit(60)->get() as $part) {
+                $results->push($this->withFit($this->formatResult($part, 'near_year', null, collect(), null), 6, null, false, 'Within 2 years - confirm'));
+            }
+        }
+
+        // Verified-only view: verified fits plus same-model direct matches, nothing else.
+        if ($breadth === 'verified') {
+            $results = $results->filter(fn ($r) => ($r['is_verified'] ?? false) || $r['source'] === 'direct')->values();
+        }
 
         // ── Tier 3: OEM-code heuristic (Ladipo algorithm) ──────────
         $oemQuery = DB::table('parts_inventory')
@@ -337,6 +394,7 @@ class CompatibilityController extends Controller
             // searched ("Door Shell") instead of generic platform talk,
             // and decide whether a cross-model platform panel is even
             // relevant to what was asked for.
+            'breadth'            => $breadth,
             'searched_part_name' => $partName,
             'searched_category'  => $category,
         ]);
@@ -413,6 +471,7 @@ class CompatibilityController extends Controller
     private function formatResult(object $part, string $source, ?object $group, $vehicles, ?array $stockBreakdown): array
     {
         $sym    = ['NGN'=>'₦','GHS'=>'GH₵','USD'=>'$'][$part->currency_code ?? 'NGN'] ?? '₦';
+        $specs  = \App\Support\PartFilters::specsFor($part);
         $photos = json_decode($part->photos ?? '[]', true);
 
         // FIXED: same fragmentation fix as the barcode tag — merge
@@ -488,6 +547,21 @@ class CompatibilityController extends Controller
             'confidence_score'     => $confidenceScore,
             'verification_status'  => $verificationStatus,
             'evidence_count'       => $sourceCount,
+            // For sorting and filtering the result list on screen
+            'price_num'      => (float) ($part->price_local ?? 0),
+            'currency_code'  => $part->currency_code ?? 'NGN',
+            'year_from'      => $part->year_from ?? null,
+            'year_to'        => $part->year_to ?? null,
+            'engine_code'    => $part->engine_code_oem ?? null,
+            'cylinders'      => $specs['cylinders'],
+            'engine_l'       => $specs['litres'],
+            'location_group' => $part->location,
         ];
+    }
+
+    /** Adds how sure we are (tier 1 = best) and the fitment label to one result row. */
+    private function withFit(array $row, int $tier, ?string $status, bool $verified, string $label): array
+    {
+        return $row + ['tier' => $tier, 'fit_status' => $status, 'is_verified' => $verified, 'fit_label' => $label];
     }
 }

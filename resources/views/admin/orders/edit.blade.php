@@ -82,6 +82,8 @@
 
 </form>
 
+@include('partials._payments-admin', ['kind' => 'order', 'docId' => $order->id])
+
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 const ORDER_LOCATION = "{{ $order->location ?? $order->customer_country ?? 'Waxahachie TX' }}";

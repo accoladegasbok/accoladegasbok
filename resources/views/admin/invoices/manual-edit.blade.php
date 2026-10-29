@@ -193,6 +193,8 @@
 </div>
 </form>
 
+@include('partials._payments-admin', ['kind' => 'invoice', 'docId' => $invoice->id])
+
 @if(session('staff_role') === 'supervisor')
 @include('admin.override.modal-snippet')
 @endif

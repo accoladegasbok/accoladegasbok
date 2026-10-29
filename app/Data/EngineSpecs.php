@@ -53,4 +53,21 @@ class EngineSpecs
             default         => 'V' . $cylinders,
         };
     }
+
+    /**
+     * Engine codes that have the given cylinder count and/or litres (either may be null).
+     * Used by the Cylinders and Engine size filters so a part still matches when only its engine code is
+     * recorded and its displacement text is blank.
+     * @return string[]
+     */
+    public static function codesFor(?int $cylinders = null, ?float $litres = null): array
+    {
+        $out = [];
+        foreach (self::MAP as $code => [$l, $c, $v]) {
+            if ($cylinders && $c !== $cylinders) continue;
+            if ($litres && abs($l - $litres) > 0.05) continue;
+            $out[] = $code;
+        }
+        return $out;
+    }
 }

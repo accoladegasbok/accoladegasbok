@@ -170,6 +170,12 @@
                 <form method="POST" action="{{ route('admin.orders.payments.confirm', [$order->id, $p->id]) }}" class="inline" data-amount="{{ $p->amount_local ?? $p->amount_ngn }}" data-due="{{ $paySummary['balanceDue'] }}" data-sym="{{ $paySym }}" onsubmit="return azOverpay(this)">@csrf<input type="hidden" name="confirm_overpay" value="0"><button class="text-green-600 hover:text-green-800 mr-2">✓ Confirm</button></form>
                 <form method="POST" action="{{ route('admin.orders.payments.reject', [$order->id, $p->id]) }}" class="inline" onsubmit="return confirm('Reject this payment record?')">@csrf<button class="text-red-500 hover:text-red-700">✕ Reject</button></form>
                 @endif
+                @if(session('staff_role') === 'admin')
+                  @if($p->status === 'confirmed')
+                  <form method="POST" action="{{ route('admin.orders.payments.unconfirm', [$order->id, $p->id]) }}" class="inline" onsubmit="return confirm('Unapprove this payment? It goes back to Pending and the balance goes back up.')">@csrf<button class="text-amber-600 hover:text-amber-800 mr-2">↩ Unapprove</button></form>
+                  @endif
+                  <form method="POST" action="{{ route('admin.orders.payments.delete', [$order->id, $p->id]) }}" class="inline" onsubmit="return confirm('Delete this payment record permanently?')">@csrf<button class="text-red-500 hover:text-red-700">🗑 Delete</button></form>
+                @endif
               </td>
             </tr>
             @endforeach

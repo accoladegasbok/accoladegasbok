@@ -683,6 +683,67 @@ class OrderAdminController extends Controller
         return back()->with('success', 'Payment rejected.');
     }
 
+    // =========================================================
+    // POST /admin/orders/{id}/payments/{paymentId}/unconfirm
+    // Admin only. Puts a confirmed payment back to Pending (the balance goes back up) and takes back
+    // any overpayment credit that was issued because of it.
+    // =========================================================
+    public function unconfirmPayment(Request $request, int $id, int $paymentId)
+    {
+        if (Session::get('staff_role') !== 'admin') abort(403, 'Only an admin can unapprove a payment.');
+
+        $payment = DB::table('order_payments')->where('id', $paymentId)->where('order_id', $id)->first();
+        abort_if(!$payment, 404);
+        if ($payment->status !== 'confirmed') return back()->with('error', 'That payment is not confirmed, so there is nothing to unapprove.');
+
+        DB::table('order_payments')->where('id', $paymentId)->update([
+            'status'                => 'pending',
+            'confirmed_by_staff_id' => null,
+            'confirmed_at'          => null,
+            'notes'                 => trim(($payment->notes ?? '') . ' [Unapproved by ' . (Session::get('staff_name') ?? 'Admin') . ' on ' . now()->format('Y-m-d H:i') . ']'),
+            'updated_at'            => now(),
+        ]);
+        \Illuminate\Support\Facades\Log::info('Order payment unapproved', ['order' => $id, 'payment' => $paymentId, 'staff' => Session::get('staff_name')]);
+
+        return back()->with('success', 'Payment unapproved - it is back to Pending.' . $this->creditReversalNote($id));
+    }
+
+    // =========================================================
+    // POST /admin/orders/{id}/payments/{paymentId}/delete
+    // Admin only. Removes a payment record completely (any status).
+    // =========================================================
+    public function deletePayment(Request $request, int $id, int $paymentId)
+    {
+        if (Session::get('staff_role') !== 'admin') abort(403, 'Only an admin can delete a payment.');
+
+        $payment = DB::table('order_payments')->where('id', $paymentId)->where('order_id', $id)->first();
+        abort_if(!$payment, 404);
+
+        DB::table('order_payments')->where('id', $paymentId)->delete();
+        \Illuminate\Support\Facades\Log::info('Order payment deleted', [
+            'order' => $id, 'payment' => (array) $payment, 'staff' => Session::get('staff_name'),
+        ]);
+
+        $note = $payment->status === 'confirmed' ? $this->creditReversalNote($id) : '';
+        return back()->with('success', 'Payment deleted.' . $note);
+    }
+
+    private function creditReversalNote(int $orderId): string
+    {
+        try {
+            $r = \App\Services\CustomerCreditService::reverseOverpayment('order', $orderId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Credit reversal failed for order ' . $orderId . ': ' . $e->getMessage());
+            return ' (The overpayment credit check could not run - use Customer Credit to review.)';
+        }
+        $cc = DB::table('orders')->where('id', $orderId)->value('currency_code') ?: 'NGN';
+        $fmt = fn ($n) => \App\Http\Controllers\Admin\InvoiceController::formatLocal((float) $n, $cc);
+        $msg = '';
+        if ($r['reversed'] > 0) $msg .= ' ' . $fmt($r['reversed']) . ' of overpayment credit was taken back.';
+        if ($r['short'] > 0)    $msg .= ' ' . $fmt($r['short']) . ' of that credit was already used by the customer, so it could not be taken back - check Customer Credit.';
+        return $msg;
+    }
+
     public function confirmPayment(Request $request, int $id)
     {
         $request->validate(['confirmed_by' => 'nullable|string|max:80']);

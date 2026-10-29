@@ -76,6 +76,10 @@ class PartsSearchController extends Controller
             + DB::table('invoices')->distinct('customer_phone')->count('customer_phone');
 
         [$yardCounts, $trimOptions] = $this->facets($filters);
+        $specFacets = $this->specFacets($filters);
+        [$alternatives, $staffLeads, $altLabel] = ($filters['page'] ?? 1) <= 1
+            ? $this->alternativesFor($filters, collect($parts->items())->pluck('id')->all())
+            : [collect(), collect(), ''];
 
         return view('parts.search', compact(
             'makes','years','categories','parts','rates','currency',
@@ -85,6 +89,11 @@ class PartsSearchController extends Controller
             'categoryTiles' => \App\Data\PartCategories::vehicleTiles(),
             'yardCounts'  => $yardCounts,
             'trimOptions' => $trimOptions,
+            'specFacets'  => $specFacets,
+            // Verified "also fits your vehicle" parts (customers) and the broader staff-only leads
+            'alternatives' => $alternatives,
+            'staffLeads'   => $staffLeads,
+            'altLabel'     => $altLabel,
             'chips'     => $this->buildChips($request, $filters),
             'recentlySold' => ($filters['page'] ?? 1) <= 1 ? $this->recentlySold($filters) : collect(),
             'total'     => $parts->total(),
@@ -299,6 +308,10 @@ class PartsSearchController extends Controller
             'currency'  => $request->get('currency', 'USD'),
             'condition' => trim($request->get('condition', '')),
             'trim'      => trim((string) $request->get('trim', '')),
+            // Spec filters shared with the admin screens (drive type, cylinders, engine size in litres)
+            'drive'     => \App\Support\PartFilters::clean($request->only(['drive', 'cyl', 'size']))['drive'],
+            'cyl'       => \App\Support\PartFilters::clean($request->only(['drive', 'cyl', 'size']))['cyl'],
+            'size'      => \App\Support\PartFilters::clean($request->only(['drive', 'cyl', 'size']))['size'],
             'price_min' => trim($request->get('price_min', '')),
             'price_max' => trim($request->get('price_max', '')),
             'sort'      => trim($request->get('sort', 'newest')),
@@ -375,6 +388,8 @@ class PartsSearchController extends Controller
             $q->whereRaw("CONCAT(',', REPLACE(REPLACE(compatible_trims, ', ', ','), ' ,', ','), ',') LIKE ?", ['%,' . $needle . ',%']);
         }
 
+        \App\Support\PartFilters::apply($q, $filters);
+
         if ($withPrice) {
             // ── Price filter — now against price_local (each part's own fixed
             // currency). NOTE: if "All Locations" is selected, this mixes
@@ -422,6 +437,12 @@ class PartsSearchController extends Controller
         if ($filters['sort'] === 'price_asc')  $q->reorder('price_local', 'asc');
         if ($filters['sort'] === 'price_desc') $q->reorder('price_local', 'desc');
         if ($filters['sort'] === 'mileage')    $q->reorder('mileage',   'asc');
+        if ($filters['sort'] === 'year_new')   $q->reorder('year_to', 'desc')->orderByDesc('created_at');
+        if ($filters['sort'] === 'year_old')   $q->reorder('year_from', 'asc')->orderByDesc('created_at');
+        if ($filters['sort'] === 'name')       $q->reorder('part_name', 'asc')->orderBy('brand')->orderBy('model');
+        if ($filters['sort'] === 'location')   $q->reorder('location', 'asc')->orderBy('price_local');
+        if ($filters['sort'] === 'engine')     $q->reorder('engine_displacement', 'asc')->orderBy('price_local');
+        if ($filters['sort'] === 'grade')      $q->reorder('condition_grade', 'asc')->orderBy('price_local');
 
         // FIXED (B2): page 2, 3, 4 links used to carry only ?page=N, so every
         // filter (make, model, year, category, search text, sort...) was lost
@@ -493,6 +514,82 @@ class PartsSearchController extends Controller
             ->distinct()->orderBy('part_category')->pluck('part_category');
 
         return view('parts.sold', ['items' => $items, 'text' => $text, 'category' => $cat ?? '', 'categories' => $categories]);
+    }
+
+    // ── Verified alternatives ("also fits your vehicle") ─────────────
+
+    /**
+     * Parts in stock that are not the exact model searched but are verified to fit it (interchange groups).
+     * Returns [verified list, staff-only broader leads, vehicle label]. Customers only ever see the first;
+     * the second is filled only for a signed-in staff member.
+     */
+    private function alternativesFor(array $filters, array $excludeIds): array
+    {
+        if (($filters['scope'] ?? 'auto') !== 'auto') return [collect(), collect(), ''];
+
+        $vehicles = $filters['vehicles'];
+        if (!$vehicles && $filters['make'] !== '' && $filters['model'] !== '') {
+            $vehicles = [['year' => $filters['year'], 'make' => $filters['make'], 'model' => $filters['model']]];
+        }
+        $vehicles = array_values(array_filter($vehicles, fn ($v) => !empty($v['make']) && !empty($v['model'])));
+        if (!$vehicles) return [collect(), collect(), ''];
+
+        $cats = array_values(array_intersect(
+            array_filter(array_map('trim', explode(',', (string) $filters['category']))), self::AUTO_CATEGORIES
+        ));
+        $opt = ['part_names' => $filters['parts'], 'categories' => $cats, 'exclude_ids' => $excludeIds, 'limit' => 12];
+
+        try {
+            $verified = \App\Services\VerifiedAlternatives::forVehicles(
+                array_map(fn ($v) => ['year' => $v['year'], 'make' => strtoupper($v['make']), 'model' => strtoupper($v['model'])], $vehicles),
+                $opt + ['verified_only' => true]
+            );
+            $leads = collect();
+            if (\Illuminate\Support\Facades\Session::get('staff_role')) {
+                $leads = \App\Services\VerifiedAlternatives::forVehicles(
+                    array_map(fn ($v) => ['year' => $v['year'], 'make' => strtoupper($v['make']), 'model' => strtoupper($v['model'])], $vehicles),
+                    ['exclude_ids' => array_merge($excludeIds, $verified->pluck('id')->all()), 'verified_only' => false] + $opt
+                )->reject(fn ($r) => $r->is_verified)->values();
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Alternatives lookup failed: ' . $e->getMessage());
+            return [collect(), collect(), ''];
+        }
+
+        $label = collect($vehicles)->map(fn ($v) => trim(($v['year'] ?: '') . ' ' . $v['make'] . ' ' . $v['model']))->implode(', ');
+        return [$verified, $leads, $label];
+    }
+
+    /**
+     * Counts for the Drive type / Cylinders / Engine size filters. Each ignores its own filter, so
+     * the numbers answer "how many would I get if I picked this?".
+     */
+    private function specFacets(array $filters): array
+    {
+        $drives = []; $cyls = []; $sizes = [];
+        try {
+            $f = $filters; $f['drive'] = '';
+            $q = DB::table('parts_inventory')->where('status', 'Available')->whereNotNull('drive_type')->where('drive_type', '!=', '');
+            $this->applyFilters($q, $f);
+            foreach ($q->select('drive_type', DB::raw('COUNT(*) as n'))->groupBy('drive_type')->get() as $r) {
+                $k = strtoupper(trim($r->drive_type));
+                $drives[$k] = ($drives[$k] ?? 0) + (int) $r->n;
+            }
+
+            $f = $filters; $f['cyl'] = 0; $f['size'] = '';
+            $q = DB::table('parts_inventory')->where('status', 'Available')
+                ->where(fn ($w) => $w->whereNotNull('engine_displacement')->orWhereNotNull('engine_code_oem'));
+            $this->applyFilters($q, $f);
+            foreach ($q->limit(3000)->get(['engine_displacement', 'engine_code_oem']) as $r) {
+                $sp = \App\Support\PartFilters::specsFor($r);
+                if ($sp['cylinders']) $cyls[$sp['cylinders']] = ($cyls[$sp['cylinders']] ?? 0) + 1;
+                if ($sp['litres'])    { $k = number_format($sp['litres'], 1, '.', ''); $sizes[$k] = ($sizes[$k] ?? 0) + 1; }
+            }
+            ksort($cyls); uksort($sizes, fn ($a, $b) => (float) $a <=> (float) $b);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Spec facets failed: ' . $e->getMessage());
+        }
+        return ['drives' => $drives, 'cyls' => $cyls, 'sizes' => $sizes];
     }
 
     // ── Filter sidebar numbers ───────────────────────────────────────
@@ -742,9 +839,20 @@ class PartsSearchController extends Controller
             $result = $this->buildCompatibilityResult($make, $model, $year, $partName, $category);
         }
 
+        // Verified "also fits your vehicle" parts (customers) + staff-only broader leads, for the include
+        // @include('parts._alternatives') on the compatibility page.
+        $alternatives = collect(); $staffLeads = collect(); $altLabel = '';
+        if ($result) {
+            $filters = ['scope' => 'auto', 'vehicles' => [['year' => (string) $year, 'make' => $make, 'model' => $model]],
+                        'make' => $make, 'model' => $model, 'year' => (string) $year,
+                        'parts' => $partName !== '' ? [$partName] : [], 'category' => $category];
+            $shown = collect($result['direct_parts'] ?? [])->merge($result['interchange_parts'] ?? [])->pluck('id')->all();
+            [$alternatives, $staffLeads, $altLabel] = $this->alternativesFor($filters, $shown);
+        }
+
         return view('parts.compatibility', compact(
             'makes', 'years', 'categories', 'make', 'model', 'year',
-            'partName', 'category', 'result'
+            'partName', 'category', 'result', 'alternatives', 'staffLeads', 'altLabel'
         ));
     }
 

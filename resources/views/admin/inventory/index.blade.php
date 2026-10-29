@@ -72,7 +72,7 @@
     @foreach($rooms as $r)<option value="{{ $r->id }}" {{ (string) request('room')===(string) $r->id ?'selected':'' }}>{{ $r->name }}</option>@endforeach
   </select>
   <span id="invSearchSpinner" class="hidden self-center text-xs text-gray-400 font-body">Searching...</span>
-  @if(request()->hasAny(['q','brand','category','location','status','model','year','year_to','grade','type','stock','photos','price_min','price_max','part','v']))
+  @if(request()->hasAny(['q','brand','category','location','status','model','year','year_to','grade','type','stock','photos','price_min','price_max','part','v','drive','cyl','size','trim']))
     <a href="{{ route('admin.inventory.index') }}" class="border border-gray-200 text-gray-500 font-body text-xs px-4 py-2.5 rounded-xl hover:bg-gray-50">Clear</a>
   @endif
 </div>
@@ -110,6 +110,29 @@
     <option value="">Photos: any</option>
     <option value="with" {{ request('photos')==='with'?'selected':'' }}>Has photos</option>
     <option value="without" {{ request('photos')==='without'?'selected':'' }}>No photos</option>
+  </select>
+  <select id="invSearchTrim" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any trim</option>
+    @foreach($trimOptions as $t)<option value="{{ $t }}" {{ request('trim')===$t?'selected':'' }}>{{ $t }}</option>@endforeach
+  </select>
+  <select id="invSearchDrive" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any drive type</option>
+    @foreach($driveOptions as $d)<option value="{{ $d }}" {{ request('drive')===$d?'selected':'' }}>{{ $d }}</option>@endforeach
+  </select>
+  <select id="invSearchCyl" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any cylinders</option>
+    @foreach([3,4,5,6,8,10,12] as $c)<option value="{{ $c }}" {{ (string) request('cyl')===(string) $c?'selected':'' }}>{{ $c }} cylinders</option>@endforeach
+  </select>
+  <select id="invSearchSize" onchange="liveInventorySearch()" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Any engine size</option>
+    @foreach($sizeOptions as $z)<option value="{{ $z }}" {{ (string) request('size')===(string) $z?'selected':'' }}>{{ $z }}L</option>@endforeach
+  </select>
+  <select id="invSortPick" onchange="invApplySort(this.value)" title="Sort the list" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body bg-white focus:outline-none">
+    <option value="">Sort: newest added</option>
+    @foreach(['price'=>'Price','trim'=>'Trim','drive'=>'Drive type','engine'=>'Engine size','year'=>'Year','location'=>'Location','name'=>'Part name','qty'=>'Quantity','grade'=>'Grade'] as $k => $lbl)
+      <option value="{{ $k }}:asc"  {{ ($sort ?? '')===$k && ($dir ?? '')==='asc'  ? 'selected' : '' }}>{{ $lbl }} (low / A to Z)</option>
+      <option value="{{ $k }}:desc" {{ ($sort ?? '')===$k && ($dir ?? '')==='desc' ? 'selected' : '' }}>{{ $lbl }} (high / Z to A)</option>
+    @endforeach
   </select>
   <input type="number" id="invSearchPriceMin" value="{{ request('price_min') }}" placeholder="Min price" oninput="liveInventorySearch()"
     class="w-28 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-body focus:outline-none">
@@ -390,6 +413,15 @@ async function onInventoryLocationChange() {
     liveInventorySearch();
 }
 
+// Sort dropdown: reloads the list sorted by the chosen column (same sorting the column headings use).
+function invApplySort(v) {
+    const url = new URL(window.location.href);
+    if (!v) { url.searchParams.delete('sort'); url.searchParams.delete('dir'); }
+    else { const p = v.split(':'); url.searchParams.set('sort', p[0]); url.searchParams.set('dir', p[1] || 'asc'); }
+    url.searchParams.delete('page');
+    window.location.href = url.toString();
+}
+
 // Changing the brand reloads the page so the Model list shows only that brand's models.
 function onInventoryBrandChange() {
     const url = new URL(window.location.href);
@@ -443,7 +475,8 @@ async function doLiveInventorySearch() {
         url.searchParams.set('location', location);
         url.searchParams.set('room', room);
         [['model','invSearchModel'],['year','invSearchYear'],['year_to','invSearchYearTo'],['grade','invSearchGrade'],['type','invSearchType'],
-         ['stock','invSearchStock'],['photos','invSearchPhotos'],['price_min','invSearchPriceMin'],['price_max','invSearchPriceMax']]
+         ['stock','invSearchStock'],['photos','invSearchPhotos'],['price_min','invSearchPriceMin'],['price_max','invSearchPriceMax'],
+         ['trim','invSearchTrim'],['drive','invSearchDrive'],['cyl','invSearchCyl'],['size','invSearchSize']]
           .forEach(function (p) { var el = document.getElementById(p[1]); if (el) url.searchParams.set(p[0], el.value); });
         url.searchParams.delete('page');
 

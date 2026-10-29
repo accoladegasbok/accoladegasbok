@@ -313,6 +313,69 @@
                     </div>
                     @endif
 
+                    {{-- Drive type / Cylinders / Engine size - counts follow the current search --}}
+                    @php $sf = $specFacets ?? ['drives' => [], 'cyls' => [], 'sizes' => []]; @endphp
+                    @if(!empty($sf['drives']))
+                    <div class="p-4 border-b border-gray-100">
+                        <button type="button" class="filter-toggle w-full flex justify-between items-center text-left mb-3" data-target="drive-filter">
+                            <span class="font-body font-500 text-sm text-gray-700 uppercase tracking-wider">Drive Type</span>
+                            <svg class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="drive-filter" class="space-y-2">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="drive" value="" {{ empty($filters['drive']) ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">Any drive type</span>
+                            </label>
+                            @foreach($sf['drives'] as $dv => $dn)
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="drive" value="{{ $dv }}" {{ ($filters['drive'] ?? '') === $dv ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">{{ $dv }} <span class="text-xs text-gray-400">({{ $dn }})</span></span>
+                            </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+                    @if(!empty($sf['cyls']))
+                    <div class="p-4 border-b border-gray-100">
+                        <button type="button" class="filter-toggle w-full flex justify-between items-center text-left mb-3" data-target="cyl-filter">
+                            <span class="font-body font-500 text-sm text-gray-700 uppercase tracking-wider">Cylinders</span>
+                            <svg class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="cyl-filter" class="space-y-2">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="cyl" value="" {{ empty($filters['cyl']) ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">Any</span>
+                            </label>
+                            @foreach($sf['cyls'] as $cv => $cn)
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="cyl" value="{{ $cv }}" {{ (int) ($filters['cyl'] ?? 0) === (int) $cv ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">{{ $cv }} cylinders <span class="text-xs text-gray-400">({{ $cn }})</span></span>
+                            </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+                    @if(!empty($sf['sizes']))
+                    <div class="p-4 border-b border-gray-100">
+                        <button type="button" class="filter-toggle w-full flex justify-between items-center text-left mb-3" data-target="size-filter">
+                            <span class="font-body font-500 text-sm text-gray-700 uppercase tracking-wider">Engine Size</span>
+                            <svg class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="size-filter" class="space-y-2 max-h-56 overflow-y-auto">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="size" value="" {{ ($filters['size'] ?? '') === '' ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">Any size</span>
+                            </label>
+                            @foreach($sf['sizes'] as $zv => $zn)
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="size" value="{{ $zv }}" {{ ($filters['size'] ?? '') === (string) $zv ? 'checked' : '' }} class="accent-gold" onchange="this.form.submit()">
+                                <span class="text-sm font-body text-gray-600 group-hover:text-navy">{{ $zv }}L <span class="text-xs text-gray-400">({{ $zn }})</span></span>
+                            </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+
                     {{-- Condition Grade --}}
                     <div class="p-4 border-b border-gray-100">
                         <button type="button" class="filter-toggle w-full flex justify-between items-center text-left mb-3" data-target="cond-filter">
@@ -422,6 +485,12 @@
                             <option value="price_asc"  {{ ($filters['sort'] ?? '') === 'price_asc'        ? 'selected' : '' }}>Price: Low → High</option>
                             <option value="price_desc" {{ ($filters['sort'] ?? '') === 'price_desc'       ? 'selected' : '' }}>Price: High → Low</option>
                             <option value="mileage"    {{ ($filters['sort'] ?? '') === 'mileage'          ? 'selected' : '' }}>Lowest Mileage</option>
+                            <option value="year_new"   {{ ($filters['sort'] ?? '') === 'year_new'         ? 'selected' : '' }}>Year: Newest First</option>
+                            <option value="year_old"   {{ ($filters['sort'] ?? '') === 'year_old'         ? 'selected' : '' }}>Year: Oldest First</option>
+                            <option value="engine"     {{ ($filters['sort'] ?? '') === 'engine'           ? 'selected' : '' }}>Engine Size</option>
+                            <option value="grade"      {{ ($filters['sort'] ?? '') === 'grade'            ? 'selected' : '' }}>Condition (Best First)</option>
+                            <option value="location"   {{ ($filters['sort'] ?? '') === 'location'        ? 'selected' : '' }}>Location (A–Z)</option>
+                            <option value="name"       {{ ($filters['sort'] ?? '') === 'name'             ? 'selected' : '' }}>Part Name (A–Z)</option>
                         </select>
                     </form>
 
@@ -477,6 +546,9 @@
                         Request This Part on WhatsApp
                     </button>
                 </div>
+
+                {{-- Verified alternatives (and staff-only leads) --}}
+                @include('parts._alternatives')
 
                 {{-- Recently sold (adverts) --}}
                 @include('parts._sold-ads')
@@ -715,6 +787,9 @@
                 <div class="mt-8">
                     {{ $parts->links() }}
                 </div>
+
+                {{-- Verified alternatives (and staff-only leads) --}}
+                @include('parts._alternatives')
 
                 {{-- Recently sold (adverts) --}}
                 @include('parts._sold-ads')

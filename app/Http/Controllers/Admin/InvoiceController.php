@@ -1958,6 +1958,59 @@ class InvoiceController extends Controller
     }
 
     // =========================================================
+    // POST /admin/invoices/{id}/payments/{pid}/unconfirm
+    // Admin only. Puts a confirmed payment back to Pending and takes back any overpayment credit.
+    // =========================================================
+    public function unconfirmPayment(int $invoiceId, int $paymentId)
+    {
+        if (Session::get('staff_role') !== 'admin') abort(403, 'Only an admin can unapprove a payment.');
+
+        $payment = DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $invoiceId)->first();
+        abort_if(!$payment, 404);
+        if ($payment->status !== 'confirmed') return back()->with('error', 'That payment is not confirmed, so there is nothing to unapprove.');
+
+        DB::table('invoice_payments')->where('id', $paymentId)->update(['status' => 'pending', 'updated_at' => now()]);
+        \Illuminate\Support\Facades\Log::info('Invoice payment unapproved', ['invoice' => $invoiceId, 'payment' => $paymentId, 'staff' => Session::get('staff_name')]);
+
+        return back()->with('success', 'Payment unapproved - it is back to Pending.' . $this->creditReversalNote($invoiceId));
+    }
+
+    // =========================================================
+    // POST /admin/invoices/{id}/payments/{pid}/delete
+    // Admin only. Removes a payment record completely (any status).
+    // =========================================================
+    public function deletePayment(int $invoiceId, int $paymentId)
+    {
+        if (Session::get('staff_role') !== 'admin') abort(403, 'Only an admin can delete a payment.');
+
+        $payment = DB::table('invoice_payments')->where('id', $paymentId)->where('invoice_id', $invoiceId)->first();
+        abort_if(!$payment, 404);
+
+        DB::table('invoice_payments')->where('id', $paymentId)->delete();
+        \Illuminate\Support\Facades\Log::info('Invoice payment deleted', [
+            'invoice' => $invoiceId, 'payment' => (array) $payment, 'staff' => Session::get('staff_name'),
+        ]);
+
+        $note = $payment->status === 'confirmed' ? $this->creditReversalNote($invoiceId) : '';
+        return back()->with('success', 'Payment deleted.' . $note);
+    }
+
+    private function creditReversalNote(int $invoiceId): string
+    {
+        try {
+            $r = \App\Services\CustomerCreditService::reverseOverpayment('invoice', $invoiceId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Credit reversal failed for invoice ' . $invoiceId . ': ' . $e->getMessage());
+            return ' (The overpayment credit check could not run - use Customer Credit to review.)';
+        }
+        $cc = DB::table('invoices')->where('id', $invoiceId)->value('currency_code') ?: 'NGN';
+        $msg = '';
+        if ($r['reversed'] > 0) $msg .= ' ' . self::formatLocal($r['reversed'], $cc) . ' of overpayment credit was taken back.';
+        if ($r['short'] > 0)    $msg .= ' ' . self::formatLocal($r['short'], $cc) . ' of that credit was already used by the customer, so it could not be taken back - check Customer Credit.';
+        return $msg;
+    }
+
+    // =========================================================
     // POST /admin/invoices/{id}/send-reminder
     // =========================================================
     public function sendReminder(int $invoiceId)

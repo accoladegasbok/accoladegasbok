@@ -119,6 +119,15 @@
                    placeholder="e.g. LE, LE Eco, SE..."
                    class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
         </div>
+        <div>
+            <label class="block text-xs text-gray-500 uppercase tracking-wide mb-1.5">How wide to search</label>
+            <select id="chk_breadth"
+                    class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:border-yellow-400">
+                <option value="standard">Standard (confirmed groups, direct, chassis)</option>
+                <option value="verified">Verified only (what customers see)</option>
+                <option value="broad">Broad (adds same engine/gearbox family and near years)</option>
+            </select>
+        </div>
     </div>
 
     {{-- Engine picker — appears only when the selected vehicle has more
@@ -150,6 +159,49 @@
             <span class="px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-700">Direct = Year-range match</span>
             <span class="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-700">⚙ Platform = Suspension/Brakes chassis match</span>
             <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 font-700">~ Heuristic = OEM suggestion</span>
+            <span class="px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-700">Family = same engine/gearbox (Broad mode)</span>
+            <span class="px-2 py-1 rounded-full bg-gray-200 text-gray-700 font-700">Near year = within 2 years (Broad mode)</span>
+        </div>
+        {{-- Sort and narrow the results on screen: trim, drive, cylinders, engine size, price... --}}
+        <div id="resultControls" class="flex flex-wrap gap-2 items-end mb-3 bg-gray-50 border border-gray-200 rounded-xl p-3">
+            <div>
+                <label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Sort by</label>
+                <select id="rc_sort" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+                    <option value="best">Best match first</option>
+                    <option value="price_asc">Price: low to high</option>
+                    <option value="price_desc">Price: high to low</option>
+                    <option value="trim">Trim (A-Z)</option>
+                    <option value="drive">Drive type</option>
+                    <option value="cyl">Cylinders</option>
+                    <option value="size">Engine size</option>
+                    <option value="year_new">Year: newest</option>
+                    <option value="year_old">Year: oldest</option>
+                    <option value="grade">Condition (best first)</option>
+                    <option value="location">Location (A-Z)</option>
+                    <option value="name">Part name (A-Z)</option>
+                </select>
+            </div>
+            <div><label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Trim</label>
+                <select id="rc_trim" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"></select></div>
+            <div><label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Drive</label>
+                <select id="rc_drive" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"></select></div>
+            <div><label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Cylinders</label>
+                <select id="rc_cyl" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"></select></div>
+            <div><label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Engine size</label>
+                <select id="rc_size" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"></select></div>
+            <div><label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Location</label>
+                <select id="rc_loc" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"></select></div>
+            <div><label class="block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Match type</label>
+                <select id="rc_src" onchange="renderResults()" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+                    <option value="">All</option>
+                    <option value="verified">Verified fits only</option>
+                    <option value="interchange">Interchange groups</option>
+                    <option value="direct">Direct match</option>
+                    <option value="platform">Chassis match</option>
+                    <option value="family">Engine/gearbox family</option>
+                    <option value="near_year">Near year</option>
+                </select></div>
+            <button type="button" onclick="resetResultControls()" class="text-xs text-gray-500 underline pb-2">Reset</button>
         </div>
         <div id="checkList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4"></div>
 
@@ -323,6 +375,109 @@ function resetEngineSelection() {
 document.getElementById('chk_model').addEventListener('change', resetEngineSelection);
 
 // ── COMPATIBILITY CHECK ─────────────────────────────────────────
+// ── Result list: sort and narrow on screen ───────────────────────────
+function escHtml(x){return String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+const GRADE_RANK = {'New':0,'A':1,'B':2,'C':3};
+
+function fillSelect(id, label, values, fmt){
+    const el = document.getElementById(id); if(!el) return;
+    const keep = el.value;
+    el.innerHTML = `<option value="">${label}</option>` + values.map(v=>`<option value="${escHtml(v)}">${escHtml(fmt?fmt(v):v)}</option>`).join('');
+    if ([...el.options].some(o=>o.value===keep)) el.value = keep;
+}
+function setupResultControls(){
+    const r = window.__chkResults || [];
+    const uniq = (f)=>[...new Set(r.map(f).filter(v=>v!==null&&v!==undefined&&v!==''))];
+    fillSelect('rc_trim','Any trim', uniq(p=>p.donor_trim).sort());
+    fillSelect('rc_drive','Any drive', uniq(p=>p.drive_type).sort());
+    fillSelect('rc_cyl','Any', uniq(p=>p.cylinders).sort((a,b)=>a-b), v=>v+' cyl');
+    fillSelect('rc_size','Any size', uniq(p=>p.engine_l).sort((a,b)=>a-b), v=>Number(v).toFixed(1)+'L');
+    fillSelect('rc_loc','All locations', uniq(p=>p.location).sort());
+}
+function resetResultControls(){
+    ['rc_trim','rc_drive','rc_cyl','rc_size','rc_loc','rc_src'].forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
+    const s=document.getElementById('rc_sort'); if(s) s.value='best';
+    renderResults();
+}
+function sortedFilteredResults(){
+    let list = (window.__chkResults||[]).slice();
+    const val = id => document.getElementById(id)?.value || '';
+    const trim=val('rc_trim'), drive=val('rc_drive'), cyl=val('rc_cyl'), size=val('rc_size'), loc=val('rc_loc'), src=val('rc_src');
+    list = list.filter(p=>{
+        if (trim && p.donor_trim !== trim) return false;
+        if (drive && p.drive_type !== drive) return false;
+        if (cyl && String(p.cylinders) !== cyl) return false;
+        if (size && String(p.engine_l) !== size) return false;
+        if (loc && p.location !== loc) return false;
+        if (src === 'verified' && !p.is_verified) return false;
+        if (src && src !== 'verified' && p.source !== src) return false;
+        return true;
+    });
+    const sort = val('rc_sort') || 'best';
+    // nulls always go last, so "Trim A-Z" lists the parts with a trim first
+    const cmp = (get, dir=1) => (a,b)=>{
+        const x=get(a), y=get(b), nx=(x===null||x===undefined||x===''), ny=(y===null||y===undefined||y==='');
+        if (nx&&ny) return 0; if (nx) return 1; if (ny) return -1;
+        return (typeof x==='number'&&typeof y==='number' ? x-y : String(x).localeCompare(String(y))) * dir;
+    };
+    const by = {
+        best:      (a,b)=>(a.tier||9)-(b.tier||9) || a.price_num-b.price_num,
+        price_asc: cmp(p=>p.price_num), price_desc: cmp(p=>p.price_num,-1),
+        trim: cmp(p=>p.donor_trim), drive: cmp(p=>p.drive_type), cyl: cmp(p=>p.cylinders), size: cmp(p=>p.engine_l),
+        year_new: cmp(p=>p.year_to,-1), year_old: cmp(p=>p.year_from),
+        grade: cmp(p=>GRADE_RANK[p.grade]??9), location: cmp(p=>p.location), name: cmp(p=>p.part_name),
+    };
+    return list.sort(by[sort] || by.best);
+}
+function renderResults(){
+    const all = window.__chkResults || [];
+    const list = sortedFilteredResults();
+    const cnt = document.getElementById('checkCount');
+    if (cnt) cnt.innerHTML = `<span class="bg-navy text-gold font-mono font-700 px-3 py-1 rounded-full text-sm">${list.length}</span>
+        ${list.length===all.length?'':`<span class="text-xs text-gray-400">of ${all.length}</span>`} compatible part(s) in stock for <strong>${escHtml(window.__chkSearch||'')}</strong>
+        <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-700 uppercase">${escHtml(window.__chkBreadth||'standard')}</span>`;
+    const box = document.getElementById('checkList');
+    if (!list.length) { box.innerHTML = '<div class="col-span-full text-sm text-gray-400 text-center py-6 bg-gray-50 rounded-xl">Nothing matches those filters. Reset them or widen the search.</div>'; return; }
+    box.innerHTML = list.map(p=>{
+        const chips = [p.donor_trim, p.drive_type, p.cylinders?p.cylinders+' cyl':null, p.engine_l?Number(p.engine_l).toFixed(1)+'L':null, p.engine_code].filter(Boolean);
+        const yrs = p.year_from ? `${p.year_from}${p.year_to&&p.year_to!=p.year_from?'-'+p.year_to:''}` : '';
+        const fitCls = p.is_verified ? 'bg-green-100 text-green-800' : (p.tier>=5 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600');
+        return `
+        <div class="border border-gray-200 rounded-xl p-3 hover:border-yellow-400 transition-colors">
+            ${p.photo
+                ?`<img src="${p.photo}" class="w-full h-28 object-cover rounded-lg mb-2" onerror="this.src='/images/parts-photo-coming-soon.jpg'">`
+                :`<div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-300 text-xs">No photo</div>`}
+            <div class="font-600 text-sm text-navy">${escHtml(p.part_name)}</div>
+            ${yrs?`<div class="text-[10px] text-gray-500">${escHtml(yrs)}</div>`:''}
+            ${chips.length?`<div class="flex flex-wrap gap-1 mt-1">${chips.map(c=>`<span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${escHtml(c)}</span>`).join('')}</div>`:''}
+            <div class="font-mono text-[10px] text-gray-400 mt-1">${escHtml(p.part_code)}</div>
+            ${p.fits_vehicles?`<div class="text-[10px] text-blue-500 mt-1">Fits ${p.fits_vehicle_count} model${p.fits_vehicle_count===1?'':'s'}: ${escHtml(p.fits_vehicles)}</div>`:''}
+            <div class="flex items-center justify-between mt-2">
+                <div>
+                    <span class="font-700 text-gold text-sm">${escHtml(p.price)}</span>
+                    ${p.price_wholesale?`<span class="text-[10px] text-gray-400 ml-1">/ ${escHtml(p.price_wholesale)} trade</span>`:''}
+                </div>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-700">Grade ${escHtml(p.grade)}</span>
+            </div>
+            ${p.combined_stock>1?`<div class="text-[10px] text-blue-600 mt-1">Interchange stock: ${p.combined_stock} units</div>`:''}
+            <div class="text-[10px] text-gray-400 mt-1">${escHtml(p.location)}${p.bin?' · '+escHtml(p.bin):''}</div>
+            <div class="flex gap-1 mt-2 flex-wrap">
+                ${p.fit_label?`<span class="text-[9px] px-1.5 py-0.5 rounded font-700 ${fitCls}">${p.is_verified?'✓ ':''}${escHtml(p.fit_label)}</span>`:''}
+                ${p.source==='interchange'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-700">Interchange</span>`:''}
+                ${p.source==='direct'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-700">Direct match</span>`:''}
+                ${p.source==='platform'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-700">⚙ Chassis match</span>`:''}
+                ${p.source==='family'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-700">Family match</span>`:''}
+                ${p.source==='near_year'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 font-700">Near year</span>`:''}
+                ${p.major_component?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-700">⚡ Major</span>`:''}
+                ${p.legal_trace?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-700">⚠ Legal Trace</span>`:''}
+                ${p.group_code?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono">IC# ${escHtml(p.group_code)}</span>`:''}
+            </div>
+            <a href="/admin/inventory/${p.id}" class="block text-center text-xs text-gold border border-gold/30 rounded-lg py-1.5 mt-2 hover:bg-gold/10 transition-colors">
+                View / Edit Part →
+            </a>
+        </div>`;}).join('');
+}
+
 async function runCheck() {
     const make     = document.getElementById('chk_make').value.trim();
     const model    = document.getElementById('chk_model').value.trim();
@@ -344,7 +499,7 @@ async function runCheck() {
         const res  = await fetch('{{ route('admin.compatibility.check') }}', {
             method:'POST',
             headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}'},
-            body:JSON.stringify({make,model,year,part_name:partName,category,trim,cylinders,engine_l:engineL}),
+            body:JSON.stringify({make,model,year,part_name:partName,category,trim,cylinders,engine_l:engineL,breadth:document.getElementById('chk_breadth')?.value||'standard'}),
         });
         const data = await res.json();
         document.getElementById('checkLoading').classList.add('hidden');
@@ -464,36 +619,11 @@ async function runCheck() {
             <span class="bg-navy text-gold font-mono font-700 px-3 py-1 rounded-full text-sm">${data.count}</span>
             compatible part(s) in stock for <strong>${data.search}</strong>`;
 
-        document.getElementById('checkList').innerHTML=data.results.map(p=>`
-            <div class="border border-gray-200 rounded-xl p-3 hover:border-yellow-400 transition-colors">
-                ${p.photo
-                    ?`<img src="${p.photo}" class="w-full h-28 object-cover rounded-lg mb-2" onerror="this.src='/images/parts-photo-coming-soon.jpg'">`
-                    :`<div class="w-full h-28 bg-gray-100 rounded-lg mb-2 flex items-center justify-center text-gray-300 text-xs">No photo</div>`}
-                <div class="font-600 text-sm text-navy">${p.part_name}</div>
-                ${p.donor_trim||p.drive_type?`<div class="text-[9px] text-gray-400">${[p.donor_trim, p.drive_type].filter(Boolean).join(' · ')}</div>`:''}
-                <div class="font-mono text-[10px] text-gray-400">${p.part_code}</div>
-                ${p.fits_vehicles?`<div class="text-[10px] text-blue-500 mt-1">Fits ${p.fits_vehicle_count} model${p.fits_vehicle_count===1?'':'s'}: ${p.fits_vehicles}</div>`:''}
-                <div class="flex items-center justify-between mt-2">
-                    <div>
-                        <span class="font-700 text-gold text-sm">${p.price}</span>
-                        ${p.price_wholesale?`<span class="text-[10px] text-gray-400 ml-1">/ ${p.price_wholesale} trade</span>`:''}
-                    </div>
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-700">Grade ${p.grade}</span>
-                </div>
-                ${p.combined_stock>1?`<div class="text-[10px] text-blue-600 mt-1">Interchange stock: ${p.combined_stock} units</div>`:''}
-                <div class="text-[10px] text-gray-400 mt-1">${p.location}${p.bin?' · '+p.bin:''}</div>
-                <div class="flex gap-1 mt-2 flex-wrap">
-                    ${p.source==='interchange'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-700">✓ Interchange</span>`:''}
-                    ${p.source==='direct'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-700">Direct match</span>`:''}
-                    ${p.source==='platform'?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-700">⚙ Chassis match</span>`:''}
-                    ${p.major_component?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-700">⚡ Major</span>`:''}
-                    ${p.legal_trace?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-700">⚠ Legal Trace</span>`:''}
-                    ${p.group_code?`<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono">IC# ${p.group_code}</span>`:''}
-                </div>
-                <a href="/admin/inventory/${p.id}" class="block text-center text-xs text-gold border border-gold/30 rounded-lg py-1.5 mt-2 hover:bg-gold/10 transition-colors">
-                    View / Edit Part →
-                </a>
-            </div>`).join('');
+        window.__chkResults = data.results || [];
+        window.__chkBreadth = data.breadth || 'standard';
+        window.__chkSearch = data.search || '';
+        setupResultControls();
+        renderResults();
 
         document.getElementById('checkResults').classList.remove('hidden');
 
@@ -522,6 +652,9 @@ async function runCheck() {
     }
 }
 
+document.getElementById('chk_breadth')?.addEventListener('change', () => {
+    if(document.getElementById('chk_make').value && document.getElementById('chk_model').value && document.getElementById('chk_year').value) runCheck();
+});
 document.getElementById('chk_year').addEventListener('change', e => {
     if(document.getElementById('chk_make').value && document.getElementById('chk_model').value) runCheck();
 });

@@ -118,6 +118,18 @@ class InventoryController extends Controller
         if ($request->get('photos') === 'without') $query->where(function ($ph) { $ph->whereNull('p.photos')->orWhere('p.photos', '[]')->orWhere('p.photos', ''); });
         if (is_numeric($request->get('price_min'))) $query->where('p.price_local', '>=', (float) $request->get('price_min'));
         if (is_numeric($request->get('price_max'))) $query->where('p.price_local', '<=', (float) $request->get('price_max'));
+        // Spec filters shared with the customer search: drive type, cylinders, engine size (litres)
+        \App\Support\PartFilters::apply($query, $request->only(['drive', 'cyl', 'size']), 'p');
+        // Trim: the donor's own trim, or a trim listed in the part's "fits these trims" list
+        if (($trimF = trim((string) $request->get('trim', ''))) !== '') {
+            $needle = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $trimF);
+            $query->where(function ($tq) use ($trimF, $needle) {
+                $tq->where('p.donor_trim', $trimF)
+                   ->orWhereRaw("CONCAT(',', REPLACE(REPLACE(p.compatible_trims, ', ', ','), ' ,', ','), ',') LIKE ?", ['%,' . $needle . ',%']);
+            });
+        }
+        // Items removed from the consumables screen carry a deleted_at date: keep them out of the list.
+        if (\Illuminate\Support\Facades\Schema::hasColumn('parts_inventory', 'deleted_at')) $query->whereNull('p.deleted_at');
 
         // ── Multi-search like the customer site: up to 10 part names and up to 10 vehicles (year|make|model) ──
         $partChips = collect((array) $request->input('part', []))->map(fn ($x) => trim((string) $x))->filter()->unique()->take(10)->values();
@@ -204,6 +216,9 @@ class InventoryController extends Controller
             'room'     => ['sr.name'],
             'status'   => ['p.status'],
             'added'    => ['p.created_at'],
+            'trim'     => \App\Support\PartFilters::sortColumns('trim', 'p'),
+            'drive'    => \App\Support\PartFilters::sortColumns('drive', 'p'),
+            'engine'   => \App\Support\PartFilters::sortColumns('engine', 'p'),
         ];
         $sort = $request->get('sort');
         $dir  = strtolower((string) $request->get('dir')) === 'asc' ? 'asc' : 'desc';
@@ -216,9 +231,9 @@ class InventoryController extends Controller
         }
 
         $parts  = $query->paginate(30)->withQueryString();
-        $counts = DB::table('parts_inventory')
-            ->select('status', DB::raw('count(*) as n'))
-            ->groupBy('status')->pluck('n','status');
+        $countsQ = DB::table('parts_inventory')->select('status', DB::raw('count(*) as n'));
+        if (\Illuminate\Support\Facades\Schema::hasColumn('parts_inventory', 'deleted_at')) $countsQ->whereNull('deleted_at');
+        $counts = $countsQ->groupBy('status')->pluck('n','status');
 
         // NEW: room list for the filter dropdown, scoped to whichever
         // location is currently selected (or all rooms if none picked).
@@ -249,6 +264,12 @@ class InventoryController extends Controller
             'models'     => $models,
             'partChips'  => $partChips,
             'vehicleChips' => $vehicleChips,
+            // dropdown lists for the drive / size / trim filters
+            'driveOptions' => \App\Support\PartFilters::driveOptions(),
+            'sizeOptions'  => \App\Support\PartFilters::sizeOptions(),
+            'trimOptions'  => \Illuminate\Support\Facades\Cache::remember('inv_trim_options', 600, fn () =>
+                DB::table('parts_inventory')->whereNotNull('donor_trim')->where('donor_trim', '!=', '')
+                    ->distinct()->orderBy('donor_trim')->limit(150)->pluck('donor_trim')->all()),
         ]);
     }
 
