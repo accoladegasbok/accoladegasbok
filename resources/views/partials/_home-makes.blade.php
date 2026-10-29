@@ -2,8 +2,9 @@
      "Shop by make" chips for the home page. Makes that have parts in stock come first. --}}
 @php
     try {
-        $__stocked = \Illuminate\Support\Facades\DB::table('parts_inventory')
-            ->whereNull('deleted_at')->where('status', 'Available')->whereNotNull('brand')
+        $__q = \Illuminate\Support\Facades\DB::table('parts_inventory');
+        if (\Illuminate\Support\Facades\Schema::hasColumn('parts_inventory', 'deleted_at')) $__q->whereNull('deleted_at');
+        $__stocked = $__q->where('status', 'Available')->whereNotNull('brand')
             ->selectRaw('UPPER(brand) as b, COUNT(*) as n')->groupBy('b')->orderByDesc('n')->limit(14)->pluck('n', 'b')->all();
     } catch (\Throwable $e) { $__stocked = []; }
     $__fallback = ['TOYOTA','LEXUS','HONDA','NISSAN','HYUNDAI','KIA','FORD','CHEVROLET','MERCEDES-BENZ','BMW','VOLKSWAGEN','SCION'];

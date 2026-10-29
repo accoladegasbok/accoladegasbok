@@ -102,8 +102,7 @@ class PartsSearchController extends Controller
     {
         $tiles = \App\Data\PartCategories::vehicleTiles();
 
-        $rows = DB::table('parts_inventory')
-            ->whereNull('deleted_at')
+        $rows = $this->live(DB::table('parts_inventory'))
             ->where('status', 'Available')
             ->whereIn('part_category', self::AUTO_CATEGORIES)
             ->selectRaw('part_category, part_name, COUNT(*) as n')
@@ -153,7 +152,7 @@ class PartsSearchController extends Controller
         $stock = [];
         $names = collect($parts->items())->pluck('part_name')->unique()->values()->all();
         if ($names) {
-            $rows = DB::table('parts_inventory')->whereNull('deleted_at')->where('status', 'Available')
+            $rows = $this->live(DB::table('parts_inventory'))->where('status', 'Available')
                 ->where('stock_qty', '>', 0)->whereIn('part_name', $names)
                 ->whereIn('part_category', self::OTHER_CATEGORIES)
                 ->get(['part_name', 'brand', 'part_category', 'location', 'stock_qty']);
@@ -307,9 +306,25 @@ class PartsSearchController extends Controller
         ];
     }
 
+    /**
+     * Leaves out removed items. parts_inventory only has a deleted_at column after the
+     * 2026_10_29_000001 migration, so this checks once per request instead of assuming it.
+     */
+    private function live($q)
+    {
+        static $has = null;
+        if ($has === null) {
+            try { $has = \Illuminate\Support\Facades\Schema::hasColumn('parts_inventory', 'deleted_at'); }
+            catch (\Throwable $e) { $has = false; }
+        }
+        if ($has) $q->whereNull('deleted_at');
+        return $q;
+    }
+
     /** Shared by the live results and the 'recently sold' strip, so both follow the same rules. */
     private function applyFilters($q, array $filters, bool $withPrice = true): void
     {
+        $this->live($q);
         // NEW: scope constrains results to the right grouping even
         // when no explicit category filter is chosen — this is what
         // actually keeps /parts and /other-items from mixing. If a
