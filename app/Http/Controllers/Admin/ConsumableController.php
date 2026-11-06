@@ -38,21 +38,22 @@ class ConsumableController extends Controller
     }
 
     /**
-     * Put more units on an item that already exists (restock). No new product or number is created.
-     * Manager/admin add the units straight away; anyone else sends them for approval.
+     * Put more units on an item that already exists (restock). No new product or number is created, and every
+     * add is written to the batch ledger with a generated batch number.
+     * Supervisor and above add the units straight away; anyone else sends them for manager approval.
      * Returns a short message for the screen.
      */
-    private function addUnits(object $item, int $qty): string
+    private function addUnits(object $item, int $qty, ?string $supplierRef = null, string $reason = 'restock'): string
     {
         $qty = max(1, $qty);
         if ($item->status === \App\Services\PartApprovalService::UNDER_REVIEW) {
             // Not live yet - the units simply join the item while it waits for approval.
-            DB::table('parts_inventory')->where('id', $item->id)->update([
-                'stock_qty' => (int) $item->stock_qty + $qty, 'updated_at' => now(),
-            ]);
-            return "Added {$qty} to {$item->part_code} (still waiting for manager approval).";
+            $new = (int) $item->stock_qty + $qty;
+            DB::table('parts_inventory')->where('id', $item->id)->update(['stock_qty' => $new, 'updated_at' => now()]);
+            $batch = \App\Services\ConsumableBatches::record($item, $qty, $new, $reason, $supplierRef);
+            return "Added {$qty} to {$item->part_code} (still waiting for manager approval)." . ($batch ? " Batch {$batch}." : '');
         }
-        if (!\App\Services\PartApprovalService::canApprove()) {
+        if (!StaffRole::isSupervisorOrAbove()) {
             \App\Services\PartApprovalService::requestRestock((int) $item->id, $qty);
             return "{$item->part_code} already exists - {$qty} extra unit(s) sent for manager approval. Stock stays at {$item->stock_qty} until then.";
         }
@@ -62,7 +63,8 @@ class ConsumableController extends Controller
             'status'     => in_array($item->status, ['Out of Stock', 'Sold'], true) ? 'Available' : $item->status,
             'updated_at' => now(),
         ]);
-        return "Added {$qty} to {$item->part_code} - now {$new} in stock.";
+        $batch = \App\Services\ConsumableBatches::record($item, $qty, $new, $reason, $supplierRef);
+        return "Added {$qty} to {$item->part_code} at {$item->location} - now {$new} in stock." . ($batch ? " Batch {$batch}." : '');
     }
 
     /** Find the existing item for the same product at the same location. */
@@ -77,15 +79,65 @@ class ConsumableController extends Controller
     }
 
     // =========================================================
-    // POST /admin/consumables/{id}/add-stock  - quick restock from the list
+    // POST /admin/consumables/{id}/add-stock  - quick restock from the list (new batch number each time)
     // =========================================================
     public function addStock(Request $request, int $id)
     {
-        $request->validate(['qty' => 'required|integer|min:1|max:100000']);
+        $request->validate(['qty' => 'required|integer|min:1|max:100000', 'supplier_ref' => 'nullable|string|max:80']);
         $item = DB::table('parts_inventory')->where('id', $id)->whereNull('deleted_at')->first();
         if (!$item) abort(404);
-        $msg = $this->addUnits($item, (int) $request->qty);
+        $msg = $this->addUnits($item, (int) $request->qty, $request->supplier_ref);
         return redirect()->back()->with('success', $msg);
+    }
+
+    // =========================================================
+    // POST /admin/consumables/{id}/stock-at-location
+    // Stock a product that is already in the system at ANOTHER location. Nothing is typed again: name, brand,
+    // photos and description are copied from the source item and it keeps the same CON number. If the product
+    // is already stocked at that location the units are simply added to it as a new batch.
+    // =========================================================
+    public function stockAtLocation(Request $request, int $id)
+    {
+        $request->validate([
+            'location'     => 'required|string|max:60',
+            'qty'          => 'required|integer|min:1|max:100000',
+            'price_local'  => 'required|numeric|min:0',
+            'supplier_ref' => 'nullable|string|max:80',
+        ]);
+        $src = DB::table('parts_inventory')->where('id', $id)->whereNull('deleted_at')->first();
+        if (!$src) abort(404);
+
+        $existing = $this->findExisting($src->part_name, $src->brand, $src->part_category, $request->location);
+        if ($existing) {
+            return redirect()->back()->with('success', $this->addUnits($existing, (int) $request->qty, $request->supplier_ref));
+        }
+
+        $currency = InvoiceController::currencyForLocation($request->location);
+        $new = (array) $src;
+        unset($new['id']);
+        // Things that belong to the other location's shelf or history are not copied.
+        foreach (['storage_shelf_id', 'bin_location', 'sold_at', 'deleted_at', 'source_ref', 'interchange_group_id'] as $c) {
+            if (array_key_exists($c, $new)) $new[$c] = null;
+        }
+        $sameCurrency = ($src->currency_code ?? null) === $currency['code'];
+        $new['location']        = $request->location;
+        $new['price_local']     = (float) $request->price_local;
+        $new['price_usd']       = (float) $request->price_local;
+        $new['price_wholesale'] = $sameCurrency ? ($src->price_wholesale ?? null) : null;
+        $new['currency_code']   = $currency['code'];
+        $new['stock_qty']       = (int) $request->qty;
+        $new['status']          = \App\Services\PartApprovalService::initialStatus();
+        $new['created_at']      = now();
+        $new['updated_at']      = now();
+
+        $newId = DB::table('parts_inventory')->insertGetId($new);
+        $row = DB::table('parts_inventory')->where('id', $newId)->first();
+        $batch = \App\Services\ConsumableBatches::record($row, (int) $request->qty, (int) $request->qty, 'new_location', $request->supplier_ref);
+        $waiting = \App\Services\PartApprovalService::submitNew($newId);
+
+        return redirect()->back()->with('success', $waiting
+            ? "{$src->part_code} listed at {$request->location} ({$request->qty} units) and waiting for manager approval." . ($batch ? " Batch {$batch}." : '')
+            : "{$src->part_code} now also stocked at {$request->location}: {$request->qty} units." . ($batch ? " Batch {$batch}." : ''));
     }
 
     // =========================================================
@@ -167,10 +219,14 @@ class ConsumableController extends Controller
             ->whereIn('part_category', self::CATEGORIES)
             ->where('status', 'Available')->where('stock_qty', '<=', 3)->count();
 
+        // Latest batch entries for the rows on this page
+        $batches = \App\Services\ConsumableBatches::recentFor($consumables->pluck('id')->all(), 5);
+
         return view('admin.consumables.index', compact(
             'consumables', 'q', 'location', 'status', 'category', 'locations',
-            'totalItems', 'totalValue', 'lowStock', 'everywhere'
-        ))->with('categories', self::CATEGORIES);
+            'totalItems', 'totalValue', 'lowStock', 'everywhere', 'batches'
+        ))->with('categories', self::CATEGORIES)
+          ->with('stockLocations', ['Lagos Nigeria', 'Ibadan Nigeria', 'Ile-Ife Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana', 'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI']);
     }
 
     // =========================================================
@@ -255,6 +311,11 @@ class ConsumableController extends Controller
                 }
             }
         }
+        // Same product already listed elsewhere: reuse its photos and description instead of asking again.
+        if ($elsewhere && !$photoPaths) {
+            $photoPaths = json_decode($elsewhere->photos ?? '[]', true) ?: [];
+        }
+        $descriptionToSave = ($request->description ?? null) ?: ($elsewhere->description ?? null);
 
         $newConsumableId = DB::table('parts_inventory')->insertGetId([
             'part_code'        => $partCode,
@@ -277,7 +338,7 @@ class ConsumableController extends Controller
             'status'           => \App\Services\PartApprovalService::initialStatus(),
             'origin'           => 'N/A',
             'origin_market'    => 'N/A',
-            'description'      => $request->description ?? null,
+            'description'      => $descriptionToSave,
             'photos'           => json_encode($photoPaths),
             'created_at'       => now(),
             'updated_at'       => now(),
@@ -286,6 +347,12 @@ class ConsumableController extends Controller
         // A supervisor-typed new name joins the shared list.
         if (StaffRole::isSupervisorOrAbove()) {
             PartNames::ensureTerm($request->part_name, $category);
+        }
+
+        // First units go into the batch ledger too.
+        $newRow = DB::table('parts_inventory')->where('id', $newConsumableId)->first();
+        if ($newRow) {
+            \App\Services\ConsumableBatches::record($newRow, (int) $request->stock_qty, (int) $request->stock_qty, $elsewhere ? 'new_location' : 'initial');
         }
 
         $waiting = \App\Services\PartApprovalService::submitNew($newConsumableId);
@@ -380,10 +447,14 @@ class ConsumableController extends Controller
                 } else {
                     \App\Services\PartApprovalService::closeNewPart($id);
                 }
-            } elseif ($newQty > $currentQty && !\App\Services\PartApprovalService::canApprove()) {
+            } elseif ($newQty > $currentQty && !StaffRole::isSupervisorOrAbove()) {
                 \App\Services\PartApprovalService::requestRestock($id, $newQty - $currentQty);
                 $newQty = $currentQty;
                 $restockNote = ' The extra units are waiting for manager approval; stock stays at ' . $currentQty . ' until then.';
+            } elseif ($newQty !== $currentQty) {
+                // Supervisor and above changed the count by hand: keep a batch entry so the history stays complete.
+                $batchNo = \App\Services\ConsumableBatches::record($item, $newQty - $currentQty, $newQty, 'manual', null, 'Changed on the edit screen');
+                if ($batchNo) $restockNote = " Stock change recorded as batch {$batchNo}.";
             }
         }
 

@@ -48,10 +48,10 @@
 
     {{-- ── Photos ──────────────────────────────────────────────── --}}
     <div>
-      <div class="bg-gray-100 rounded-2xl overflow-hidden aspect-[4/3] mb-3 relative">
+      <div class="bg-white border border-gray-100 rounded-2xl overflow-hidden aspect-[4/3] mb-3 relative">
         @if(!empty($photos[0]))
           <img id="mainPhoto" src="{{ $photos[0] }}" alt="{{ $part->part_name }}"
-            class="w-full h-full {{ $hasRealPhotos ? 'object-cover' : 'object-contain p-6' }} cursor-zoom-in" onclick="openLightbox(0)">
+            class="w-full h-full {{ $hasRealPhotos ? 'object-contain' : 'object-contain p-6' }} cursor-zoom-in" onclick="openLightbox(0)">
         @else
           <div class="w-full h-full flex items-center justify-center text-gray-300 text-sm font-body">No photo yet</div>
         @endif
@@ -67,7 +67,7 @@
         @foreach($photos as $i => $url)
           <button onclick="setPhoto({{ $i }},'{{ $url }}')"
             class="thumb-btn aspect-square rounded-xl overflow-hidden border-2 {{ $i===0?'border-gold active':'border-transparent' }} transition-all hover:border-gold">
-            <img src="{{ $url }}" class="w-full h-full object-cover" loading="lazy">
+            <img src="{{ $url }}" class="w-full h-full object-contain bg-white" loading="lazy">
           </button>
         @endforeach
       </div>

@@ -98,5 +98,9 @@ Route::middleware(['admin.auth'])->prefix('admin/fitment')->name('admin.fitment.
 Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/add-stock', [\App\Http\Controllers\Admin\ConsumableController::class, 'addStock'])
     ->name('admin.inventory.consumable.addstock')->where('id', '[0-9]+');
 
+// NEW: stock an existing consumable/electronics/computer/other item at another location - nothing retyped, same number.
+Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/stock-at-location', [\App\Http\Controllers\Admin\ConsumableController::class, 'stockAtLocation'])
+    ->name('admin.inventory.consumable.stockat')->where('id', '[0-9]+');
+
 // NEW: sitemap for search engines (home, main pages, policies and every part that is available).
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');

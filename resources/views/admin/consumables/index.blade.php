@@ -71,6 +71,13 @@
         <td class="px-4 py-3">
           <div class="font-body font-600 text-sm text-navy">{{ $item->part_name }}</div>
           <div class="font-mono text-[10px] text-gray-400">{{ $item->part_code }}</div>
+          @if(!empty($batches[$item->id]))
+          <details class="mt-1"><summary class="text-[10px] text-blue-600 cursor-pointer">Batches ({{ count($batches[$item->id]) }})</summary>
+            @foreach($batches[$item->id] as $b)
+            <div class="text-[10px] text-gray-500">{{ $b->batch_no }} · {{ $b->qty > 0 ? '+' : '' }}{{ $b->qty }} → {{ $b->balance_after }} · {{ $b->reason }}@if($b->supplier_ref) · {{ $b->supplier_ref }}@endif · {{ $b->staff_name }} · {{ \Illuminate\Support\Carbon::parse($b->created_at)->format('d M') }}</div>
+            @endforeach
+          </details>
+          @endif
         </td>
         <td class="px-4 py-3 text-sm text-gray-600">{{ $item->brand ?? '—' }}</td>
         <td class="px-4 py-3 text-xs text-gray-500">{{ $item->location }}</td>
@@ -101,8 +108,24 @@
             <form method="POST" action="{{ route('admin.inventory.consumable.addstock', $item->id) }}" class="flex items-center gap-1">
               @csrf
               <input type="number" name="qty" min="1" value="1" class="w-14 border border-gray-200 rounded-lg px-2 py-1 text-xs" title="Units to add">
+              <input type="text" name="supplier_ref" maxlength="80" placeholder="Supplier lot" class="w-24 border border-gray-200 rounded-lg px-2 py-1 text-xs" title="Optional supplier invoice / lot reference for this batch">
               <button class="text-xs border border-green-300 text-green-700 rounded-lg px-2 py-1 hover:bg-green-50 transition-colors" title="Adds units to this same item - no new number">+ Add</button>
             </form>
+            <details class="relative text-left">
+              <summary class="text-xs border border-blue-200 text-blue-700 rounded-lg px-2 py-1 cursor-pointer hover:bg-blue-50 list-none" title="Stock this same product at another location - no re-entry, same photos and number">Other location</summary>
+              <form method="POST" action="{{ route('admin.inventory.consumable.stockat', $item->id) }}" class="absolute right-0 z-20 mt-1 w-60 bg-white border border-gray-200 rounded-xl shadow-lg p-3 space-y-2">
+                @csrf
+                <div class="text-[10px] text-gray-500">Same product, same number {{ $item->part_code }}. Photos are reused.</div>
+                <select name="location" required class="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
+                  <option value="">Location...</option>
+                  @foreach($stockLocations as $sl)<option value="{{ $sl }}">{{ $sl }}</option>@endforeach
+                </select>
+                <input type="number" name="qty" min="1" required placeholder="Quantity" class="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs">
+                <input type="number" step="0.01" min="0" name="price_local" required value="{{ (float) $item->price_local }}" placeholder="Price there" class="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs">
+                <input type="text" name="supplier_ref" maxlength="80" placeholder="Supplier lot (optional)" class="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs">
+                <button class="w-full bg-navy text-white text-xs rounded-lg py-1.5">Stock here</button>
+              </form>
+            </details>
             <a href="{{ route('admin.inventory.consumable.edit', $item->id) }}"
                class="text-xs border border-gray-200 rounded-lg px-3 py-1 hover:border-navy hover:text-navy transition-colors">
               Edit

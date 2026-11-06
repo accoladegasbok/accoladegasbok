@@ -95,7 +95,8 @@ class PartApprovalService
                     'updated_at' => now(),
                 ]);
                 self::close($approvalId, 'approved');
-                return "{$part->part_code}: +{$a->qty_to_add} approved, now {$newQty} in stock.";
+                $batch = \App\Services\ConsumableBatches::record($part, (int) $a->qty_to_add, $newQty, 'approved', null, 'Requested by ' . ($a->requested_by_name ?? 'staff'));
+                return "{$part->part_code}: +{$a->qty_to_add} approved, now {$newQty} in stock." . ($batch ? " Batch {$batch}." : '');
             }
 
             if ($part->status === self::UNDER_REVIEW) {
