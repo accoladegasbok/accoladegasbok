@@ -29,6 +29,10 @@
      class="bg-gold text-navy font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-yellow-400 transition-colors">
     + Add Consumable
   </a>
+  <a href="{{ route('admin.inventory.consumable.importbatch') }}"
+     class="bg-navy text-white font-display font-700 text-xs px-4 py-2 rounded-xl hover:bg-navy-light transition-colors">
+    Import New Batch
+  </a>
 
   <form method="GET" action="{{ route('admin.inventory.consumable.index') }}"
         class="flex gap-2 flex-1 min-w-[280px]">

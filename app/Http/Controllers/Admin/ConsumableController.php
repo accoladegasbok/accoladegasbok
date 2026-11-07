@@ -101,7 +101,7 @@ class ConsumableController extends Controller
         $request->validate([
             'location'     => 'required|string|max:60',
             'qty'          => 'required|integer|min:1|max:100000',
-            'price_local'  => 'required|numeric|min:0',
+            'price_local'  => 'nullable|numeric|min:0',
             'supplier_ref' => 'nullable|string|max:80',
         ]);
         $src = DB::table('parts_inventory')->where('id', $id)->whereNull('deleted_at')->first();
@@ -112,6 +112,9 @@ class ConsumableController extends Controller
             return redirect()->back()->with('success', $this->addUnits($existing, (int) $request->qty, $request->supplier_ref));
         }
 
+        if (!$request->filled('price_local')) {
+            return redirect()->back()->withInput()->with('error', 'Enter the selling price for ' . $request->location . ' - this product is not stocked there yet.');
+        }
         $currency = InvoiceController::currencyForLocation($request->location);
         $new = (array) $src;
         unset($new['id']);
@@ -227,6 +230,46 @@ class ConsumableController extends Controller
             'totalItems', 'totalValue', 'lowStock', 'everywhere', 'batches'
         ))->with('categories', self::CATEGORIES)
           ->with('stockLocations', ['Lagos Nigeria', 'Ibadan Nigeria', 'Ile-Ife Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana', 'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI']);
+    }
+
+    // =========================================================
+    // GET /admin/consumables/import-batch
+    // "Import new batch": pick a product that was entered before from a pre-typed list, choose the location,
+    // enter the quantity of the new batch (and the price only if the location has never stocked it).
+    // Nothing is typed again and no pictures are uploaded again.
+    // =========================================================
+    public function importBatchForm()
+    {
+        $rows = DB::table('parts_inventory')->whereNull('deleted_at')
+            ->where(function ($q) { $q->whereIn('part_category', self::CATEGORIES)->orWhereNull('donor_vin'); })
+            ->orderBy('part_name')->get(['id', 'part_name', 'brand', 'part_category', 'part_code', 'location', 'stock_qty', 'price_local', 'currency_code', 'status']);
+
+        $items = [];
+        foreach ($rows as $r) {
+            $k = self::itemKey($r->part_name, $r->brand, $r->part_category);
+            if (!isset($items[$k])) {
+                $items[$k] = ['id' => (int) $r->id, 'name' => $r->part_name, 'brand' => $r->brand, 'category' => $r->part_category ?: 'Consumable',
+                              'code' => $r->part_code, 'total' => 0, 'locations' => [], 'prices' => []];
+            }
+            $items[$k]['total'] += (int) $r->stock_qty;
+            $items[$k]['locations'][$r->location] = ($items[$k]['locations'][$r->location] ?? 0) + (int) $r->stock_qty;
+            $items[$k]['prices'][$r->location] = ['price' => (float) $r->price_local, 'cur' => $r->currency_code ?: 'NGN'];
+        }
+        $grouped = [];
+        foreach ($items as $it) $grouped[$it['category']][] = $it;
+        ksort($grouped);
+
+        return view('admin.consumables.import-batch', [
+            'grouped'        => $grouped,
+            'stockLocations' => ['Lagos Nigeria', 'Ibadan Nigeria', 'Ile-Ife Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana', 'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI'],
+        ]);
+    }
+
+    // POST /admin/consumables/import-batch
+    public function importBatch(Request $request)
+    {
+        $request->validate(['item_id' => 'required|integer']);
+        return $this->stockAtLocation($request, (int) $request->item_id);
     }
 
     // =========================================================

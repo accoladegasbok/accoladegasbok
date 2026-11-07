@@ -86,12 +86,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-body font-500 text-gray-500 mb-1 uppercase tracking-wider">Condition</label>
-                    <select name="condition" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-body focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold bg-white">
-                        <option value="">Any Condition</option>
-                        <option value="New" {{ ($filters['condition'] ?? '') === 'New' ? 'selected' : '' }}>New</option>
-                        <option value="A" {{ ($filters['condition'] ?? '') === 'A' ? 'selected' : '' }}>Grade A</option>
-                        <option value="B" {{ ($filters['condition'] ?? '') === 'B' ? 'selected' : '' }}>Grade B</option>
-                    </select>
+                    <div class="w-full border border-gray-100 bg-gray-50 rounded-lg px-3 py-2.5 text-sm font-body text-navy font-500">&#10022; Brand new only</div>
                 </div>
                 <div class="flex items-end">
                     <button type="submit" class="w-full bg-navy hover:bg-navy-light text-white font-display font-700 text-sm px-4 py-2.5 rounded-lg tracking-wide transition-colors">

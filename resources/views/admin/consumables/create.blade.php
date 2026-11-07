@@ -2,10 +2,16 @@
 @extends('admin.layouts.admin')
 @section('title', 'Add — Consumables & Others')
 @section('page-title', 'Add — Consumables & Others')
-@section('page-sub', 'Stock items not tied to a donor vehicle — oil filters, brake pads, electronics, computers etc.')
+@section('page-sub', 'First-time entry of a brand-new item - oils, filters, brake pads, electronics, computers etc.')
 
 @section('content')
 <div class="max-w-2xl">
+
+  <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-5 text-sm text-blue-800">
+    Already added this item before (at any location)? Don't enter it again -
+    <a href="{{ route('admin.inventory.consumable.importbatch') }}" class="underline font-700">use Import New Batch</a>
+    to pick it from the list and add a new batch or stock it at another location.
+  </div>
 
   <form method="POST" action="{{ route('admin.inventory.consumable.store') }}" enctype="multipart/form-data">
     @csrf
@@ -25,15 +31,17 @@
 
         <div class="sm:col-span-2">
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
-          <input type="text" name="part_name" value="{{ old('part_name') }}"
-                 list="partNameSuggestions" required
-                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
-                 placeholder="e.g. Oil Filter, Brake Pad Set (Front)">
-          <datalist id="partNameSuggestions">
+          <select id="nameSel" class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body bg-white focus:outline-none focus:border-yellow-400">
+            <option value="">Select a part name...</option>
             @foreach($partNames as $name)
-            <option value="{{ $name }}">
+            <option value="{{ $name }}" {{ old('part_name') === $name ? 'selected' : '' }}>{{ $name }}</option>
             @endforeach
-          </datalist>
+            <option value="__new__">Not in the list - type a new name</option>
+          </select>
+          <input type="text" name="part_name" id="nameIn" value="{{ old('part_name') }}" required
+                 class="hidden w-full mt-2 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400"
+                 placeholder="New part name">
+          <p class="text-[10px] text-gray-400 mt-1">Names come from the shared list. A name typed here by a supervisor or above joins the list for next time.</p>
         </div>
 
         <div>
@@ -90,11 +98,17 @@
         </div>
 
         <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Stock Quantity *</label>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Opening Quantity (first batch) *</label>
           <input type="number" name="stock_qty" value="{{ old('stock_qty', 1) }}"
                  min="1" required
                  class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
-          <p class="text-[10px] text-gray-400 mt-1">How many units are in stock right now</p>
+          <p class="text-[10px] text-gray-400 mt-1">Units received in this first batch. Later batches go through Import New Batch.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Supplier invoice / lot <span class="font-normal text-gray-300">(optional)</span></label>
+          <input type="text" name="supplier_ref" maxlength="80" value="{{ old('supplier_ref') }}"
+                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
         </div>
 
         <div class="sm:col-span-2">
@@ -106,7 +120,7 @@
 
         <div class="sm:col-span-2">
           <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">
-            Photos <span class="font-normal text-gray-300">(optional, up to 6 — was missing from this form entirely)</span>
+            Photos <span class="font-normal text-gray-300">(optional, up to 6 - entered once, reused at every location)</span>
           </label>
           <input type="file" name="photos[]" multiple accept="image/*"
                  class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400 bg-white">
@@ -129,4 +143,18 @@
 
   </form>
 </div>
+<script>
+(function () {
+  const sel = document.getElementById('nameSel'), inp = document.getElementById('nameIn');
+  function sync() {
+    if (sel.value === '__new__') { inp.classList.remove('hidden'); inp.required = true; if (inp.dataset.fromList) { inp.value = ''; inp.dataset.fromList = ''; } }
+    else { inp.classList.add('hidden'); inp.value = sel.value; inp.dataset.fromList = '1'; inp.required = false; }
+  }
+  // Coming back from a validation error with a typed new name that is not in the list.
+  if (inp.value && !Array.from(sel.options).some(o => o.value === inp.value)) { sel.value = '__new__'; inp.classList.remove('hidden'); }
+  else { sync(); }
+  sel.addEventListener('change', sync);
+  sel.form.addEventListener('submit', function (e) { if (!inp.value) { e.preventDefault(); sel.focus(); } });
+})();
+</script>
 @endsection

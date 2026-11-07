@@ -119,8 +119,9 @@
       {{-- Grade + mileage --}}
       <div class="flex flex-wrap gap-2 mb-5">
         <span class="inline-flex items-center text-sm font-body font-500 px-3 py-1.5 rounded-full
-          {{ $part->condition_grade==='A'?'grade-a':($part->condition_grade==='B'?'grade-b':($part->condition_grade==='New'?'grade-new':'grade-c')) }}">
-          @if($part->condition_grade==='A') ★★★ Grade A — Like New
+          {{ (in_array($part->part_category ?? '', ['Consumable','Electronics','Computers','Other'], true)) ? 'grade-new' : ($part->condition_grade==='A'?'grade-a':($part->condition_grade==='B'?'grade-b':($part->condition_grade==='New'?'grade-new':'grade-c'))) }}">
+          @if(in_array($part->part_category ?? '', ['Consumable','Electronics','Computers','Other'], true)) ✦ Brand New
+          @elseif($part->condition_grade==='A') ★★★ Grade A — Like New
           @elseif($part->condition_grade==='B') ★★ Grade B — Good
           @elseif($part->condition_grade==='New') ✦ New OEM
           @else ★ Grade C — Functional @endif

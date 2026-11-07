@@ -102,5 +102,11 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id
 Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/stock-at-location', [\App\Http\Controllers\Admin\ConsumableController::class, 'stockAtLocation'])
     ->name('admin.inventory.consumable.stockat')->where('id', '[0-9]+');
 
+// Import a new batch of an item that was entered before (pre-typed list; nothing re-entered).
+Route::middleware(['admin.auth', 'stocking-clerk'])->get('admin/consumables/import-batch', [\App\Http\Controllers\Admin\ConsumableController::class, 'importBatchForm'])
+    ->name('admin.inventory.consumable.importbatch');
+Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/import-batch', [\App\Http\Controllers\Admin\ConsumableController::class, 'importBatch'])
+    ->name('admin.inventory.consumable.importbatch.store');
+
 // NEW: sitemap for search engines (home, main pages, policies and every part that is available).
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
