@@ -944,6 +944,7 @@ class InventoryController extends Controller
         return view('admin.inventory.consumable-create', [
             'locations'     => Locations::all(),
             'customBrands'  => DB::table('custom_brands')->orderBy('name')->pluck('name'),
+            'grouped'       => \App\Http\Controllers\Admin\ConsumableController::pickerItems(),
         ]);
     }
 
@@ -953,6 +954,22 @@ class InventoryController extends Controller
     // =========================================================
     public function consumableStore(Request $request)
     {
+        // "Already in stock" mode: the product was picked from the list, so its stored identity is used as it is
+        // (nothing retyped, no name check, no brand folding) and only location, quantity and price come from the form.
+        $pickedItem = null;
+        if ($request->filled('existing_id')) {
+            $pickedItem = DB::table('parts_inventory')->where('id', (int) $request->existing_id)->first();
+            if (!$pickedItem) return back()->withInput()->withErrors(['existing_id' => 'That product was not found. Pick it again.']);
+            $request->merge([
+                'brand'              => $pickedItem->brand,
+                'other_brand'        => null,
+                'part_name'          => $pickedItem->part_name,
+                'part_category'      => $pickedItem->part_category ?: 'Consumable',
+                'unit_size'          => $pickedItem->unit_size,
+                'compatibility_note' => $pickedItem->compatibility_note ?? null,
+            ]);
+        }
+
         $request->validate([
             'brand'              => 'required|string|max:80',
             'other_brand'        => 'nullable|string|max:60',
@@ -961,14 +978,15 @@ class InventoryController extends Controller
             'unit_size'          => 'nullable|string|max:30',
             'compatibility_note' => 'nullable|string|max:200',
             'price_usd'          => 'required|numeric|min:0',
-            'condition_grade'    => 'required|in:A,B,C,New',
+            'condition_grade'    => 'nullable|in:A,B,C,New', // ignored: consumables, electronics and computers are always brand new
             'location'           => 'required|string',
+            'supplier_ref'       => 'nullable|string|max:80',
             'storage_shelf_id'   => 'nullable|exists:storage_shelves,id', // bin now optional — room-level storage allowed
             'stock_qty'          => 'nullable|integer|min:1',
         ]);
 
         // ── Part name guard (admin-only for unlisted names) ──────────
-        if ($err = $this->assertAllowedPartName($request->part_name)) {
+        if (!$pickedItem && ($err = $this->assertAllowedPartName($request->part_name))) {
             return back()->withErrors(['part_name' => $err])->withInput();
         }
         // ──────────────────────────────────────────────────────────────
@@ -1016,22 +1034,31 @@ class InventoryController extends Controller
         $currency   = \App\Http\Controllers\Admin\InvoiceController::currencyForLocation($request->location);
         $priceLocal = (float) $request->price_usd; // form field name kept for now — see note below
 
-        // ── Duplicate detection — same product already in stock at this
-        // location/price gets its quantity bumped instead of creating a
-        // duplicate row with its own part code. ──
+        // ── Same product at this location? Add a batch to it - never a second row.
+        // Price and condition do not matter: the existing row keeps its price, and everything here is new.
         $qtyToAdd = (int) ($request->stock_qty ?? 1);
-        $existing = DB::table('parts_inventory')
+        $category = $request->part_category ?? 'Consumable';
+        $hasDeleted  = Schema::hasColumn('parts_inventory', 'deleted_at');
+        $sameProduct = fn () => DB::table('parts_inventory')
+            ->when($hasDeleted, fn ($q) => $q->whereNull('deleted_at'))
             ->where('brand', $brand)
             ->where('part_name', $partName)
-            ->where('unit_size', $request->unit_size)
-            ->where('condition_grade', $request->condition_grade)
-            ->where('location', $request->location)
-            ->where('price_local', $priceLocal)
-            ->where('status', 'Available')
-            ->first();
+            ->where(function ($q) use ($request) {
+                $request->unit_size ? $q->where('unit_size', $request->unit_size) : $q->whereNull('unit_size')->orWhere('unit_size', '');
+            })
+            ->where('part_category', $category);
+        $existing = $sameProduct()->where('location', $request->location)->first();
 
-        if ($existing && !PartApprovalService::canApprove()) {
-            // Restock by staff below manager: the units are added only after a manager/admin approves.
+        if ($existing && $existing->status === PartApprovalService::UNDER_REVIEW) {
+            $newQty = $existing->stock_qty + $qtyToAdd;
+            DB::table('parts_inventory')->where('id', $existing->id)->update(['stock_qty' => $newQty, 'updated_at' => now()]);
+            $batch = \App\Services\ConsumableBatches::record($existing, $qtyToAdd, $newQty, 'restock', $request->supplier_ref);
+            return redirect()->route('admin.inventory.index')
+                ->with('success', "Added {$qtyToAdd} to {$existing->part_code} (still waiting for manager approval)." . ($batch ? " Batch {$batch}." : ''));
+        }
+
+        if ($existing && !StaffRole::isSupervisorOrAbove()) {
+            // Restock by staff below supervisor: the units are added only after a manager/admin approves.
             PartApprovalService::requestRestock($existing->id, $qtyToAdd);
             return redirect()->route('admin.inventory.index')
                 ->with('success', "Restock of {$qtyToAdd} unit(s) for {$existing->part_code} saved and waiting for manager approval. Stock stays at {$existing->stock_qty} until then.");
@@ -1041,13 +1068,18 @@ class InventoryController extends Controller
             $newQty = $existing->stock_qty + $qtyToAdd;
             DB::table('parts_inventory')->where('id', $existing->id)->update([
                 'stock_qty'  => $newQty,
+                'status'     => in_array($existing->status, ['Out of Stock', 'Sold'], true) ? 'Available' : $existing->status,
                 'updated_at' => now(),
             ]);
+            $batch = \App\Services\ConsumableBatches::record($existing, $qtyToAdd, $newQty, 'restock', $request->supplier_ref);
             return redirect()->route('admin.inventory.index')
-                ->with('success', "Added {$qtyToAdd} more unit(s) to existing stock {$existing->part_code} — now {$newQty} in stock.");
+                ->with('success', "Added {$qtyToAdd} more unit(s) to existing stock {$existing->part_code} - now {$newQty} in stock." . ($batch ? " Batch {$batch}." : ''));
         }
 
-        $partCode = PartCodeService::next('CON');
+        // Same product already listed at ANOTHER location: reuse its number, photos and description.
+        $elsewhere = $sameProduct()->orderBy('id')->first();
+
+        $partCode = $elsewhere ? $elsewhere->part_code : PartCodeService::next('CON');
 
         $priceUsdSnapshot = $priceLocal / $currency['rate'];
         // ──────────────────────────────────────────────────────────────
@@ -1065,25 +1097,30 @@ class InventoryController extends Controller
             'compatibility_note'   => $request->compatibility_note,
             'part_category'        => $request->part_category ?? 'Consumable',
             'side'                 => 'N/A',
-            'condition_grade'      => $request->condition_grade,
+            'condition_grade'      => 'New',
             'price_usd'            => $priceUsdSnapshot,
             'price_local'          => $priceLocal,
             'currency_code'        => $currency['code'],
             'location'             => $request->location,
+            'storage_shelf_id'     => $request->storage_shelf_id ?: null,
             'origin_market'        => 'N/A',
-            'description'          => $request->description,
+            'description'          => $request->description ?: ($elsewhere->description ?? null),
             'stock_qty'            => $request->stock_qty ?? 1,
             'status'               => PartApprovalService::initialStatus(),
-            'photos'               => '[]',
+            'photos'               => $elsewhere ? ($elsewhere->photos ?: '[]') : '[]',
             'created_at'           => now(),
             'updated_at'           => now(),
         ]);
 
         // A supervisor-typed new name joins the shared list.
         // (the base name, not the brand-prefixed display name built above)
-        $this->registerNewName($request->part_name, $request->part_category ?? 'Consumable');
+        if (!$pickedItem) $this->registerNewName($request->part_name, $request->part_category ?? 'Consumable');
 
         $waiting = PartApprovalService::submitNew($consumableId);
+        \App\Services\ConsumableBatches::record(
+            DB::table('parts_inventory')->where('id', $consumableId)->first(),
+            (int) ($request->stock_qty ?? 1), (int) ($request->stock_qty ?? 1), $elsewhere ? 'new_location' : 'initial', $request->supplier_ref
+        );
 
         return redirect()->route('admin.inventory.index')
             ->with('success', $waiting

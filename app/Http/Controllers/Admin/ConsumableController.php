@@ -238,18 +238,19 @@ class ConsumableController extends Controller
     // enter the quantity of the new batch (and the price only if the location has never stocked it).
     // Nothing is typed again and no pictures are uploaded again.
     // =========================================================
-    public function importBatchForm()
+    /** Every generic product already in the system, one entry per product, with photo, per-location stock and prices. */
+    public static function pickerItems(): array
     {
         $rows = DB::table('parts_inventory')->whereNull('deleted_at')
             ->where(function ($q) { $q->whereIn('part_category', self::CATEGORIES)->orWhereNull('donor_vin'); })
-            ->orderBy('part_name')->get(['id', 'part_name', 'brand', 'part_category', 'part_code', 'location', 'stock_qty', 'price_local', 'currency_code', 'status', 'photos']);
+            ->orderBy('part_name')->get(['id', 'part_name', 'brand', 'part_category', 'unit_size', 'part_code', 'location', 'stock_qty', 'price_local', 'currency_code', 'status', 'photos']);
 
         $items = [];
         foreach ($rows as $r) {
-            $k = self::itemKey($r->part_name, $r->brand, $r->part_category);
+            $k = self::itemKey($r->part_name, $r->brand, $r->part_category) . '|' . mb_strtolower(trim((string) $r->unit_size));
             if (!isset($items[$k])) {
                 $items[$k] = ['id' => (int) $r->id, 'name' => $r->part_name, 'brand' => $r->brand, 'category' => $r->part_category ?: 'Consumable',
-                              'code' => $r->part_code, 'total' => 0, 'locations' => [], 'prices' => [], 'photo' => null];
+                              'size' => $r->unit_size, 'code' => $r->part_code, 'total' => 0, 'locations' => [], 'prices' => [], 'photo' => null];
             }
             if (!$items[$k]['photo']) {
                 $ph = json_decode($r->photos ?? '[]', true);
@@ -262,9 +263,13 @@ class ConsumableController extends Controller
         $grouped = [];
         foreach ($items as $it) $grouped[$it['category']][] = $it;
         ksort($grouped);
+        return $grouped;
+    }
 
+    public function importBatchForm()
+    {
         return view('admin.consumables.import-batch', [
-            'grouped'        => $grouped,
+            'grouped'        => self::pickerItems(),
             'stockLocations' => ['Lagos Nigeria', 'Ibadan Nigeria', 'Ile-Ife Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana', 'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI'],
         ]);
     }
