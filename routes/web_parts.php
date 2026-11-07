@@ -98,6 +98,10 @@ Route::middleware(['admin.auth'])->prefix('admin/fitment')->name('admin.fitment.
 Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/add-stock', [\App\Http\Controllers\Admin\ConsumableController::class, 'addStock'])
     ->name('admin.inventory.consumable.addstock')->where('id', '[0-9]+');
 
+// NEW: set the size / volume of a consumable (applies to the same product at every location).
+Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/set-size', [\App\Http\Controllers\Admin\ConsumableController::class, 'setSize'])
+    ->name('admin.inventory.consumable.setsize')->where('id', '[0-9]+');
+
 // NEW: stock an existing consumable/electronics/computer/other item at another location - nothing retyped, same number.
 Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/{id}/stock-at-location', [\App\Http\Controllers\Admin\ConsumableController::class, 'stockAtLocation'])
     ->name('admin.inventory.consumable.stockat')->where('id', '[0-9]+');

@@ -38,9 +38,10 @@ class ConsumableController extends Controller
         return array_merge(self::CATEGORIES, ['New Car Part']);
     }
 
-    public static function itemKey(?string $name, ?string $brand, ?string $category): string
+    /** One product = name + brand + category + size. A 1L and a 4L of the same oil are different products. */
+    public static function itemKey(?string $name, ?string $brand, ?string $category, ?string $size = null): string
     {
-        return mb_strtolower(trim((string) $name)) . '|' . mb_strtolower(trim((string) $brand)) . '|' . mb_strtolower(trim((string) ($category ?: 'Consumable')));
+        return mb_strtolower(trim((string) $name)) . '|' . mb_strtolower(trim((string) $brand)) . '|' . mb_strtolower(trim((string) ($category ?: 'Consumable'))) . '|' . mb_strtolower(trim((string) $size));
     }
 
     /**
@@ -74,9 +75,10 @@ class ConsumableController extends Controller
     }
 
     /** Find the existing item for the same product at the same location. */
-    private function findExisting(string $name, ?string $brand, string $category, string $location)
+    private function findExisting(string $name, ?string $brand, string $category, string $location, ?string $size = null)
     {
         return DB::table('parts_inventory')->whereNull('deleted_at')
+            ->whereRaw("LOWER(TRIM(COALESCE(unit_size,''))) = ?", [mb_strtolower(trim((string) $size))])
             ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($name))])
             ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) $brand))])
             ->where('part_category', $category)
@@ -94,6 +96,28 @@ class ConsumableController extends Controller
         if (!$item) abort(404);
         $msg = $this->addUnits($item, (int) $request->qty, $request->supplier_ref);
         return redirect()->back()->with('success', $msg);
+    }
+
+    // =========================================================
+    // POST /admin/consumables/{id}/set-size
+    // Sets the size / volume of a product (e.g. "1L", "4L", "5 Quart"). Applies to the same product at every
+    // location (same number), so the sizes of one product never drift apart between locations.
+    // =========================================================
+    public function setSize(Request $request, int $id)
+    {
+        $request->validate(['unit_size' => 'required|string|max:30']);
+        $item = DB::table('parts_inventory')->where('id', $id)->whereNull('deleted_at')->first();
+        if (!$item) abort(404);
+        if (!in_array($item->part_category, self::stockableCategories(), true)) {
+            return back()->with('error', 'Sizes are set on consumables, electronics, computers and other new items only.');
+        }
+        $size = trim($request->unit_size);
+        $same = DB::table('parts_inventory')->whereNull('deleted_at')
+            ->where('part_code', $item->part_code)->where('part_name', $item->part_name)
+            ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) $item->brand))])
+            ->whereRaw("TRIM(COALESCE(unit_size,'')) = ?", [trim((string) $item->unit_size)]);
+        $n = $same->update(['unit_size' => $size, 'updated_at' => now()]);
+        return back()->with('success', "Size \"{$size}\" set on {$item->part_code}" . ($n > 1 ? " at {$n} locations." : '.'));
     }
 
     // =========================================================
@@ -116,7 +140,7 @@ class ConsumableController extends Controller
             return back()->with('error', 'Used car parts are not stocked this way - each one is a single harvested part.');
         }
 
-        $existing = $this->findExisting($src->part_name, $src->brand, $src->part_category, $request->location);
+        $existing = $this->findExisting($src->part_name, $src->brand, $src->part_category, $request->location, $src->unit_size ?? null);
         if ($existing) {
             return redirect()->back()->with('success', $this->addUnits($existing, (int) $request->qty, $request->supplier_ref));
         }
@@ -210,9 +234,9 @@ class ConsumableController extends Controller
             $rows = DB::table('parts_inventory')->whereNull('deleted_at')
                 ->whereIn('part_name', $names)->whereIn('part_category', self::CATEGORIES)
                 ->where('status', 'Available')->where('stock_qty', '>', 0)
-                ->get(['part_name', 'brand', 'part_category', 'location', 'stock_qty']);
+                ->get(['part_name', 'brand', 'part_category', 'unit_size', 'location', 'stock_qty']);
             foreach ($rows as $r) {
-                $k = self::itemKey($r->part_name, $r->brand, $r->part_category);
+                $k = self::itemKey($r->part_name, $r->brand, $r->part_category, $r->unit_size);
                 $everywhere[$k]['locations'][$r->location] = ($everywhere[$k]['locations'][$r->location] ?? 0) + (int) $r->stock_qty;
                 $everywhere[$k]['total'] = ($everywhere[$k]['total'] ?? 0) + (int) $r->stock_qty;
             }
@@ -253,7 +277,7 @@ class ConsumableController extends Controller
 
         $items = [];
         foreach ($rows as $r) {
-            $k = self::itemKey($r->part_name, $r->brand, $r->part_category) . '|' . mb_strtolower(trim((string) $r->unit_size));
+            $k = self::itemKey($r->part_name, $r->brand, $r->part_category, $r->unit_size);
             if (!isset($items[$k])) {
                 $items[$k] = ['id' => (int) $r->id, 'name' => $r->part_name, 'brand' => $r->brand, 'category' => $r->part_category ?: 'Consumable',
                               'size' => $r->unit_size, 'code' => $r->part_code, 'total' => 0, 'locations' => [], 'prices' => [], 'photo' => null];
@@ -343,7 +367,7 @@ class ConsumableController extends Controller
 
         // Restock rule: the same product at the same location is never entered twice. The units are added to
         // the item that already exists, under its existing number.
-        $existing = $this->findExisting($request->part_name, $request->brand ?? null, $category, $request->location);
+        $existing = $this->findExisting($request->part_name, $request->brand ?? null, $category, $request->location, $request->unit_size ?? null);
         if ($existing) {
             return redirect()->route('admin.inventory.consumable.index')
                 ->with('success', $this->addUnits($existing, (int) $request->stock_qty));
@@ -356,6 +380,7 @@ class ConsumableController extends Controller
         $elsewhere = DB::table('parts_inventory')->whereNull('deleted_at')
             ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($request->part_name))])
             ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) ($request->brand ?? '')))])
+            ->whereRaw("LOWER(TRIM(COALESCE(unit_size,''))) = ?", [mb_strtolower(trim((string) ($request->unit_size ?? '')))])
             ->where('part_category', $category)
             ->where('part_code', 'like', 'CON-%')
             ->orderBy('id')->first();

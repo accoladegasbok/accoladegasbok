@@ -73,8 +73,15 @@
       @endphp
       <tr class="hover:bg-gray-50">
         <td class="px-4 py-3">
-          <div class="font-body font-600 text-sm text-navy">{{ $item->part_name }}</div>
+          <div class="font-body font-600 text-sm text-navy">{{ $item->part_name }}@if(!empty($item->unit_size)) <span class="text-xs font-400 text-gray-500">&middot; {{ $item->unit_size }}</span>@endif</div>
           <div class="font-mono text-[10px] text-gray-400">{{ $item->part_code }}</div>
+          @if(empty($item->unit_size))
+          <form method="POST" action="{{ route('admin.inventory.consumable.setsize', $item->id) }}" class="flex items-center gap-1 mt-1">
+            @csrf
+            <input type="text" name="unit_size" maxlength="30" required placeholder="Set size e.g. 4L" class="w-24 border border-amber-200 rounded px-1.5 py-0.5 text-[10px]" title="No size recorded yet - sizes keep products apart">
+            <button class="text-[10px] border border-amber-300 text-amber-700 rounded px-1.5 py-0.5 hover:bg-amber-50">Save</button>
+          </form>
+          @endif
           @if(!empty($batches[$item->id]))
           <details class="mt-1"><summary class="text-[10px] text-blue-600 cursor-pointer">Batches ({{ count($batches[$item->id]) }})</summary>
             @foreach($batches[$item->id] as $b)
@@ -91,7 +98,7 @@
           @if($lowStock)<div class="text-[9px] text-red-400 font-600">LOW</div>@endif
         </td>
         <td class="px-4 py-3 text-xs text-gray-600">
-          @php $ev = $everywhere[\App\Http\Controllers\Admin\ConsumableController::itemKey($item->part_name, $item->brand, $item->part_category)] ?? null; @endphp
+          @php $ev = $everywhere[\App\Http\Controllers\Admin\ConsumableController::itemKey($item->part_name, $item->brand, $item->part_category, $item->unit_size ?? null)] ?? null; @endphp
           @if($ev)
             <div class="font-700 text-navy">{{ $ev['total'] }} in total</div>
             @foreach($ev['locations'] as $locName => $locQty)

@@ -94,6 +94,9 @@
 
       <h1 class="font-display font-700 text-navy text-3xl leading-tight tracking-wide mb-1">
         {{ $part->part_name }}
+        @if(!empty($part->unit_size))
+          <span class="text-gray-400 font-600 text-xl">· {{ $part->unit_size }}</span>
+        @endif
         @if($part->side && $part->side !== 'N/A')
           <span class="text-gray-400 font-600 text-xl">· {{ $part->side }}</span>
         @endif
