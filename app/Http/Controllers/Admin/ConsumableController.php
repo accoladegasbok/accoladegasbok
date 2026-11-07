@@ -41,7 +41,7 @@ class ConsumableController extends Controller
     /** One product = name + brand + category + size. A 1L and a 4L of the same oil are different products. */
     public static function itemKey(?string $name, ?string $brand, ?string $category, ?string $size = null): string
     {
-        return mb_strtolower(trim((string) $name)) . '|' . mb_strtolower(trim((string) $brand)) . '|' . mb_strtolower(trim((string) ($category ?: 'Consumable'))) . '|' . mb_strtolower(trim((string) $size));
+        return mb_strtolower(trim((string) $name)) . '|' . mb_strtolower(trim((string) $brand)) . '|' . mb_strtolower(trim((string) ($category ?: 'Consumable'))) . '|' . str_replace(' ', '', mb_strtolower(trim((string) $size)));
     }
 
     /**
@@ -78,7 +78,7 @@ class ConsumableController extends Controller
     private function findExisting(string $name, ?string $brand, string $category, string $location, ?string $size = null)
     {
         return DB::table('parts_inventory')->whereNull('deleted_at')
-            ->whereRaw("LOWER(TRIM(COALESCE(unit_size,''))) = ?", [mb_strtolower(trim((string) $size))])
+            ->whereRaw("REPLACE(LOWER(TRIM(COALESCE(unit_size,''))),' ','') = ?", [str_replace(' ', '', mb_strtolower(trim((string) $size)))])
             ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($name))])
             ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) $brand))])
             ->where('part_category', $category)
@@ -380,7 +380,7 @@ class ConsumableController extends Controller
         $elsewhere = DB::table('parts_inventory')->whereNull('deleted_at')
             ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($request->part_name))])
             ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) ($request->brand ?? '')))])
-            ->whereRaw("LOWER(TRIM(COALESCE(unit_size,''))) = ?", [mb_strtolower(trim((string) ($request->unit_size ?? '')))])
+            ->whereRaw("REPLACE(LOWER(TRIM(COALESCE(unit_size,''))),' ','') = ?", [str_replace(' ', '', mb_strtolower(trim((string) ($request->unit_size ?? ''))))])
             ->where('part_category', $category)
             ->where('part_code', 'like', 'CON-%')
             ->orderBy('id')->first();
