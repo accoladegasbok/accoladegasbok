@@ -32,6 +32,12 @@ class ConsumableController extends Controller
     const CATEGORIES = ['Consumable', 'Electronics', 'Computers', 'Other'];
 
     /** Same name + brand + category = the same product, whatever the location. */
+    /** Categories that are brand-new bulk stock handled by batches. Used car parts are never included. */
+    public static function stockableCategories(): array
+    {
+        return array_merge(self::CATEGORIES, ['New Car Part']);
+    }
+
     public static function itemKey(?string $name, ?string $brand, ?string $category): string
     {
         return mb_strtolower(trim((string) $name)) . '|' . mb_strtolower(trim((string) $brand)) . '|' . mb_strtolower(trim((string) ($category ?: 'Consumable')));
@@ -106,6 +112,9 @@ class ConsumableController extends Controller
         ]);
         $src = DB::table('parts_inventory')->where('id', $id)->whereNull('deleted_at')->first();
         if (!$src) abort(404);
+        if (!in_array($src->part_category, self::stockableCategories(), true)) {
+            return back()->with('error', 'Used car parts are not stocked this way - each one is a single harvested part.');
+        }
 
         $existing = $this->findExisting($src->part_name, $src->brand, $src->part_category, $request->location);
         if ($existing) {
@@ -157,10 +166,7 @@ class ConsumableController extends Controller
 
         $query = DB::table('parts_inventory')
             ->whereNull('deleted_at')
-            ->where(function ($q2) {
-                $q2->whereIn('part_category', self::CATEGORIES)
-                   ->orWhereNull('donor_vin');
-            });
+            ->whereIn('part_category', self::stockableCategories());   // brand-new bulk stock only - never used car parts
 
         if ($category !== 'all' && in_array($category, self::CATEGORIES, true)) {
             $query->where('part_category', $category);
@@ -242,7 +248,7 @@ class ConsumableController extends Controller
     public static function pickerItems(): array
     {
         $rows = DB::table('parts_inventory')->whereNull('deleted_at')
-            ->where(function ($q) { $q->whereIn('part_category', self::CATEGORIES)->orWhereNull('donor_vin'); })
+            ->whereIn('part_category', self::stockableCategories())
             ->orderBy('part_name')->get(['id', 'part_name', 'brand', 'part_category', 'unit_size', 'part_code', 'location', 'stock_qty', 'price_local', 'currency_code', 'status', 'photos']);
 
         $items = [];

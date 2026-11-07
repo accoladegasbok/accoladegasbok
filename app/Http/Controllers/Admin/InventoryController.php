@@ -960,6 +960,9 @@ class InventoryController extends Controller
         if ($request->filled('existing_id')) {
             $pickedItem = DB::table('parts_inventory')->where('id', (int) $request->existing_id)->first();
             if (!$pickedItem) return back()->withInput()->withErrors(['existing_id' => 'That product was not found. Pick it again.']);
+            if (!in_array($pickedItem->part_category, \App\Http\Controllers\Admin\ConsumableController::stockableCategories(), true)) {
+                return back()->withInput()->withErrors(['existing_id' => 'Used car parts cannot be added this way.']);
+            }
             $request->merge([
                 'brand'              => $pickedItem->brand,
                 'other_brand'        => null,
