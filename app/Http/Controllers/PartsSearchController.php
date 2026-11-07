@@ -164,9 +164,9 @@ class PartsSearchController extends Controller
             $rows = $this->live(DB::table('parts_inventory'))->where('status', 'Available')
                 ->where('stock_qty', '>', 0)->whereIn('part_name', $names)
                 ->whereIn('part_category', self::OTHER_CATEGORIES)
-                ->get(['part_name', 'brand', 'part_category', 'location', 'stock_qty']);
+                ->get(['part_name', 'brand', 'part_category', 'unit_size', 'location', 'stock_qty']);
             foreach ($rows as $r) {
-                $k = mb_strtolower(trim((string) $r->part_name)) . '|' . mb_strtolower(trim((string) $r->brand)) . '|' . mb_strtolower(trim((string) $r->part_category));
+                $k = mb_strtolower(trim((string) $r->part_name)) . '|' . mb_strtolower(trim((string) $r->brand)) . '|' . mb_strtolower(trim((string) $r->part_category)) . '|' . str_replace(' ', '', mb_strtolower(trim((string) $r->unit_size)));
                 $label = \App\Support\HubLocations::publicLabel($r->location);
                 $stock[$k]['locations'][$label] = ($stock[$k]['locations'][$label] ?? 0) + (int) $r->stock_qty;
                 $stock[$k]['total'] = ($stock[$k]['total'] ?? 0) + (int) $r->stock_qty;
@@ -429,7 +429,7 @@ class PartsSearchController extends Controller
             $q->whereIn('id', function ($sub) use ($filters) {
                 $sub->from('parts_inventory')->selectRaw('MIN(id)')->where('status', 'Available');
                 $this->applyFilters($sub, $filters);
-                $sub->groupBy('part_name', DB::raw("COALESCE(brand,'')"), 'part_category');
+                $sub->groupBy('part_name', DB::raw("COALESCE(brand,'')"), 'part_category', DB::raw("REPLACE(LOWER(TRIM(COALESCE(unit_size,''))),' ','')"));   // each size is its own card (spacing ignored)
             });
         }
 

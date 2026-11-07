@@ -174,12 +174,12 @@
 
                         <h3 class="font-body font-500 text-gray-600 text-sm leading-tight mb-3">
                             <a href="{{ route('parts.show', $part->id) }}" class="hover:text-az-blue transition-colors">
-                                {{ $part->part_name }}
+                                {{ $part->part_name }}@if(!empty($part->unit_size)) <span class="text-gray-500 font-400">&middot; {{ $part->unit_size }}</span>@endif
                             </a>
                         </h3>
 
                         @php
-                            $stockKey = mb_strtolower(trim((string) $part->part_name)) . '|' . mb_strtolower(trim((string) $part->brand)) . '|' . mb_strtolower(trim((string) $part->part_category));
+                            $stockKey = mb_strtolower(trim((string) $part->part_name)) . '|' . mb_strtolower(trim((string) $part->brand)) . '|' . mb_strtolower(trim((string) $part->part_category)) . '|' . str_replace(' ', '', mb_strtolower(trim((string) ($part->unit_size ?? ''))));
                             $stk = $stock[$stockKey] ?? null;
                         @endphp
                         @if($stk)
