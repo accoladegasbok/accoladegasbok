@@ -242,14 +242,18 @@ class ConsumableController extends Controller
     {
         $rows = DB::table('parts_inventory')->whereNull('deleted_at')
             ->where(function ($q) { $q->whereIn('part_category', self::CATEGORIES)->orWhereNull('donor_vin'); })
-            ->orderBy('part_name')->get(['id', 'part_name', 'brand', 'part_category', 'part_code', 'location', 'stock_qty', 'price_local', 'currency_code', 'status']);
+            ->orderBy('part_name')->get(['id', 'part_name', 'brand', 'part_category', 'part_code', 'location', 'stock_qty', 'price_local', 'currency_code', 'status', 'photos']);
 
         $items = [];
         foreach ($rows as $r) {
             $k = self::itemKey($r->part_name, $r->brand, $r->part_category);
             if (!isset($items[$k])) {
                 $items[$k] = ['id' => (int) $r->id, 'name' => $r->part_name, 'brand' => $r->brand, 'category' => $r->part_category ?: 'Consumable',
-                              'code' => $r->part_code, 'total' => 0, 'locations' => [], 'prices' => []];
+                              'code' => $r->part_code, 'total' => 0, 'locations' => [], 'prices' => [], 'photo' => null];
+            }
+            if (!$items[$k]['photo']) {
+                $ph = json_decode($r->photos ?? '[]', true);
+                if (!empty($ph[0])) $items[$k]['photo'] = asset('storage/' . $ph[0]);
             }
             $items[$k]['total'] += (int) $r->stock_qty;
             $items[$k]['locations'][$r->location] = ($items[$k]['locations'][$r->location] ?? 0) + (int) $r->stock_qty;

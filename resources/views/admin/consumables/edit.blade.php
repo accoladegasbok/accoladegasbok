@@ -24,10 +24,9 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
         <div class="sm:col-span-2">
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name</label>
-          <input type="hidden" name="part_name" value="{{ $item->part_name }}">
-          <div class="w-full border border-gray-100 bg-gray-50 rounded-xl px-3.5 py-2.5 text-sm font-body text-navy">{{ $item->part_name }}</div>
-          <p class="text-[10px] text-gray-400 mt-1">The name is fixed once the item is added, so it stays the same at every location.</p>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Part Name *</label>
+          <input type="text" name="part_name" value="{{ old('part_name', $item->part_name) }}" required
+                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
         </div>
 
         <div>
@@ -54,11 +53,9 @@
         </div>
 
         <div>
-          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Stock at {{ $item->location }}</label>
-          <input type="hidden" name="stock_qty" value="{{ (int) $item->stock_qty }}">
-          <div class="w-full border border-gray-100 bg-gray-50 rounded-xl px-3.5 py-2.5 text-sm font-body text-navy font-700">{{ (int) $item->stock_qty }}</div>
-          <p class="text-[10px] text-gray-400 mt-1">Stock only changes through batches -
-            <a href="{{ route('admin.inventory.consumable.importbatch') }}" class="underline text-blue-600">Import New Batch</a>.</p>
+          <label class="block text-xs font-body font-500 text-gray-500 uppercase tracking-wider mb-1.5">Stock Quantity *</label>
+          <input type="number" name="stock_qty" value="{{ old('stock_qty', $item->stock_qty) }}" min="0" required
+                 class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-body focus:outline-none focus:border-yellow-400">
         </div>
 
         <div>
