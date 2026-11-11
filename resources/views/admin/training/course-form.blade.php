@@ -40,6 +40,12 @@
   </div>
 
   <div class="bg-white rounded-2xl border border-gray-200 p-5">
+    <label>Written lesson (optional - shown to staff above the quiz)
+      <textarea name="lesson_text" rows="12" class="w-full border border-gray-200 rounded-lg px-3 py-2 font-mono text-xs" placeholder="## Heading&#10;A paragraph of text.&#10;- a bullet point">{{ $v('lesson_text') }}</textarea></label>
+    <div class="text-[11px] text-gray-400 mt-1">Start a line with ## for a heading and - for a bullet. Blank lines separate paragraphs.</div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-gray-200 p-5">
     <label>Company policy to read and accept (optional)<textarea name="policy_text" rows="4" class="w-full border border-gray-200 rounded-lg px-3 py-2" placeholder="Staff must tick that they read and accept this before the course can be completed.">{{ $v('policy_text') }}</textarea></label>
   </div>
 

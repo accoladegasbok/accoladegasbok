@@ -95,6 +95,7 @@ class TrainingController extends Controller
             'video' => 'nullable|file|mimes:mp4,webm,mov,m4v|max:512000',
             'duration_minutes' => 'nullable|integer|min:1|max:1000', 'pass_mark' => 'required|integer|min:0|max:100',
             'recurrence_days' => 'nullable|integer|min:1|max:3650', 'policy_text' => 'nullable|string|max:8000',
+            'lesson_text' => 'nullable|string|max:60000',
         ]);
         if ($d['provider_type'] === 'external' && empty($d['provider_name'])) {
             return back()->withInput()->withErrors(['provider_name' => 'Name the external provider (company or trainer).']);
@@ -107,7 +108,7 @@ class TrainingController extends Controller
             'provider_type' => $d['provider_type'], 'provider_name' => $d['provider_name'] ?? null,
             'video_source' => $d['video_source'], 'duration_minutes' => $d['duration_minutes'] ?? null,
             'pass_mark' => $d['pass_mark'], 'recurrence_days' => $d['recurrence_days'] ?? null,
-            'policy_text' => $d['policy_text'] ?? null, 'updated_at' => now(),
+            'policy_text' => $d['policy_text'] ?? null, 'lesson_text' => $d['lesson_text'] ?? null, 'updated_at' => now(),
         ];
         if ($d['video_source'] !== 'none' && empty($d['duration_minutes'])) {
             return back()->withInput()->withErrors(['duration_minutes' => 'Enter the video length in minutes (used to stop staff skipping through).']);

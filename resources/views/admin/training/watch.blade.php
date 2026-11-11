@@ -15,6 +15,18 @@
 <div class="max-w-4xl space-y-5">
   @if($course->description)<p class="text-sm text-gray-600 font-body">{{ $course->description }}</p>@endif
 
+  @if(!empty($course->lesson_text))
+  <div class="bg-white rounded-2xl border border-gray-200 p-5 font-body text-sm text-gray-700 leading-relaxed">
+    @foreach(preg_split('/\R/', trim($course->lesson_text)) as $ln)
+      @php $t = trim($ln); @endphp
+      @if($t === '')<div class="h-2"></div>
+      @elseif(str_starts_with($t, '## '))<h3 class="font-display font-700 text-navy text-base mt-4 mb-1">{{ substr($t, 3) }}</h3>
+      @elseif(str_starts_with($t, '- '))<div class="flex gap-2 pl-2"><span class="text-gold">&#9679;</span><span>{{ substr($t, 2) }}</span></div>
+      @else<p>{{ $t }}</p>@endif
+    @endforeach
+  </div>
+  @endif
+
   @if($hasVideo)
   <div id="stage" class="relative bg-black rounded-2xl overflow-hidden select-none" oncontextmenu="return false">
     <div class="aspect-video w-full relative">
@@ -40,8 +52,12 @@
   <p class="text-xs text-gray-500 font-body">You cannot skip ahead of what you have watched. Your progress is saved - you can close this page and continue later.</p>
   @else
   <div class="bg-white rounded-2xl border border-gray-200 p-5 text-sm font-body">
-    This is a {{ $course->provider_type }} session{{ $course->provider_name ? ' with ' . $course->provider_name : '' }}. Attend it and tell your manager; they will mark it complete after you finish.
-    @if($qs->isNotEmpty()) You can also answer the quiz below when your manager tells you to.@endif
+    @if(!empty($course->lesson_text))
+      Read the lesson above carefully, then answer the quiz below. You need {{ $course->pass_mark }}% to pass.
+    @else
+      This is a {{ $course->provider_type }} session{{ $course->provider_name ? ' with ' . $course->provider_name : '' }}. Attend it and tell your manager; they will mark it complete after you finish.
+      @if($qs->isNotEmpty()) You can also answer the quiz below when your manager tells you to.@endif
+    @endif
   </div>
   @endif
 
