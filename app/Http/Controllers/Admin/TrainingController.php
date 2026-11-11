@@ -49,10 +49,12 @@ class TrainingController extends Controller
             return (object) ['staff' => $s, 'open' => $mine, 'overdue' => $over, 'state' => $state, 'done' => $done->get($s->id)];
         })->sortBy(fn($x) => ['red' => 0, 'amber' => 1, 'green' => 2][$x->state])->values();
 
+        // Counts as sub-selects (no GROUP BY), so it runs on servers with strict ONLY_FULL_GROUP_BY.
         $courses = DB::table('training_courses as c')
-            ->leftJoin('training_assignments as a', 'a.course_id', '=', 'c.id')
-            ->selectRaw("c.*, COUNT(a.id) assigned, SUM(CASE WHEN a.status='completed' THEN 1 ELSE 0 END) completed")
-            ->groupBy('c.id')->orderByDesc('c.is_active')->orderBy('c.title')->get();
+            ->select('c.*')
+            ->selectSub(DB::table('training_assignments')->selectRaw('COUNT(*)')->whereColumn('course_id', 'c.id'), 'assigned')
+            ->selectSub(DB::table('training_assignments')->selectRaw('COUNT(*)')->whereColumn('course_id', 'c.id')->where('status', 'completed'), 'completed')
+            ->orderByDesc('c.is_active')->orderBy('c.title')->get();
 
         return view('admin.training.index', ['board' => $board, 'courses' => $courses, 'tab' => $r->query('tab', 'board'), 'isMgr' => $this->isManager()]);
     }
