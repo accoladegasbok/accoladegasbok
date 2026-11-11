@@ -152,5 +152,18 @@ Route::middleware(['admin.auth'])->prefix('admin/training')->name('admin.trainin
     Route::get('/certificate/{id}',          [$c, 'certificate'])->name('certificate')->where('id', '[0-9]+');
 });
 
+// NEW: Employee of the Month - monthly score, top 3 nominees, one vote per staff member, winner and rewards.
+Route::middleware(['admin.auth'])->prefix('admin/employee-of-the-month')->name('admin.eotm.')->group(function () {
+    $c = \App\Http\Controllers\Admin\EotmController::class;
+    Route::get('/',            [$c, 'index'])->name('index');
+    Route::get('/rate',        [$c, 'rateForm'])->name('rate');
+    Route::post('/rate',       [$c, 'rateSave'])->name('rate.save');
+    Route::post('/shortlist',  [$c, 'shortlist'])->name('shortlist');
+    Route::post('/vote',       [$c, 'vote'])->name('vote');
+    Route::post('/close',      [$c, 'close'])->name('close');
+    Route::post('/reward',     [$c, 'reward'])->name('reward');
+    Route::get('/certificate/{cycleId}', [$c, 'certificate'])->name('certificate')->where('cycleId', '[0-9]+');
+});
+
 // NEW: sitemap for search engines (home, main pages, policies and every part that is available).
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
