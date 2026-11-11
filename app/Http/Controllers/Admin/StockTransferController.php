@@ -28,6 +28,28 @@ class StockTransferController extends Controller
         return in_array($part->part_category, ConsumableController::stockableCategories(), true);
     }
 
+    /** Same product at the same location = one stock total, even if it was entered as several rows over time. */
+    private function productKey(object $p): string
+    {
+        return mb_strtolower(trim((string) $p->part_category)) . '|' . mb_strtolower(trim((string) $p->part_name)) . '|'
+            . mb_strtolower(trim((string) ($p->brand ?? ''))) . '|' . str_replace(' ', '', mb_strtolower(trim((string) ($p->unit_size ?? ''))));
+    }
+
+    /** Every Available row of this product at this location (oldest first), locked for the update. */
+    private function siblingRows(object $part, string $location)
+    {
+        $q = DB::table('parts_inventory')
+            ->where('location', $location)
+            ->where('status', 'Available')
+            ->where('stock_qty', '>', 0)
+            ->where('part_category', $part->part_category)
+            ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim((string) $part->part_name))])
+            ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) ($part->brand ?? '')))])
+            ->whereRaw("REPLACE(LOWER(TRIM(COALESCE(unit_size,''))),' ','') = ?", [str_replace(' ', '', mb_strtolower(trim((string) ($part->unit_size ?? ''))))]);
+        if (Schema::hasColumn('parts_inventory', 'deleted_at')) $q->whereNull('deleted_at');
+        return $q->orderBy('id')->lockForUpdate()->get();
+    }
+
     public function index(Request $request)
     {
         $query = DB::table('stock_transfers')->orderByDesc('created_at');
@@ -68,13 +90,23 @@ class StockTransferController extends Controller
         }
 
         $parts = $query->select('id', 'part_code', 'part_name', 'brand', 'model', 'condition_grade', 'location', 'part_category', 'unit_size', 'stock_qty')
-            ->orderBy('part_name')->limit(50)->get()
+            ->orderBy('part_name')->orderBy('id')->limit(300)->get()
             ->map(function ($p) {
                 $p->is_bulk   = $this->isBulk($p);
                 $p->stock_qty = (int) $p->stock_qty;
                 return $p;
             })
             ->filter(fn ($p) => !$p->is_bulk || $p->stock_qty > 0)->values();
+
+        // Bulk stock: one line per product with the combined quantity (rows of the same product are added up).
+        $merged = [];
+        foreach ($parts as $p) {
+            if (!$p->is_bulk) { $merged[] = $p; continue; }
+            $k = 'b|' . $this->productKey($p);
+            if (isset($merged[$k])) { $merged[$k]->stock_qty += $p->stock_qty; continue; }
+            $merged[$k] = $p;                       // first (oldest) row represents the product
+        }
+        $parts = collect(array_values($merged))->take(50)->values();
 
         return response()->json(['parts' => $parts]);
     }
@@ -106,15 +138,18 @@ class StockTransferController extends Controller
                 if ($part->location !== $request->from_location) { $errors[] = "{$part->part_code} is not at {$request->from_location}."; continue; }
 
                 $qty = 1;
+                $rows = collect([$part]);
                 if ($this->isBulk($part)) {
                     $qty = (int) ($request->input("qty.{$partId}") ?: 1);
                     if ($qty < 1) { $errors[] = "{$part->part_name}: enter a quantity of at least 1."; continue; }
-                    if ($qty > (int) $part->stock_qty) {
-                        $errors[] = "{$part->part_name}: only {$part->stock_qty} available at {$request->from_location}, you asked for {$qty}.";
+                    $rows  = $this->siblingRows($part, $request->from_location);
+                    $total = (int) $rows->sum('stock_qty');
+                    if ($rows->isEmpty() || $qty > $total) {
+                        $errors[] = "{$part->part_name}: only {$total} available at {$request->from_location}, you asked for {$qty}.";
                         continue;
                     }
                 }
-                $lines[] = [$part, $qty];
+                $lines[] = [$part, $qty, $rows];
             }
             if (!empty($errors)) {
                 DB::rollBack();
@@ -133,7 +168,7 @@ class StockTransferController extends Controller
                 'updated_at'          => now(),
             ]);
 
-            foreach ($lines as [$part, $qty]) {
+            foreach ($lines as [$part, $qty, $rows]) {
                 $bulk = $this->isBulk($part);
                 DB::table('stock_transfer_items')->insert([
                     'transfer_id'     => $transferId,
@@ -152,14 +187,20 @@ class StockTransferController extends Controller
                 ]);
 
                 if ($bulk) {
-                    // Only the chosen units leave. The rest stays here, still Available and sellable.
-                    $left = (int) $part->stock_qty - $qty;
-                    DB::table('parts_inventory')->where('id', $part->id)->update([
-                        'stock_qty'  => $left,
-                        'status'     => $left > 0 ? 'Available' : 'Out of Stock',
-                        'updated_at' => now(),
-                    ]);
-                    ConsumableBatches::record($part, -$qty, $left, 'transfer_out', null, "Sent to {$request->to_location} on {$transferNo}");
+                    // Only the chosen units leave (taken from the oldest row first). The rest stays here, still Available and sellable.
+                    $remaining = $qty;
+                    foreach ($rows as $row) {
+                        if ($remaining <= 0) break;
+                        $take = min($remaining, (int) $row->stock_qty);
+                        $left = (int) $row->stock_qty - $take;
+                        DB::table('parts_inventory')->where('id', $row->id)->update([
+                            'stock_qty'  => $left,
+                            'status'     => $left > 0 ? 'Available' : 'Out of Stock',
+                            'updated_at' => now(),
+                        ]);
+                        ConsumableBatches::record($row, -$take, $left, 'transfer_out', null, "Sent to {$request->to_location} on {$transferNo}");
+                        $remaining -= $take;
+                    }
                 } else {
                     // A used part is a single item: it leaves the sellable pool while in transit.
                     DB::table('parts_inventory')->where('id', $part->id)->update([
