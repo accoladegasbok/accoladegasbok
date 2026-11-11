@@ -79,21 +79,22 @@
 
     <table>
       <thead>
-        <tr><th>Part</th><th>Code</th><th>Grade</th></tr>
+        <tr><th>Part</th><th>Code</th><th>Grade</th><th style="text-align:right;">Qty</th></tr>
       </thead>
       <tbody>
         @foreach($items as $item)
         <tr>
-          <td>{{ $item->part_name }}<br><span style="font-size:11px;color:#999;">{{ $item->brand }} {{ $item->model }}</span></td>
+          <td>{{ $item->part_name }}@if(!empty($item->unit_size)) &middot; {{ $item->unit_size }}@endif<br><span style="font-size:11px;color:#999;">{{ $item->brand }} {{ !empty($item->is_bulk) ? '' : $item->model }}</span></td>
           <td style="font-family:monospace;">{{ $item->part_code }}</td>
-          <td>{{ $item->condition_grade }}</td>
+          <td>{{ !empty($item->is_bulk) ? 'New' : $item->condition_grade }}</td>
+          <td style="text-align:right;font-weight:bold;">{{ $item->qty ?? 1 }}</td>
         </tr>
         @endforeach
       </tbody>
     </table>
 
     <div style="text-align:right; font-size:13px; color:#555; margin-top:8px;">
-      Total items: <strong>{{ $items->count() }}</strong>
+      Total units: <strong>{{ $items->sum('qty') ?: $items->count() }}</strong> ({{ $items->count() }} line(s))
     </div>
 
     @if($transfer->notes)

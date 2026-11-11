@@ -284,7 +284,7 @@ class ConsumableController extends Controller
             }
             if (!$items[$k]['photo']) {
                 $ph = json_decode($r->photos ?? '[]', true);
-                if (!empty($ph[0])) $items[$k]['photo'] = asset('storage/' . $ph[0]);
+                if (!empty($ph[0])) $items[$k]['photo'] = asset(config('media.prefix', 'storage') . '/' . $ph[0]);   // same URL rule as the customer pages
             }
             $items[$k]['total'] += (int) $r->stock_qty;
             $items[$k]['locations'][$r->location] = ($items[$k]['locations'][$r->location] ?? 0) + (int) $r->stock_qty;

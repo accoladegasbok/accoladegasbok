@@ -2,7 +2,7 @@
 @extends('admin.layouts.admin')
 @section('title','New Stock Transfer')
 @section('page-title','New Stock Transfer')
-@section('page-sub','Move parts between locations — they leave the sellable pool until marked Received')
+@section('page-sub','Move parts between locations. For bulk items choose how many units to move - the rest stays where it is')
 
 @section('content')
 <form method="POST" action="{{ route('admin.transfers.store') }}" id="transferForm">
@@ -96,7 +96,7 @@ async function doSearch() {
             <div onclick='addPart(${JSON.stringify(p).replace(/'/g, "&#39;")})'
                 class="border border-gray-200 rounded-lg p-2.5 cursor-pointer hover:border-gold transition-colors ${selected[p.id] ? 'opacity-40 pointer-events-none' : ''}">
                 <div class="font-700 text-navy text-xs">${p.part_name}</div>
-                <div class="text-xs text-gray-400">${p.brand} ${p.model} · ${p.part_code} · Grade ${p.condition_grade}</div>
+                <div class="text-xs text-gray-400">${p.brand ?? ''} ${p.is_bulk ? (p.unit_size ? '· ' + p.unit_size : '') : (p.model ?? '')} · ${p.part_code} · ${p.is_bulk ? p.stock_qty + ' in stock' : 'Grade ' + p.condition_grade}</div>
             </div>`).join('');
     } catch (e) {
         box.innerHTML = '<div class="text-xs text-red-500 col-span-2">Search failed.</div>';
@@ -123,14 +123,23 @@ function renderSelected() {
     }
     container.innerHTML = ids.map(id => {
         const p = selected[id];
+        const qtyBox = p.is_bulk ? `
+            <div class="flex items-center gap-2 mr-4">
+                <label class="text-xs text-gray-500">Move</label>
+                <input type="number" name="qty[${p.id}]" min="1" max="${p.stock_qty}" value="${p.qty ?? 1}" required
+                    oninput="selected[${p.id}].qty = this.value"
+                    class="w-20 border-2 border-gold rounded-lg px-2 py-1 text-sm text-center">
+                <span class="text-xs text-gray-400">of ${p.stock_qty} (the rest stays)</span>
+            </div>` : '';
         return `
         <div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
             <div>
-                <div class="font-700 text-navy text-sm">${p.part_name}</div>
-                <div class="text-xs text-gray-400">${p.part_code} · ${p.brand} ${p.model}</div>
+                <div class="font-700 text-navy text-sm">${p.part_name}${p.is_bulk && p.unit_size ? ' · ' + p.unit_size : ''}</div>
+                <div class="text-xs text-gray-400">${p.part_code} · ${p.brand ?? ''} ${p.is_bulk ? '' : (p.model ?? '')}</div>
                 <input type="hidden" name="part_ids[]" value="${p.id}">
             </div>
-            <button type="button" onclick="removePart(${p.id})" class="text-red-400 hover:text-red-600 text-xs">✕ Remove</button>
+            <div class="flex items-center">${qtyBox}
+            <button type="button" onclick="removePart(${p.id})" class="text-red-400 hover:text-red-600 text-xs">✕ Remove</button></div>
         </div>`;
     }).join('');
 }

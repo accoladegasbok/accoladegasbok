@@ -154,9 +154,9 @@
                 @endphp
 
                 <div class="part-card bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
-                    <a href="{{ route('parts.show', $part->id) }}" class="block relative bg-white aspect-[4/3] overflow-hidden">
-                        <img src="{{ $thumb }}" alt="{{ $part->part_name }}"
-                            class="w-full h-full {{ !empty($photos[0]) ? 'object-contain p-1 hover:scale-105' : 'object-contain p-4' }} transition-transform duration-300" loading="lazy">
+                    <a href="{{ route('parts.show', $part->id) }}" class="block relative bg-white aspect-square overflow-hidden">
+                        <img src="{{ $thumb }}" alt="{{ $part->part_name }}" onerror="this.onerror=null;this.src='{{ asset('images/parts-photo-coming-soon.jpg') }}'"
+                            class="w-full h-full {{ !empty($photos[0]) ? 'object-contain p-2 hover:scale-105' : 'object-contain p-4' }} transition-transform duration-300" loading="lazy">
                         <div class="absolute top-2 left-2">
                             <span class="inline-block text-xs font-body font-500 px-2.5 py-1 rounded-full bg-white bg-opacity-90 text-navy">
                                 {{ $part->part_category }}

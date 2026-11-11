@@ -34,7 +34,7 @@
       <button type="button" data-id="{{ $it['id'] }}" data-cat="{{ $it['category'] }}" data-text="{{ strtolower($it['name'].' '.$it['brand'].' '.$it['code']) }}"
               class="pick text-left border-2 border-gray-100 rounded-xl overflow-hidden bg-white hover:border-yellow-400 transition-colors">
         <div class="aspect-square bg-white flex items-center justify-center">
-          @if($it['photo'])<img src="{{ $it['photo'] }}" class="w-full h-full object-contain" loading="lazy" alt="">
+          @if($it['photo'])<img src="{{ $it['photo'] }}" onerror="this.onerror=null;this.src='{{ asset('images/parts-photo-coming-soon.jpg') }}'" class="w-full h-full object-contain p-1" loading="lazy" alt="">
           @else<span class="text-[10px] text-gray-300">No photo yet</span>@endif
         </div>
         <div class="p-2">

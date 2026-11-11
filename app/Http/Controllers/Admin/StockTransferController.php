@@ -11,7 +11,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
+use App\Services\ConsumableBatches;
 
 class StockTransferController extends Controller
 {
@@ -19,6 +21,12 @@ class StockTransferController extends Controller
         'Waxahachie TX', 'Kennedale TX', 'Elkhorn WI',
         'Ile-Ife Nigeria', 'Ibadan Nigeria', 'Lagos Nigeria', 'Abuja Nigeria', 'Akure Nigeria', 'Accra Ghana',
     ];
+
+    /** Bulk stock (consumables, electronics, computers, other, new car parts): a transfer moves a chosen QUANTITY. */
+    private function isBulk(object $part): bool
+    {
+        return in_array($part->part_category, ConsumableController::stockableCategories(), true);
+    }
 
     public function index(Request $request)
     {
@@ -59,8 +67,14 @@ class StockTransferController extends Controller
             });
         }
 
-        $parts = $query->select('id', 'part_code', 'part_name', 'brand', 'model', 'condition_grade', 'location')
-            ->orderBy('part_name')->limit(50)->get();
+        $parts = $query->select('id', 'part_code', 'part_name', 'brand', 'model', 'condition_grade', 'location', 'part_category', 'unit_size', 'stock_qty')
+            ->orderBy('part_name')->limit(50)->get()
+            ->map(function ($p) {
+                $p->is_bulk   = $this->isBulk($p);
+                $p->stock_qty = (int) $p->stock_qty;
+                return $p;
+            })
+            ->filter(fn ($p) => !$p->is_bulk || $p->stock_qty > 0)->values();
 
         return response()->json(['parts' => $parts]);
     }
@@ -72,21 +86,9 @@ class StockTransferController extends Controller
             'to_location'   => 'required|string|different:from_location',
             'part_ids'      => 'required|array|min:1',
             'part_ids.*'    => 'required|exists:parts_inventory,id',
+            'qty'           => 'nullable|array',
+            'qty.*'         => 'nullable|integer|min:1',
         ]);
-
-        $errors = [];
-        $parts = [];
-        foreach ($request->part_ids as $partId) {
-            $part = DB::table('parts_inventory')->where('id', $partId)->first();
-            if (!$part) { $errors[] = "A selected part no longer exists."; continue; }
-            if ($part->status !== 'Available') { $errors[] = "{$part->part_code} is no longer Available."; continue; }
-            if ($part->location !== $request->from_location) { $errors[] = "{$part->part_code} is not at {$request->from_location}."; continue; }
-            $parts[] = $part;
-        }
-
-        if (!empty($errors)) {
-            return back()->withInput()->with('error', implode(' | ', $errors));
-        }
 
         $year = date('Y');
         $seq  = DB::table('stock_transfers')->whereYear('created_at', $year)->count() + 1;
@@ -94,6 +96,31 @@ class StockTransferController extends Controller
 
         DB::beginTransaction();
         try {
+            // Validate every line against the live stock, locked, before anything is changed.
+            $errors = [];
+            $lines  = [];
+            foreach ($request->part_ids as $partId) {
+                $part = DB::table('parts_inventory')->where('id', $partId)->lockForUpdate()->first();
+                if (!$part) { $errors[] = "A selected part no longer exists."; continue; }
+                if ($part->status !== 'Available') { $errors[] = "{$part->part_code} is no longer Available."; continue; }
+                if ($part->location !== $request->from_location) { $errors[] = "{$part->part_code} is not at {$request->from_location}."; continue; }
+
+                $qty = 1;
+                if ($this->isBulk($part)) {
+                    $qty = (int) ($request->input("qty.{$partId}") ?: 1);
+                    if ($qty < 1) { $errors[] = "{$part->part_name}: enter a quantity of at least 1."; continue; }
+                    if ($qty > (int) $part->stock_qty) {
+                        $errors[] = "{$part->part_name}: only {$part->stock_qty} available at {$request->from_location}, you asked for {$qty}.";
+                        continue;
+                    }
+                }
+                $lines[] = [$part, $qty];
+            }
+            if (!empty($errors)) {
+                DB::rollBack();
+                return back()->withInput()->with('error', implode(' | ', $errors));
+            }
+
             $transferId = DB::table('stock_transfers')->insertGetId([
                 'transfer_no'         => $transferNo,
                 'from_location'       => $request->from_location,
@@ -106,12 +133,17 @@ class StockTransferController extends Controller
                 'updated_at'          => now(),
             ]);
 
-            foreach ($parts as $part) {
+            foreach ($lines as [$part, $qty]) {
+                $bulk = $this->isBulk($part);
                 DB::table('stock_transfer_items')->insert([
                     'transfer_id'     => $transferId,
                     'part_id'         => $part->id,
                     'part_name'       => $part->part_name,
                     'part_code'       => $part->part_code,
+                    'qty'             => $qty,
+                    'is_bulk'         => $bulk ? 1 : 0,
+                    'part_category'   => $part->part_category,
+                    'unit_size'       => $part->unit_size ?? null,
                     'brand'           => $part->brand,
                     'model'           => $part->model,
                     'condition_grade' => $part->condition_grade,
@@ -119,15 +151,24 @@ class StockTransferController extends Controller
                     'updated_at'      => now(),
                 ]);
 
-                // Part leaves the "sellable at this location" pool while
-                // in transit — can't be sold from either location
-                // until it's marked Received at the destination.
-                DB::table('parts_inventory')->where('id', $part->id)->update([
-                    'status'           => 'In Transit',
-                    'storage_shelf_id' => null,
-                    'bin_location'     => null,
-                    'updated_at'       => now(),
-                ]);
+                if ($bulk) {
+                    // Only the chosen units leave. The rest stays here, still Available and sellable.
+                    $left = (int) $part->stock_qty - $qty;
+                    DB::table('parts_inventory')->where('id', $part->id)->update([
+                        'stock_qty'  => $left,
+                        'status'     => $left > 0 ? 'Available' : 'Out of Stock',
+                        'updated_at' => now(),
+                    ]);
+                    ConsumableBatches::record($part, -$qty, $left, 'transfer_out', null, "Sent to {$request->to_location} on {$transferNo}");
+                } else {
+                    // A used part is a single item: it leaves the sellable pool while in transit.
+                    DB::table('parts_inventory')->where('id', $part->id)->update([
+                        'status'           => 'In Transit',
+                        'storage_shelf_id' => null,
+                        'bin_location'     => null,
+                        'updated_at'       => now(),
+                    ]);
+                }
             }
 
             DB::commit();
@@ -137,7 +178,7 @@ class StockTransferController extends Controller
         }
 
         return redirect()->route('admin.transfers.show', $transferId)
-            ->with('success', "Transfer {$transferNo} created — {$request->from_location} → {$request->to_location}.");
+            ->with('success', "Transfer {$transferNo} created - {$request->from_location} to {$request->to_location}.");
     }
 
     public function show(int $id)
@@ -209,34 +250,99 @@ class StockTransferController extends Controller
 
         $items = DB::table('stock_transfer_items')->where('transfer_id', $id)->get();
 
-        // ── #12 — destination bin is now REQUIRED per item to accept
-        // a transfer, not optional. Staff must positively place every
-        // incoming part into a real bin at the destination before the
-        // transfer can be marked received.
+        // Destination bin: required for every used part (one bin per part). For bulk items the bin is optional -
+        // room-level storage is allowed, and a product already shelved at the destination keeps its shelf.
         $destBins = $request->input('dest_bins', []);
         $missing = [];
         foreach ($items as $item) {
-            if (empty($destBins[$item->id])) {
+            if (empty($item->is_bulk) && empty($destBins[$item->id])) {
                 $missing[] = $item->part_name;
             }
         }
         if (!empty($missing)) {
-            return back()->with('error', 'Select a destination bin for every item before accepting — missing for: ' . implode(', ', $missing));
+            return back()->with('error', 'Select a destination bin for every used part before accepting - missing for: ' . implode(', ', $missing));
         }
 
-        $binCodesById = DB::table('storage_shelves')->whereIn('id', array_values($destBins))->pluck('full_bin_code', 'id');
+        $binCodesById = DB::table('storage_shelves')->whereIn('id', array_filter(array_values($destBins)))->pluck('full_bin_code', 'id');
+        $hasDeleted   = Schema::hasColumn('parts_inventory', 'deleted_at');
+        $notes        = [];
+        $units        = 0;
 
         DB::beginTransaction();
         try {
             foreach ($items as $item) {
-                $shelfId = $destBins[$item->id];
-                DB::table('parts_inventory')->where('id', $item->part_id)->update([
-                    'status'           => 'Available',
-                    'location'         => $transfer->to_location,
-                    'storage_shelf_id' => $shelfId,
-                    'bin_location'     => $binCodesById[$shelfId] ?? null,
-                    'updated_at'       => now(),
-                ]);
+                $shelfId = $destBins[$item->id] ?? null;
+
+                if (empty($item->is_bulk)) {
+                    DB::table('parts_inventory')->where('id', $item->part_id)->update([
+                        'status'           => 'Available',
+                        'location'         => $transfer->to_location,
+                        'storage_shelf_id' => $shelfId,
+                        'bin_location'     => $binCodesById[$shelfId] ?? null,
+                        'updated_at'       => now(),
+                    ]);
+                    $units++;
+                    continue;
+                }
+
+                // Bulk item: add the transferred units to the product at the destination (create it if it is not
+                // stocked there yet), under the same product number.
+                $src = DB::table('parts_inventory')->where('id', $item->part_id)->first();
+                if (!$src) throw new \RuntimeException("{$item->part_name} no longer exists.");
+
+                $existing = DB::table('parts_inventory')
+                    ->when($hasDeleted, fn ($q) => $q->whereNull('deleted_at'))
+                    ->where('location', $transfer->to_location)
+                    ->where('part_category', $src->part_category)
+                    ->whereRaw('LOWER(TRIM(part_name)) = ?', [mb_strtolower(trim($src->part_name))])
+                    ->whereRaw("LOWER(TRIM(COALESCE(brand,''))) = ?", [mb_strtolower(trim((string) $src->brand))])
+                    ->whereRaw("REPLACE(LOWER(TRIM(COALESCE(unit_size,''))),' ','') = ?", [str_replace(' ', '', mb_strtolower(trim((string) ($src->unit_size ?? ''))))])
+                    ->orderBy('id')->lockForUpdate()->first();
+
+                if ($existing) {
+                    $newQty = (int) $existing->stock_qty + (int) $item->qty;
+                    $upd = [
+                        'stock_qty'  => $newQty,
+                        'status'     => in_array($existing->status, ['Out of Stock', 'Sold'], true) ? 'Available' : $existing->status,
+                        'updated_at' => now(),
+                    ];
+                    if ($shelfId && empty($existing->storage_shelf_id)) {
+                        $upd['storage_shelf_id'] = $shelfId;
+                        $upd['bin_location']     = $binCodesById[$shelfId] ?? null;
+                    }
+                    DB::table('parts_inventory')->where('id', $existing->id)->update($upd);
+                    ConsumableBatches::record($existing, (int) $item->qty, $newQty, 'transfer_in', null, "Received on {$transfer->transfer_no} from {$transfer->from_location}");
+                    $destId = $existing->id;
+                } else {
+                    $currency = InvoiceController::currencyForLocation($transfer->to_location);
+                    $sameCurrency = ($src->currency_code ?? null) === $currency['code'];
+                    $row = (array) $src;
+                    foreach (['id', 'sold_at', 'deleted_at', 'source_ref'] as $drop) unset($row[$drop]);
+                    foreach (array_keys($row) as $col) {
+                        if (stripos($col, 'barcode') !== false) unset($row[$col]);
+                    }
+                    $row = array_merge($row, [
+                        'location'         => $transfer->to_location,
+                        'storage_shelf_id' => $shelfId ?: null,
+                        'bin_location'     => $binCodesById[$shelfId] ?? null,
+                        'stock_qty'        => (int) $item->qty,
+                        'currency_code'    => $currency['code'],
+                        'price_local'      => $sameCurrency ? $src->price_local : 0,
+                        'price_usd'        => $sameCurrency ? $src->price_usd : 0,
+                        'price_wholesale'  => $sameCurrency ? ($src->price_wholesale ?? null) : null,
+                        // A price in another currency is not guessed: the line is held until a price is set.
+                        'status'           => $sameCurrency ? 'Available' : 'Hold',
+                        'created_at'       => now(),
+                        'updated_at'       => now(),
+                    ]);
+                    $destId = DB::table('parts_inventory')->insertGetId($row);
+                    $created = DB::table('parts_inventory')->where('id', $destId)->first();
+                    ConsumableBatches::record($created, (int) $item->qty, (int) $item->qty, 'transfer_in', null, "Received on {$transfer->transfer_no} from {$transfer->from_location}");
+                    if (!$sameCurrency) $notes[] = "{$src->part_name} is on Hold at {$transfer->to_location} until its price there is set.";
+                }
+
+                DB::table('stock_transfer_items')->where('id', $item->id)->update(['dest_part_id' => $destId, 'updated_at' => now()]);
+                $units += (int) $item->qty;
             }
 
             DB::table('stock_transfers')->where('id', $id)->update([
@@ -253,7 +359,7 @@ class StockTransferController extends Controller
         }
 
         return redirect()->route('admin.transfers.show', $id)
-            ->with('success', "Transfer received — {$items->count()} part(s) now Available at {$transfer->to_location}. Don't forget to assign bin locations.");
+            ->with('success', "Transfer received - {$units} unit(s) now at {$transfer->to_location}." . ($notes ? ' ' . implode(' ', $notes) : ''));
     }
 
     public function cancel(int $id)
@@ -270,6 +376,20 @@ class StockTransferController extends Controller
         DB::beginTransaction();
         try {
             foreach ($items as $item) {
+                if (!empty($item->is_bulk)) {
+                    // Put the units that were taken back on the source stock.
+                    $src = DB::table('parts_inventory')->where('id', $item->part_id)->lockForUpdate()->first();
+                    if ($src) {
+                        $back = (int) $src->stock_qty + (int) $item->qty;
+                        DB::table('parts_inventory')->where('id', $src->id)->update([
+                            'stock_qty'  => $back,
+                            'status'     => in_array($src->status, ['Out of Stock', 'Sold'], true) ? 'Available' : $src->status,
+                            'updated_at' => now(),
+                        ]);
+                        ConsumableBatches::record($src, (int) $item->qty, $back, 'transfer_cancel', null, "Transfer {$transfer->transfer_no} cancelled");
+                    }
+                    continue;
+                }
                 DB::table('parts_inventory')->where('id', $item->part_id)->update([
                     'status'     => 'Available',
                     'updated_at' => now(),
@@ -282,6 +402,6 @@ class StockTransferController extends Controller
             return back()->with('error', 'Could not cancel: ' . $e->getMessage());
         }
 
-        return redirect()->route('admin.transfers.index')->with('success', 'Transfer cancelled — parts restored to Available at origin.');
+        return redirect()->route('admin.transfers.index')->with('success', 'Transfer cancelled - parts and units restored at the origin.');
     }
 }

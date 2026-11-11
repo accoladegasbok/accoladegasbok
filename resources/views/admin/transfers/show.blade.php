@@ -51,13 +51,13 @@
     @endif
   </div>
 
-  <form method="POST" action="{{ route('admin.transfers.receive', $transfer->id) }}" onsubmit="return confirm('Accept this transfer? Every item has been assigned a destination bin and will become Available immediately at {{ $transfer->to_location }}.')">
+  <form method="POST" action="{{ route('admin.transfers.receive', $transfer->id) }}" onsubmit="return confirm('Accept this transfer? Used parts have a destination bin; bulk units are added to the stock at {{ $transfer->to_location }}.')">
   @csrf
   <div class="stat-card overflow-hidden p-0">
     <div class="px-5 py-3 bg-gray-50 border-b border-gray-200">
-      <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide">Parts ({{ $items->count() }})</h2>
+      <h2 class="font-display font-700 text-navy text-sm uppercase tracking-wide">Lines ({{ $items->count() }}) &middot; {{ $items->sum('qty') ?: $items->count() }} unit(s)</h2>
       @if($transfer->status === 'in_transit')
-      <p class="text-xs text-gray-400 mt-0.5">Select a destination bin for every item before accepting — required to confirm receipt.</p>
+      <p class="text-xs text-gray-400 mt-0.5">Used parts need a destination bin. For bulk items the bin is optional - the units are added to the product at the destination.</p>
       @endif
     </div>
     <table class="w-full text-sm font-body">
@@ -65,16 +65,20 @@
         @foreach($items as $item)
         <tr class="border-b border-gray-50 last:border-0">
           <td class="px-4 py-3">
-            <div class="font-500 text-navy">{{ $item->part_name }}</div>
-            <div class="text-xs text-gray-400">{{ $item->part_code }} · {{ $item->brand }} {{ $item->model }}</div>
+            <div class="font-500 text-navy">{{ $item->part_name }}@if(!empty($item->unit_size)) <span class="text-gray-500">&middot; {{ $item->unit_size }}</span>@endif</div>
+            <div class="text-xs text-gray-400">{{ $item->part_code }} · {{ $item->brand }} {{ !empty($item->is_bulk) ? "" : $item->model }}</div>
           </td>
           <td class="px-4 py-3 text-right">
-            <span class="badge badge-gray">Grade {{ $item->condition_grade }}</span>
+            @if(!empty($item->is_bulk))
+              <span class="badge badge-blue">Qty {{ $item->qty }}</span>
+            @else
+              <span class="badge badge-gray">Grade {{ $item->condition_grade }}</span>
+            @endif
           </td>
           @if($transfer->status === 'in_transit')
           <td class="px-4 py-3">
-            <select name="dest_bins[{{ $item->id }}]" required class="border-2 border-gold rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none w-full min-w-[200px]">
-              <option value="">Select destination bin...</option>
+            <select name="dest_bins[{{ $item->id }}]" {{ empty($item->is_bulk) ? 'required' : '' }} class="border-2 border-gold rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none w-full min-w-[200px]">
+              <option value="">{{ empty($item->is_bulk) ? 'Select destination bin...' : 'Bin (optional)...' }}</option>
               @foreach($toBins as $bin)
               <option value="{{ $bin->id }}">{{ $bin->room_name }} — {{ $bin->full_bin_code }}</option>
               @endforeach
@@ -97,7 +101,7 @@
   </form>
 
   @if($transfer->status === 'in_transit')
-  <form method="POST" action="{{ route('admin.transfers.cancel', $transfer->id) }}" onsubmit="return confirm('Cancel this transfer? Parts will be restored to Available at {{ $transfer->from_location }}.')" class="mt-3">
+  <form method="POST" action="{{ route('admin.transfers.cancel', $transfer->id) }}" onsubmit="return confirm('Cancel this transfer? Parts and units will be restored at {{ $transfer->from_location }}.')" class="mt-3">
     @csrf
     <button type="submit" class="w-full border border-red-200 text-red-500 hover:bg-red-50 font-body font-500 text-sm px-6 py-3 rounded-xl transition-colors">
       Cancel Transfer
