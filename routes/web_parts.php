@@ -112,5 +112,45 @@ Route::middleware(['admin.auth', 'stocking-clerk'])->get('admin/consumables/impo
 Route::middleware(['admin.auth', 'stocking-clerk'])->post('admin/consumables/import-batch', [\App\Http\Controllers\Admin\ConsumableController::class, 'importBatch'])
     ->name('admin.inventory.consumable.importbatch.store');
 
+// NEW: Attendance - phone fingerprint (passkey) + selfie + location clock-in. Every signed-in staff member can clock;
+// the report is supervisor and above; sites and phone approval are manager and admin (the controller enforces each).
+Route::middleware(['admin.auth'])->prefix('admin/attendance')->name('admin.attendance.')->group(function () {
+    $c = \App\Http\Controllers\Admin\AttendanceController::class;
+    Route::get('/',                    [$c, 'clock'])->name('clock');
+    Route::get('/challenge',           [$c, 'challenge'])->name('challenge');
+    Route::post('/in',                 [$c, 'clockIn'])->name('in');
+    Route::post('/out',                [$c, 'clockOut'])->name('out');
+    Route::post('/passkey/register',   [$c, 'registerPasskey'])->name('passkey.register');
+    Route::get('/report',              [$c, 'report'])->name('report');
+    Route::post('/excuse',             [$c, 'excuse'])->name('excuse');
+    Route::get('/photo/{id}/{which}',  [$c, 'photo'])->name('photo')->where('id', '[0-9]+')->where('which', 'in|out');
+    Route::get('/settings',            [$c, 'settings'])->name('settings');
+    Route::post('/settings',           [$c, 'saveSite'])->name('site.save');
+    Route::post('/passkey/{id}/approve', [$c, 'approvePasskey'])->name('passkey.approve')->where('id', '[0-9]+');
+    Route::post('/passkey/{id}/revoke',  [$c, 'revokePasskey'])->name('passkey.revoke')->where('id', '[0-9]+');
+});
+
+// NEW: Staff training (LMS) - courses, assignments with due dates, video + quiz, compliance board, certificates.
+// Overdue training turns the person RED and blocks clock-in (see AttendanceController).
+Route::middleware(['admin.auth'])->prefix('admin/training')->name('admin.training.')->group(function () {
+    $c = \App\Http\Controllers\Admin\TrainingController::class;
+    Route::get('/',                          [$c, 'index'])->name('index');
+    Route::get('/mine',                      [$c, 'mine'])->name('mine');
+    Route::get('/courses/create',            [$c, 'create'])->name('create');
+    Route::post('/courses',                  [$c, 'save'])->name('store');
+    Route::get('/courses/{id}/edit',         [$c, 'edit'])->name('edit')->where('id', '[0-9]+');
+    Route::post('/courses/{id}',             [$c, 'save'])->name('update')->where('id', '[0-9]+');
+    Route::post('/courses/{id}/toggle',      [$c, 'toggle'])->name('toggle')->where('id', '[0-9]+');
+    Route::get('/assign',                    [$c, 'assignForm'])->name('assign');
+    Route::post('/assign',                   [$c, 'assign'])->name('assign.store');
+    Route::delete('/assignments/{id}',       [$c, 'destroyAssignment'])->name('assignment.delete')->where('id', '[0-9]+');
+    Route::post('/assignments/{id}/complete',[$c, 'markComplete'])->name('complete')->where('id', '[0-9]+');
+    Route::get('/watch/{id}',                [$c, 'watch'])->name('watch')->where('id', '[0-9]+');
+    Route::post('/watch/{id}/ping',          [$c, 'ping'])->name('ping')->where('id', '[0-9]+');
+    Route::post('/watch/{id}/submit',        [$c, 'submit'])->name('submit')->where('id', '[0-9]+');
+    Route::get('/video/{courseId}',          [$c, 'video'])->name('video')->where('courseId', '[0-9]+');
+    Route::get('/certificate/{id}',          [$c, 'certificate'])->name('certificate')->where('id', '[0-9]+');
+});
+
 // NEW: sitemap for search engines (home, main pages, policies and every part that is available).
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');

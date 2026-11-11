@@ -302,6 +302,27 @@
       @endif
       @endif
 
+      {{-- Staff & HR: clock in/out, training (every signed-in staff member) --}}
+      <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Staff &amp; HR</div>
+      <a href="{{ route('admin.attendance.clock') }}" class="sidebar-link {{ request()->routeIs('admin.attendance.clock') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/></svg>
+        Clock In / Out
+      </a>
+      <a href="{{ route('admin.training.mine') }}" class="sidebar-link {{ request()->routeIs('admin.training.mine','admin.training.watch','admin.training.certificate') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.26 10.147a60.438 60.438 0 00-.491 6.347A48.62 48.62 0 0112 20.904a48.62 48.62 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.636 50.636 0 00-2.658-.813A59.906 59.906 0 0112 3.493a59.903 59.903 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"/></svg>
+        My Training
+      </a>
+      @if(in_array(session('staff_role'), ['admin','manager','supervisor']))
+      <a href="{{ route('admin.attendance.report') }}" class="sidebar-link {{ request()->routeIs('admin.attendance.report','admin.attendance.settings') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
+        Attendance
+      </a>
+      <a href="{{ route('admin.training.index') }}" class="sidebar-link {{ request()->routeIs('admin.training.index','admin.training.assign','admin.training.create','admin.training.edit') ? 'active' : '' }}">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+        Training Compliance
+      </a>
+      @endif
+
       @if(in_array(session('staff_role'), ['admin','manager']))
       <div class="text-gray-500 text-xs uppercase tracking-widest px-3 py-2 font-body mt-3">Admin</div>
       <a href="{{ route('admin.staff.index') }}" class="sidebar-link {{ request()->routeIs('admin.staff*') ? 'active' : '' }}">
@@ -367,6 +388,14 @@
     @endif
     @if(session('error'))
     <div class="bg-red-50 border-b border-red-200 px-4 sm:px-6 py-2.5 text-sm text-red-700 font-body">{{ session('error') }}</div>
+    @endif
+
+    {{-- Overdue training warning (red) - overdue staff cannot clock in --}}
+    @if(session('staff_id') && \App\Services\TrainingCompliance::stateFor((int) session('staff_id')) === 'red')
+    <div class="bg-red-600 text-white px-4 sm:px-6 py-2.5 text-sm font-body flex flex-wrap items-center gap-2">
+      <b>Training overdue.</b> You cannot clock in until it is completed.
+      <a href="{{ route('admin.training.mine') }}" class="underline font-700">Open My Training</a>
+    </div>
     @endif
 
     {{-- Page body --}}
